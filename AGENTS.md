@@ -32,3 +32,9 @@ names retain Tempo internally; do not use Tempo in new product copy. User also
 flagged the whitespace above Workspace / Today; `.ignoresSafeArea` now removes
 that title-bar strip. Final branded screenshot verified. Release build and 20 core
 checks passed; see `docs/verification.md` for the exact scope of validation.
+
+Follow-up: fixed real desktop capture by using CGEventType(UInt32.max), matching
+`kCGAnyInputEventType`, instead of `.null` for idle duration. Real Cursor activity
+was observed accumulating and then appearing in the inbox after pause. Capture was
+left enabled, titles off. Do not call pure core tests full OS integration coverage;
+use the live-output check and the manual release checklist as well.

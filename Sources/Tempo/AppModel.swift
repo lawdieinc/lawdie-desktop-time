@@ -111,7 +111,9 @@ final class AppModel: ObservableObject {
                    let text = value as? String { title = String(text.prefix(300)) }
             }
         }
-        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .null)
+        // kCGAnyInputEventType covers keyboard, mouse and tablet input. `.null`
+        // is a specific event type, not a wildcard, and reports spurious idle time.
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!)
         let previousTimer = workspace.timer
         var next = workspace
         next.observe(app: foreground?.localizedName, bundleID: bundleID, title: title, now: date, idleSeconds: idle, suspended: suspended)
