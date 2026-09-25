@@ -1,0 +1,13 @@
+name: macOS
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build
+      - run: swift run TempoCoreChecks
+      - run: bash scripts/package.sh
+      - run: codesign --verify --deep --strict 'dist/Lawdie Time Capture.app'
