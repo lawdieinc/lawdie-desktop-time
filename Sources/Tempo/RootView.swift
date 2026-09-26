@@ -49,7 +49,7 @@ struct RootView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 15) {
                 LawdieWordmark().frame(width: 139, height: 26)
-                HStack(spacing: 8) { Rectangle().fill(Theme.accent).frame(width: 20, height: 1); Text("Time capture").font(Theme.display(22)).foregroundStyle(Theme.text) }
+                Text("Time capture").font(Theme.display(22)).foregroundStyle(Theme.text)
             }.padding(.horizontal, 23).padding(.top, 48).padding(.bottom, 38)
             Eyebrow(text: "Workspace").padding(.horizontal, 24).padding(.bottom, 15)
             ForEach(Route.allCases.filter { $0 != .settings }, id: \.self) { route in nav(route) }

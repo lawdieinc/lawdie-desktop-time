@@ -38,3 +38,6 @@ Follow-up: fixed real desktop capture by using CGEventType(UInt32.max), matching
 was observed accumulating and then appearing in the inbox after pause. Capture was
 left enabled, titles off. Do not call pure core tests full OS integration coverage;
 use the live-output check and the manual release checklist as well.
+
+2026-09-25: Removed the decorative line before the sidebar “Time capture” title
+at the user's request. Keep that title free of a leading rule.
