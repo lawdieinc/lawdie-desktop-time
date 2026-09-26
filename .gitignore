@@ -1,6 +1,8 @@
-.build/
-.swiftpm/
+node_modules/
+out/
+release/
 dist/
 .DS_Store
 *.xcuserstate
 artifacts/
+legacy/swift/.build/

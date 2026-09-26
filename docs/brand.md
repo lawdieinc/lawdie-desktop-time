@@ -17,7 +17,7 @@ truth for this app; the initial provisional green theme has been replaced.
   Transparency are respected. Logo assets receive no effects or gradients.
 - Sentence-case plain-English copy, with uppercase reserved for tracked labels.
 
-The application bundles fonts locally; it never calls Google Fonts at runtime.
+The application bundles fonts locally (`resources/fonts`, loaded by `src/renderer/src/styles.css`); it never calls Google Fonts at runtime. Tokens are the CSS custom properties at the top of that stylesheet.
 Font licenses accompany the resources. Sources:
 
 - [Playfair Display](https://github.com/google/fonts/tree/main/ofl/playfairdisplay)

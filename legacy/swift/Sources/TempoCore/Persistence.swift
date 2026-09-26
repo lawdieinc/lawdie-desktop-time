@@ -36,7 +36,8 @@ public final class WorkspaceFile {
               state.projects.allSatisfy({ $0.hourlyRate.isFinite && $0.hourlyRate >= 0 }),
               state.entries.allSatisfy({ $0.endedAt > $0.startedAt && $0.hourlyRate.isFinite && $0.hourlyRate >= 0 }),
               state.activities.allSatisfy({ $0.endedAt >= $0.startedAt && ["pending", "kept", "dismissed"].contains($0.disposition) }),
-              state.timer.map({ $0.lastHeartbeat >= $0.startedAt && $0.hourlyRate.isFinite && $0.hourlyRate >= 0 }) ?? true else {
+              state.timer.map({ $0.lastHeartbeat >= $0.startedAt && $0.hourlyRate.isFinite && $0.hourlyRate >= 0 }) ?? true,
+              state.sync.map({ KiwiClient.normalizedServerURL($0.serverURL) != nil && !$0.deviceID.isEmpty }) ?? true else {
             throw TempoError.invalid("The workspace contains invalid data. Restore a known-good backup.")
         }
         return state

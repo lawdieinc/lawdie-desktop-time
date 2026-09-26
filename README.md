@@ -1,127 +1,118 @@
 # Lawdie Time Capture
 
-A native, local-first macOS time tracker. See your day across desktop apps, review
-captured work, and turn it into accurate project time. No browser extension, server,
-account, or JavaScript runtime required.
+A local-first desktop time tracker for macOS, Windows and Linux. See your day across
+desktop apps — Word, Acrobat, Outlook, everything a browser extension cannot see — review
+captured work, and turn it into accurate time. Optionally connect it to Kiwi, and the
+activity you capture and the time you keep sync there.
 
-Follows the Lawdie brand guidelines: cream, espresso, brown-gold, frosted panels,
-official logo assets, and locally bundled Playfair Display, Source Sans Pro, and
-Fragment Mono. See [brand implementation](docs/brand.md).
+Electron + TypeScript. The capture rules live in one pure module (`src/shared/model.ts`)
+that runs under tests and inside the app unchanged; the first, macOS-only Swift version is
+kept under `legacy/swift/` for reference and is no longer built.
 
-## Run
+## Install
 
-Requires macOS 14+ and Swift 5.10+ (Xcode or Apple's Command Line Tools).
+There is no Apple Developer or Windows code-signing certificate yet, so each platform
+asks once before the first launch. That is expected; the app is unchanged after it.
 
-```sh
-swift run Tempo
-```
+- **macOS** — open the `.dmg`, drag Lawdie Time Capture to Applications, open it. macOS
+  says it "could not verify" the app: go to **System Settings → Privacy & Security**, scroll
+  to the message, click **Open Anyway**, confirm. (Or, in Terminal:
+  `xattr -d com.apple.quarantine "/Applications/Lawdie Time Capture.app"`.)
+  Both Apple Silicon (`arm64`) and Intel (`x64`) builds are produced.
+- **Windows** — run `Lawdie Time Capture Setup x.y.z.exe`. SmartScreen says "Windows
+  protected your PC": click **More info → Run anyway**. The installer lets you pick the
+  folder and adds a Start menu shortcut. The build is x64; Windows on ARM runs it under
+  emulation.
+- **Linux** — `chmod +x Lawdie-Time-Capture-x.y.z.AppImage` and run it. Foreground-app
+  capture needs X11 (or XWayland); on pure Wayland the app runs but sees no windows.
 
-To build a double-clickable application:
-
-```sh
-bash scripts/package.sh
-open "dist/Lawdie Time Capture.app"
-```
-
-The build is ad-hoc signed for local development. Public distribution requires a
-Developer ID signature, hardened runtime review, and notarization. The package
-script builds for the current machine's architecture.
-
-To explore an explicitly labeled sample workspace without capturing activity or
-writing workspace data:
-
-```sh
-swift run Tempo --demo
-# Or, after packaging:
-open "dist/Lawdie Time Capture.app" --args --demo
-```
-
-Quit an existing instance before switching between demo and real modes.
+Builds come from `npm run package:mac` / `package:win` / `package:linux` (or the GitHub
+Actions workflow, which uploads all three as artifacts). The output is in `release/`.
 
 ## What works
 
-- Native SwiftUI workspace: Today, Activity, Time entries, Projects, Reports, Settings.
-- Persistent timer with project, description, billable flag, and a menu-bar control.
-- Desktop foreground-app capture using NSWorkspace, including native Word, Preview,
-  Outlook, editors, and browsers. App names and durations are the default.
-- Optional focused-window titles via Accessibility. No title permission needed for
-  basic app capture. Browser URLs and tabs are not read.
-- Idle cutoff, sleep, session and screen-lock handling. Manual timers stop and save;
-  returning to work does not silently restart billing.
-- Crash recovery to the last persisted observation, never across the downtime.
-- Activity inbox: explicitly keep or dismiss a segment. Keeping requires a review;
-  capture never guesses clients, projects, or matters.
-- Projects with client labels, colors, USD hourly rates, and archive/unarchive.
-- Manual time, editing, deletion, resume, search, and date filters.
-- Weekly charts, project breakdowns, billable time and value, CSV export.
-- JSON backup/restore, local retention, exclusions, and clear-activity control.
+- Today, Activity and Settings screens, in the Lawdie brand (cream, espresso, brown-gold,
+  Playfair Display / Source Sans Pro / Fragment Mono, all bundled).
+- Desktop foreground-app capture: app name, stable id (bundle id on macOS, executable
+  path elsewhere), duration, and why the stretch ended. Sampled every 5 seconds plus on
+  wake and unlock.
+- Optional window titles. On macOS they need Screen Recording permission, which the OS
+  asks for the first time. No title is read for an excluded app.
+- Idle cutoff, sleep, and screen-lock handling: a segment and a running timer end at the
+  last input; returning does not silently restart billing. Crash recovery ends at the last
+  persisted observation, never across the downtime.
+- Activity inbox: keep a segment as a time entry (description, billable) or dismiss it.
+  Keeping never overlaps time already kept. Retention removes raw activity, never entries.
+- Exclusions (password managers and system settings by default; add your own by bundle id
+  or `.exe` name), pause/resume from the window or the tray, clear-activity control.
+- Kiwi sync: pair this computer from Kiwi's Time page; captured activity and kept entries
+  sync every minute. Off until you connect.
+- Reads a workspace written by the Swift app (`schemaVersion` 1) and migrates it in place.
 
-Capture starts **off**. Enable it from the sidebar or Settings, use another app, then
-switch apps to see a completed segment. Capture continues when the main window is
-closed; the menu-bar item remains available. Quit Time Capture to stop the process.
+Capture starts **off**. Enable it from the sidebar, the tray, or Settings; use another
+app; switch apps to see a completed segment. Closing the window keeps capturing; the tray
+item reopens it. Quit from the tray to stop.
 
-Shortcuts while Time Capture is active: `⌘N` new entry, `⌘⇧T` start/stop timer, `⌘⇧P`
-pause/resume capture. These are application shortcuts, not global hotkeys.
+## Kiwi sync
+
+Kiwi is the one destination. Lawdie CRM is not connected.
+
+1. In Kiwi: Time → **Captured activity** → **On your desktop** → **Connect a computer**. Kiwi shows
+   a token (`ldt_…`) once and keeps only its hash.
+2. Here: Settings → **Connect to Kiwi** → paste → **Connect**. The app confirms the pairing
+   (`GET /desktop-time/hello`) and only then stores the token, encrypted with the OS
+   keystore (Keychain, DPAPI, or the Linux keyring via Electron's `safeStorage`). It never
+   enters `workspace.json` or a backup.
+3. Every minute while auto-sync is on (and on Connect and **Sync now**) the app pushes
+   (`POST /desktop-time/sync`): every closed activity segment within retention (app, id,
+   title only if titles are on, start/end, how it ended, kept/dismissed); every time entry
+   you kept, with its local project and client labels; and the ids of entries you deleted
+   since the last sync. Kiwi upserts on the app's own UUIDs, so a re-sync updates rather
+   than duplicates.
+
+Kiwi shows it on the Time page and, on rollup, turns each *billable* kept entry into a
+draft under "No matter" for you to place and approve. Kiwi never guesses a matter from a
+project label. Deleting an entry here dismisses its draft there if still a draft. Disconnect
+from either side; what was synced stays in Kiwi. The server defaults to
+`https://lawdie.co/kiwi-api` and can be changed under "Kiwi server" (e.g.
+`http://localhost:4100`). Kiwi must have applied its `20260926_01_desktop_time` migration.
 
 ## Local data and privacy
 
-`~/Library/Application Support/Lawdie Time Capture/workspace.json` holds a versioned
-workspace. Writes are atomic; the directory is private to the macOS account and the
-file uses mode 0600. Data is **not separately encrypted**. Protect the machine with
-your normal account and disk protections. No networking or telemetry is implemented.
+The workspace is one JSON file, private to your OS account (mode 0600 where the platform
+has it), written atomically:
 
-Capture checks exclusions before asking for window titles. Password apps and system
-settings are excluded initially. Add more apps through Settings. Titles can contain
-sensitive data; enabling titles does not make them safe or redact them. The app does
-not distinguish a browser's private windows, so exclude that browser when appropriate.
+- macOS: `~/Library/Application Support/Lawdie Time Capture/workspace.json`
+- Windows: `%APPDATA%\Lawdie Time Capture\workspace.json`
+- Linux: `~/.config/Lawdie Time Capture/workspace.json`
 
-Activity is retained for 14 days by default (configurable). Saved entries do not
-expire. Clearing activity pauses capture and keeps saved entries. Restore first saves
-the original file beside the workspace and then replaces it; capture is paused after
-restore. An unreadable workspace is not silently replaced with an empty one.
-
-The process samples every five seconds and observes app switches. Brief activity under
-two seconds is discarded. A process gap over 45 seconds is treated as unobserved time.
-An unexpected crash may lose up to the last five seconds. Window-title sampling is
-best-effort: some applications do not expose a title. Screen recording, input monitoring,
-and Apple Events permissions are not requested.
+There is no telemetry, no screenshots, no keystroke recording, and no network use at all
+until you connect Kiwi. Titles can contain sensitive data; enabling them does not redact
+anything. A browser is one app to this capture; exclude it if you do not want it seen.
 
 ## Development
 
 ```sh
-swift build
-swift run TempoCoreChecks
+npm install
+npm run dev          # the app, with hot reload
+npm test             # the engine and the sync contract (vitest)
+npm run typecheck    # main, preload and renderer
+npm run package:mac  # or package:win / package:linux → release/
 ```
 
-No third-party code dependencies. Fonts and their licenses are bundled. The standalone
-test runner works with Command Line Tools without requiring XCTest. `TempoCore` contains the portable Foundation-only data
-model, capture state machine, persistence, and CSV export. `Tempo` contains the macOS
-observation layer and UI. Core tests cover privacy defaults, app exclusions, idle and
-sleep transitions, crashes, gaps, overlap prevention, review idempotency, retention,
-cross-midnight/DST accounting, CSV injection, and storage failures.
+Flags for verification: `--workspace <path>` uses another workspace file, `--route
+activity|settings|today` opens on that screen, `--screenshot <file.png>` writes the window
+as rendered (and echoes the renderer console) so a change can be looked at without a
+person at the screen. The engine treats a machine with no keyboard or mouse input for
+longer than the idle timeout as idle, so a scripted run with the default 3 minutes
+captures nothing; seed a workspace with `idleMinutes: 60` for that.
 
-See [architecture](docs/architecture.md) and [release checklist](docs/release-checklist.md).
+Kiwi's `RUN_LIVE_DESKTOP_TIME=1` test runs `src/shared/kiwi.live.test.ts` here against
+its real routes, which is how the wire contract is proven end to end.
 
-## Integration boundary
+## Not yet
 
-Kiwi and Lawdie CRM integration is a later phase. This app does not modify or replace
-`lawdie-time-capture`, does not send data to those apps, and does not expose a local
-HTTP service. UUIDs, source provenance, and activity references preserve a clean
-starting point for explicit, authenticated adapters. See the architecture document
-for deduplication and consent requirements before connecting anything.
-
-## Inspiration
-
-[Solidtime](https://github.com/solidtime-io/solidtime) inspired the core product
-concepts: time entries, projects, clients, billable rates, and reporting. This is a new
-Swift implementation, not a fork; no Solidtime source or assets were copied.
-Solidtime identifies its own source as AGPL-3.0. No open-source license is granted
-for this repository yet.
-
-## Current scope
-
-macOS first. Windows/Linux, browser URL capture, launch at login, global shortcuts,
-team accounts, automated backups, multi-currency invoicing, syncing, an updater, and
-signed/notarized distribution are not included in this release. Long passive reading
-without mouse/keyboard input is treated as idle; adjust the timeout for your workflow.
-The app is an initial local release, not yet validated for production billing.
+Manual timer and manual entries, projects and rates, reports and CSV, backup/restore —
+all of which the Swift version had — are the next slices. Also: launch at login, an
+updater, code signing / notarization, and Wayland capture. Sync is one-way (this computer
+→ Kiwi).

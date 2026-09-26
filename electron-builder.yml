@@ -1,0 +1,48 @@
+# Installers for every platform from one build. No Developer ID / Authenticode signing
+# is configured: macOS users click "Open Anyway" once, Windows users click "More info →
+# Run anyway" once. Add certificates here when there is a paying customer to justify them.
+appId: co.lawdie.timecapture.desktop
+productName: Lawdie Time Capture
+copyright: Copyright © 2026 Lawdie. All rights reserved.
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - resources/**
+  - package.json
+asarUnpack:
+  # get-windows ships native helper binaries that must live on disk.
+  - node_modules/get-windows/**
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  icon: build/icon.icns
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null
+  extendInfo:
+    NSAppTransportSecurity:
+      NSAllowsLocalNetworking: true
+    LSUIElement: false
+win:
+  # x64 only: get-windows' native helper cannot be cross-compiled for win-arm64 from
+  # macOS, and Windows on ARM runs x64 builds under emulation.
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Lawdie Time Capture
+linux:
+  target: [AppImage]
+  icon: build/icon.png
+  category: Office

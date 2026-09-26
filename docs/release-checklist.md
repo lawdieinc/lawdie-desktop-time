@@ -1,6 +1,6 @@
 # Local release verification
 
-Automated: `swift run TempoCoreChecks`, `swift build -c release`, `bash scripts/package.sh`.
+Automated: `npm test`, `npm run typecheck`, `npm run package:mac` / `package:win` / `package:linux` (or the Build workflow).
 
 Manual checks before distributing:
 
@@ -17,9 +17,12 @@ Manual checks before distributing:
 - Export CSV, save a backup, restore it, verify exact entries and paused capture.
 - Test corrupt workspace recovery without losing the original file.
 - Check reports across midnight and daylight-saving transitions.
-- Confirm packaging and permission behavior on a clean Intel and Apple Silicon Mac.
+- Kiwi: pair from the Time page, paste the token, confirm the hello names the account;
+  keep an activity, wait a minute, see it on Kiwi's "On your desktop" and as a draft after
+  rollup; delete it here and see the draft dismissed; disconnect from Kiwi and confirm
+  the next sync reports the Mac as disconnected; disconnect here and confirm the Keychain
+  item is gone (`security find-generic-password -s co.lawdie.timecapture.kiwi`).
+- Confirm packaging and permission behavior on a clean Intel and Apple Silicon Mac, a Windows 11 PC (SmartScreen → Run anyway; capture of Word and Outlook; lock/unlock), and an X11 Linux desktop.
 
-Distribution gates: product naming/license decision, Developer ID signing,
-notarization, accessibility permission stability, clean-machine testing, and a
-reviewed update mechanism. Windows requires a separate foreground-app provider and
-desktop UI implementation; it is not supported by the current SwiftUI target.
+Distribution gates: a hosted download and a link from Kiwi's Time page; later,
+Developer ID signing + notarization and Authenticode, and an updater.

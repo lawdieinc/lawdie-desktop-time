@@ -1,61 +1,68 @@
 # Architecture and integration boundary
 
-## Ownership
+## Shape
 
-`TempoCore` is a Foundation-only Swift library. `Workspace` owns projects, entries,
-activities, preferences, and recoverable in-flight records. `Tempo` is a native macOS
-executable with SwiftUI views and an AppKit/ApplicationServices observation layer.
-All app mutations run on the main actor, write a candidate workspace atomically, and
-only publish it to the UI after the write succeeds. No third-party packages are used.
+Three processes, one file, one pure module.
 
-The local JSON workspace is deliberately inspectable and versioned. This is suitable
-for one user and bounded raw activity; a later SQLite migration is appropriate for
-large, multi-year datasets. Current writes encode the whole workspace every five
-seconds while a timer or activity is running. An exclusive OS file lock prevents
-multiple processes from overwriting the same workspace. Standard LaunchServices
-launching reuses one instance.
+- **`src/shared/model.ts`** owns the rules. It is Foundation-free in the Swift sense —
+  no Electron, no filesystem, no clock — and every function takes `now` in milliseconds.
+  `observe()` is the capture state machine; `keepActivity()` / `saveEntry()` /
+  `deleteEntry()` are the review rules; `syncRequest()` is the wire contract;
+  `parseWorkspace()` validates a file and migrates the Swift app's `schemaVersion: 1`
+  (reference-date seconds → ISO-8601, `bundleID` → `ownerID`).
+- **`src/main/`** is the only place with side effects. `Store.change()` runs a mutation
+  on a copy, validates, writes `workspace.json` atomically (temp file + rename, mode 0600
+  where the platform has it), then swaps the live state and sends it whole to the window.
+  A failed write leaves the old state and reports the error. One process holds the
+  workspace lock (`workspace.lock` with the pid; a stale lock from a dead pid is taken).
+- **`src/preload/`** exposes `window.lawdie`, a fixed list of invokes and one `onState`
+  subscription. Context isolation is on; the sandbox is off only because the preload is
+  ESM.
+- **`src/renderer/`** renders `AppState` and asks for changes. It holds no state of its
+  own beyond which screen is open and what is being typed.
 
 ## Capture lifecycle
 
-1. Observe NSWorkspace foreground application notifications plus a five-second poll.
-2. Check explicit capture preference, app exclusions, and our bundle identifier.
-3. If titles are enabled and Accessibility is granted, read only the focused window
-   title, with a short IPC timeout and a 300-character maximum.
-4. Bound segments by foreground app/title changes, idle, pause, session lock, sleep,
-   quit, or a missing-observation gap. Save a heartbeat with each observation.
-5. Restart recovers only to the stored heartbeat. Never infer time across downtime.
-6. Keeping activity requires a description/project review and rejects overlap with
-   any saved entry or the active timer. The source activity is marked kept atomically.
+1. Every 5 seconds, and on wake/unlock: `get-windows` reports the foreground window
+   (owner name, bundle id or executable path, pid, and — only if titles are on — the
+   title); `powerMonitor.getSystemIdleTime()` reports seconds since the last input.
+2. `observe()` checks the explicit capture preference, the app's own pid, and exclusions
+   (exact id, or executable basename on Windows/Linux) before using a title.
+3. Segments are bounded by app or title changes, idle (trimmed to the last input),
+   suspend/lock, pause, quit, or an unobserved gap over 45 s. The in-progress segment's
+   `endedAt` is the last observation, so a crash recovers to it and never across downtime.
+4. Keeping requires a description and rejects overlap with any saved entry or the running
+   timer. The source activity is marked kept in the same write.
 
-App capture and a manual timer intentionally coexist. Raw activity is evidence, not
-billable time; reports sum only approved time entries. Overlapping raw segments must
-be dismissed or manually reduced to untracked portions; the app never double-counts
-them automatically. Saved rates are snapshots, so project rate changes do not alter
-historical billable values. Reports clip intervals at calendar day/week boundaries.
+Raw activity is evidence, not billable time. Reports (next slice) sum only kept entries.
 
-## Planned Kiwi / CRM adapters
+## Kiwi sync
 
-The existing browser extension emits neutral activity segments, and each host owns
-matching. Keep that architecture. Do not add matter matching to this capture engine.
+One-way, this computer → Kiwi, Lawdie CRM not connected. The device token is issued by
+Kiwi's Time page, confirmed by `GET /desktop-time/hello`, then stored encrypted with
+`safeStorage` at `<userData>/kiwi-token.bin`. Every minute (and on Connect / Sync now)
+`POST /desktop-time/sync` carries a full upsert — closed segments within retention, all
+kept entries with their local project/client labels, and deletions not yet acknowledged —
+batched at 500. `SyncState.deletedEntryIDs` is the one outbox; a failed sync leaves
+everything for the next tick and records `lastError`. Kiwi upserts on the app's UUIDs and
+recomputes seconds from the instants.
 
-A future versioned adapter should use:
+Not solved: deduplication between this capture ("Google Chrome" as an app) and the
+browser extension's segments of the same minutes. The person reviewing drafts in Kiwi is
+the guard today.
 
-- Stable source identity (`desktop`, installation ID, entry/activity UUID) for idempotency.
-- UTC ISO-8601 exchange timestamps and exact unrounded durations. Internal Codable
-  dates currently use Foundation's reference-date encoding; the JSON backup is an
-  internal storage format, not the future API contract. CSV uses ISO-8601.
-- Explicit client/project external references, scoped to a connector/account.
-- User-approved mappings and review states; never guess a legal matter from an app name.
-- A durable delivery outbox with retries, acknowledgements, tombstones, and conflict rules.
-- Keychain-held credentials; explicit destination consent and separate read/write scope.
-- Interval deduplication between desktop/browser/host timers. A browser window and
-  browser extension may describe the same work and must not create duplicate time.
+## Platforms
 
-No integrations, tokens, local socket, or API server exist in this release.
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| Foreground app | `get-windows` (CGWindowList) | `get-windows` (Win32) | `get-windows` (X11 only) |
+| App id | bundle id | executable path | executable path |
+| Titles | need Screen Recording permission | free | free (X11) |
+| Idle | `powerMonitor` | `powerMonitor` | `powerMonitor` |
+| Lock/sleep | suspend, lock-screen | suspend, lock-screen | suspend |
+| Token store | Keychain | DPAPI | keyring (plain file fallback) |
+| Installer | dmg + zip (arm64, x64) | NSIS (x64) | AppImage |
 
-## Native references
-
-- [NSWorkspace activation](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)
-- [CGEventSource idle time](https://developer.apple.com/documentation/coregraphics/cgeventsource)
-- [SwiftUI MenuBarExtra](https://developer.apple.com/documentation/swiftui/menubarextra)
-- [Product inspiration: Solidtime](https://github.com/solidtime-io/solidtime)
+Only macOS has been run by hand. Windows and Linux builds are produced by
+`electron-builder` and the CI matrix; their capture path is the same package with the
+same tests, but nobody has clicked them yet — see `docs/verification.md`.

@@ -1,0 +1,47 @@
+{
+  "name": "lawdie-time-capture",
+  "productName": "Lawdie Time Capture",
+  "version": "0.3.0",
+  "description": "Local-first desktop time capture for Lawdie, with optional sync to Kiwi.",
+  "private": true,
+  "main": "./out/main/index.js",
+  "type": "module",
+  "author": "Lawdie",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "package": "electron-vite build && electron-builder --config electron-builder.yml",
+    "package:mac": "electron-vite build && electron-builder --config electron-builder.yml --mac",
+    "package:win": "electron-vite build && electron-builder --config electron-builder.yml --win",
+    "package:linux": "electron-vite build && electron-builder --config electron-builder.yml --linux"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "get-windows": "^9.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.2"
+  },
+  "allowScripts": {
+    "electron@44.4.5": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "get-windows@9.3.0": true
+  }
+}

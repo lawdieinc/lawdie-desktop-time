@@ -37,3 +37,77 @@ and fails when no real segments have appeared, unlike seeded unit fixtures.
 
 Basic foreground capture plus pause/resume is now manually verified. Physical
 lock/sleep, Accessibility titles, and extended continuous tracking remain unverified.
+
+## 2026-09-26 — Kiwi sync
+
+- `swift build` and `swift run TempoCoreChecks`: 26 core checks passed (20 prior plus six
+  for sync: wire format and key spelling, tombstones only when connected, acknowledged
+  deletions cleared, 0.1.0 workspace files still load and a bad server URL is rejected,
+  batching under Kiwi's 500-item limit with deletions first, server URL normalisation).
+- The seventh, `testLiveSyncAgainstServer`, ran as part of Kiwi's
+  `RUN_LIVE_DESKTOP_TIME=1 … desktopTime.live.test.ts`: the real `URLSession` client paired,
+  pushed two activities, one entry and one deletion into the real Express routes (in-memory
+  database), and a wrong token was refused as `invalidToken`. Kiwi's side asserted the
+  stored rows, including the instants and recomputed seconds.
+- `bash scripts/package.sh` and `codesign --verify --deep --strict`: passed; Info.plist
+  reads 0.2.0 with local networking allowed.
+- The packaged app launched with `--workspace` on an empty file and `--route Settings`,
+  wrote a workspace without a `sync` key, and quit cleanly. No Keychain item was left.
+
+Not verified by hand: the Settings panel against a Kiwi that has applied the
+`20260926_01_desktop_time` migration (none had at the time), the Keychain prompt on an
+ad-hoc-signed rebuild, and a sync of a workspace larger than one batch.
+
+## 2026-09-26 — Electron re-found (0.3.0)
+
+The Swift app could not reach Windows, so the app was rebuilt on Electron + TypeScript
+(`legacy/swift/` keeps the original). What was verified on this Mac:
+
+- `npm test`: 22 engine and contract checks pass — the Swift core checks carried over
+  (opt-in capture and titles, bounded segments, exclusions incl. Windows `.exe` names,
+  idle trim, sleep, crash recovery, unobserved gap, single timer with frozen rate,
+  explicit/idempotent review, overlap rejection, retention) plus the sync payload, tombstone
+  and batching rules, Kiwi refusals, and the migration of a Swift `schemaVersion: 1` file.
+- `npm run typecheck`: main, preload and renderer clean.
+- Kiwi's `RUN_LIVE_DESKTOP_TIME=1 … desktopTime.live.test.ts`: the app's real client
+  (`src/shared/kiwi.live.test.ts`) paired through Kiwi's real routes, pushed two activities,
+  one entry and one deletion, and was refused with a bad token; Kiwi asserted the stored rows.
+- The running app (`npm run dev --workspace … --route … --screenshot …`): real foreground
+  capture of Cursor landed in the workspace file and in the Activity inbox; the Activity and
+  Settings screens were looked at as PNGs and render in the brand. Finding on the way: with
+  the default 3-minute idle timeout a scripted run captures nothing, because nobody is
+  touching the keyboard — the idle rule working. Also found and fixed by looking: a blank
+  window from the wrong preload extension (`.js` vs `.mjs`) and a CSP that blocked Vite's
+  dev preamble.
+- `npm run package:mac`: `Lawdie Time Capture-0.3.0-arm64.dmg`, `-0.3.0.dmg` (x64) and the
+  matching zips, ~133 MB each, unsigned.
+- `npm run package:win`: NSIS x64 installer (win-arm64 dropped: get-windows cannot be
+  cross-compiled for it from macOS).
+
+Not verified: the Windows and Linux builds have not been run on a Windows or Linux
+machine — capture, lock/unlock and the SmartScreen "Run anyway" path there are unclicked.
+The Kiwi click-through (paste token in the app → segment on Kiwi's "On your desktop" panel)
+waits on Kiwi's `20260926_01_desktop_time` migration being applied to the database the
+local Kiwi backend uses. Timer, manual entries, projects, reports, CSV and backup/restore
+are not yet rebuilt.
+
+### Click-through, same day
+
+After the user applied Kiwi's `20260926_01_desktop_time` migration: a device was paired
+through Kiwi's real routes (Clerk session, token handed over by the user), the packaged
+app was opened on the real workspace (the Swift file migrated in place: 120 activities
+kept, backup written beside it), the user pasted the token with the server set to the
+local Kiwi backend, and within the minute Kiwi's Time page showed **On your Mac →
+Abhinav's Mac → Synced just now · v0.3.0** with the captured segments, read from the
+migrated database. The workspace records `lastSyncedAt` and no error; the token file is
+mode 0600 and encrypted.
+
+Found on the way and fixed: a segment closed because this app came to the front was
+labelled `excluded` (Kiwi rendered it "opened a private app"); it is now `switched`, and
+capture switched off closes as `paused`. The installers in `release/` were rebuilt from
+the final source afterwards. The app the user is running is the build before that fix;
+the label difference is cosmetic.
+
+Also changed in Kiwi, because the desktop path exposed it: the Time page gate now opens
+on a connected desktop computer as well as on the extension, hosts the pairing form, and
+"Elsewhere in the browser" reports a missing or paused extension instead of "Capturing".

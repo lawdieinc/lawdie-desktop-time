@@ -73,6 +73,9 @@ public struct Workspace: Codable, Equatable {
     public var timer: RunningTimer?
     public var currentActivity: Activity?
     public var preferences = Preferences()
+    /// Present only once this Mac is connected to Kiwi. Optional, so workspaces written
+    /// before sync existed still load.
+    public var sync: SyncState?
     public init() {}
 
     public func project(_ id: UUID?) -> Project? { projects.first { $0.id == id } }

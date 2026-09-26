@@ -6,6 +6,9 @@ struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @State private var excluded = ""
     @State private var clearActivity = false
+    @State private var kiwiServer = SyncState.defaultServerURL
+    @State private var kiwiToken = ""
+    @State private var showAdvanced = false
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             PageHeading(eyebrow: "On your terms", title: "Your time. Your boundaries.", subtitle: "Control what Time Capture sees, what it keeps, and what leaves your machine.")
@@ -55,7 +58,7 @@ struct SettingsView: View {
             Panel {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Your data belongs here").font(Theme.body(17, weight: .medium))
-                    Text("No account, telemetry, cloud sync, screenshots, keystroke recording, or network service. Data is stored as a local file protected by your macOS account permissions; it is not separately encrypted.").font(Theme.body(12)).foregroundStyle(Theme.muted).lineSpacing(4)
+                    Text("No telemetry, screenshots, keystroke recording, or local network service. Nothing leaves this Mac unless you connect Kiwi below, and then only captured activity and your time entries. Data is stored as a local file protected by your macOS account permissions; it is not separately encrypted.").font(Theme.body(12)).foregroundStyle(Theme.muted).lineSpacing(4)
                     Text(model.file.url.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.muted).textSelection(.enabled)
                     HStack(spacing: 10) {
                         Button("Export all time") { model.exportCSV(entries: model.workspace.entries) }.buttonStyle(QuietButton())
@@ -67,17 +70,53 @@ struct SettingsView: View {
                     }
                 }
             }
-            Panel {
-                HStack(spacing: 20) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted").font(Theme.body(27)).foregroundStyle(Theme.muted)
-                    VStack(alignment: .leading, spacing: 7) { Text("Room to connect.").font(Theme.body(16, weight: .medium)); Text("Kiwi and Lawdie CRM integrations are planned. This version works independently, and no data is sent to either app.").font(Theme.body(12)).foregroundStyle(Theme.muted) }
-                    Spacer(); Text("COMING LATER").font(Theme.body(9, weight: .semibold)).tracking(1.5).foregroundStyle(Theme.muted)
-                }
-            }
+            Panel { kiwiPanel }
         }
         .confirmationDialog("Clear all captured desktop activity?", isPresented: $clearActivity) {
             Button("Clear activity", role: .destructive) { model.change { $0.activities = []; $0.currentActivity = nil; $0.preferences.captureEnabled = false }; model.notice = "Activity cleared and capture paused. Saved time entries are unchanged." }
         } message: { Text("This removes raw activity and pauses capture. Saved time entries and projects are kept.") }
+    }
+    /// Connect to Kiwi: paste the token Kiwi shows once, and this Mac's activity and
+    /// kept time sync there. Lawdie CRM is not connected from here.
+    @ViewBuilder private var kiwiPanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "point.3.connected.trianglepath.dotted").font(Theme.body(22)).foregroundStyle(model.kiwiConnected ? Theme.accent : Theme.muted)
+                Text("Connect to Kiwi").font(Theme.body(17, weight: .medium))
+                Spacer()
+                HStack(spacing: 6) {
+                    Circle().fill(model.kiwiConnected ? (model.workspace.sync?.lastError == nil ? Theme.accent : Color.red) : Theme.muted).frame(width: 6, height: 6)
+                    Text(model.kiwiConnected ? "Connected" : "Not connected").font(Theme.body(12, weight: .medium))
+                }
+            }
+            if let sync = model.workspace.sync {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Syncing to \(sync.serverURL) as \(sync.accountEmail ?? "your account"). In Kiwi this Mac is “\(sync.deviceName)”.").font(Theme.body(12)).foregroundStyle(Theme.muted)
+                    Text(model.syncStatusLine).font(Theme.body(12, weight: .medium)).foregroundStyle(sync.lastError == nil ? Theme.text : .red)
+                    if let error = sync.lastError { Text(error).font(Theme.body(11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+                }
+                Toggle("Sync automatically, about once a minute", isOn: Binding(get: { sync.autoSync }, set: { value in model.change { $0.sync?.autoSync = value } })).toggleStyle(.checkbox).font(Theme.body(12))
+                HStack(spacing: 10) {
+                    Button(model.syncing ? "Syncing…" : "Sync now") { Task { await model.syncNow() } }.buttonStyle(PrimaryButton()).disabled(model.syncing)
+                    Button("Disconnect") { model.disconnectKiwi() }.buttonStyle(QuietButton()).disabled(model.syncing)
+                }
+                Text("What syncs: captured activity (app names, durations, and window titles if you switched them on) and the time entries you keep, with their project labels. Kiwi never guesses a matter from them. Billable entries become drafts under “No matter” on Kiwi's Time page for you to place and approve; deleting an entry here dismisses its draft there. Lawdie CRM is not connected.").font(Theme.body(11)).foregroundStyle(Theme.muted).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+            } else if model.isDemo {
+                Text("The sample workspace cannot connect to Kiwi.").font(Theme.body(12)).foregroundStyle(Theme.muted)
+            } else {
+                Text("In Kiwi, open Time → Captured activity → On your Mac and click “Connect a Mac”. Paste the token it shows here; it is shown once. Until you connect, nothing leaves this Mac.").font(Theme.body(12)).foregroundStyle(Theme.muted).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    SecureField("ldt_… token from Kiwi", text: $kiwiToken).textFieldStyle(.roundedBorder).frame(maxWidth: 420)
+                    Button(model.syncing ? "Connecting…" : "Connect") { Task { if await model.connectKiwi(serverURL: kiwiServer, token: kiwiToken) { kiwiToken = "" } } }.buttonStyle(PrimaryButton()).disabled(model.syncing || kiwiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                DisclosureGroup("Kiwi server", isExpanded: $showAdvanced) {
+                    HStack {
+                        TextField("https://lawdie.co/kiwi-api", text: $kiwiServer).textFieldStyle(.roundedBorder).frame(maxWidth: 420)
+                        Text("Change only for a self-hosted or local Kiwi.").font(Theme.body(11)).foregroundStyle(Theme.muted)
+                    }.padding(.top, 6)
+                }.font(Theme.body(12)).foregroundStyle(Theme.muted)
+            }
+        }
     }
     private func setting<Content: View>(_ title: String, detail: String, @ViewBuilder control: () -> Content) -> some View {
         HStack(spacing: 30) { VStack(alignment: .leading, spacing: 7) { Text(title).font(Theme.body(13, weight: .medium)); Text(detail).font(Theme.body(11)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true) }; Spacer(); control() }

@@ -46,7 +46,7 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack { Text("LAWDIE TIME CAPTURE").font(.system(size: 12, weight: .bold, design: .rounded)).tracking(3); Spacer(); Text("LOCAL").font(.caption2).foregroundStyle(.secondary) }
+            HStack { Text("LAWDIE TIME CAPTURE").font(.system(size: 12, weight: .bold, design: .rounded)).tracking(3); Spacer(); Text(model.kiwiConnected ? "KIWI" : "LOCAL").font(.caption2).foregroundStyle(.secondary) }
             if let timer = model.workspace.timer {
                 Text(timer.description).font(.headline)
                 Text(Format.duration(model.now.timeIntervalSince(timer.startedAt), clock: true)).font(.system(size: 36, weight: .light, design: .monospaced))

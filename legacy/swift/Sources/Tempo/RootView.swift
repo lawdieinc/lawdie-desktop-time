@@ -62,7 +62,7 @@ struct RootView: View {
             nav(.settings)
             HStack(spacing: 10) {
                 Text("L").font(Theme.body(12, weight: .semibold)).frame(width: 29, height: 29).background(Theme.raised, in: Circle())
-                VStack(alignment: .leading, spacing: 3) { Text("Personal workspace").font(Theme.body(11, weight: .medium)); Text("Local • No account needed").font(Theme.body(10)).foregroundStyle(Theme.muted) }
+                VStack(alignment: .leading, spacing: 3) { Text("Personal workspace").font(Theme.body(11, weight: .medium)); Text(model.workspace.sync?.accountEmail ?? (model.kiwiConnected ? "Synced to Kiwi" : "Local • No account needed")).font(Theme.body(10)).foregroundStyle(Theme.muted).lineLimit(1) }
             }.padding(22)
         }.frame(width: 218).background(Theme.sidebar)
     }
@@ -86,8 +86,8 @@ struct RootView: View {
         HStack {
             Text("Workspace").foregroundStyle(Theme.muted); Image(systemName: "chevron.right").font(Theme.body(9)); Text(model.route.rawValue)
             Spacer()
-            Image(systemName: "internaldrive").foregroundStyle(Theme.accent)
-            Text("Saved on this Mac").foregroundStyle(Theme.muted)
+            Image(systemName: model.kiwiConnected ? "arrow.triangle.2.circlepath" : "internaldrive").foregroundStyle(model.workspace.sync?.lastError == nil ? Theme.accent : .red)
+            Text(model.syncStatusLine).foregroundStyle(Theme.muted)
             Rectangle().fill(Theme.line).frame(width: 1, height: 16).padding(.horizontal, 12)
             Text(model.now.formatted(.dateTime.month(.abbreviated).day().year())).foregroundStyle(Theme.muted)
         }.font(Theme.body(11)).padding(.horizontal, 32).frame(height: 64).overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
@@ -146,7 +146,7 @@ struct TodayView: View {
                             Text("The document you edited. The brief you reviewed. Work happens beyond your browser.").font(Theme.body(13)).foregroundStyle(Theme.muted).lineSpacing(5)
                             Rectangle().fill(Theme.line).frame(height: 1)
                             HStack { Image(systemName: "lock.shield"); Text("Private by design") }.font(Theme.body(11, weight: .medium)).foregroundStyle(Theme.accent)
-                            Text("Activity stays on this Mac. You decide what becomes a time entry.").font(Theme.body(11)).foregroundStyle(Theme.muted).lineSpacing(4)
+                            Text(model.kiwiConnected ? "Kept time syncs to Kiwi. You decide what becomes a time entry." : "Activity stays on this Mac. You decide what becomes a time entry.").font(Theme.body(11)).foregroundStyle(Theme.muted).lineSpacing(4)
                             Button { model.route = .activity } label: { HStack { Text("Review activity"); Spacer(); Image(systemName: "arrow.up.right") } }.buttonStyle(QuietButton())
                         }
                     }
@@ -238,7 +238,20 @@ struct EntryRow: View {
             } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 18)
         }.padding(.vertical, 12).overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
             .confirmationDialog("Delete this time entry?", isPresented: $delete) {
-                Button("Delete entry", role: .destructive) { model.change { state in state.entries.removeAll { $0.id == entry.id }; if let index = state.activities.firstIndex(where: { $0.id == entry.activityID }) { state.activities[index].disposition = "pending" } } }
+                Button("Delete entry", role: .destructive) { model.change { $0.deleteEntry(entry.id) } }
             } message: { Text("\(entry.description) · \(Format.duration(entry.seconds))") }
+    }
+}
+
+extension AppModel {
+    /// The top bar's one line about where the data is.
+    var syncStatusLine: String {
+        guard let sync = workspace.sync else { return "Saved on this Mac" }
+        if syncing { return "Syncing to Kiwi…" }
+        if let error = sync.lastError { return "Kiwi sync failed · \(error.prefix(60))" }
+        guard let date = sync.lastSyncedAt else { return "Connected to Kiwi · not synced yet" }
+        let seconds = max(0, Int(now.timeIntervalSince(date)))
+        let ago = seconds < 60 ? "just now" : seconds < 3600 ? "\(seconds / 60)m ago" : seconds < 86_400 ? "\(seconds / 3600)h ago" : date.formatted(date: .abbreviated, time: .shortened)
+        return "Synced to Kiwi · \(ago)"
     }
 }

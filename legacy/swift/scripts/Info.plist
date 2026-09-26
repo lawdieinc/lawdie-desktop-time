@@ -6,11 +6,16 @@
     <key>CFBundleIdentifier</key><string>co.lawdie.timecapture.desktop</string>
     <key>CFBundleExecutable</key><string>Tempo</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>0.2.0</string>
+    <key>CFBundleVersion</key><string>2</string>
     <key>CFBundleIconFile</key><string>Tempo</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Lawdie. All rights reserved.</string>
+    <!-- Kiwi sync is HTTPS. Local networking is allowed so a developer can point the
+         app at a Kiwi backend on this machine (http://localhost:4100). -->
+    <key>NSAppTransportSecurity</key><dict>
+        <key>NSAllowsLocalNetworking</key><true/>
+    </dict>
 </dict></plist>

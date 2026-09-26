@@ -21,6 +21,8 @@ final class AppModel: ObservableObject {
     @Published var timerDescription = ""
     @Published var timerProject: UUID?
     @Published var timerBillable = true
+    /// A Kiwi hello or sync is in flight (see KiwiSync.swift).
+    @Published var syncing = false
     let file: WorkspaceFile
     let isDemo: Bool
     private var pulse: Timer?
@@ -30,9 +32,18 @@ final class AppModel: ObservableObject {
     private var workspaceLock: WorkspaceLock?
 
     init() {
-        isDemo = ProcessInfo.processInfo.arguments.contains("--demo") || Bundle.main.bundleIdentifier == "co.lawdie.timecapture.desktop.demo"
+        let arguments = ProcessInfo.processInfo.arguments
+        isDemo = arguments.contains("--demo") || Bundle.main.bundleIdentifier == "co.lawdie.timecapture.desktop.demo"
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        file = WorkspaceFile(url: support.appendingPathComponent(isDemo ? "Lawdie Time Capture Demo/workspace.json" : "Lawdie Time Capture/workspace.json"))
+        // `--workspace <path>` runs against another real workspace file (verification,
+        // a second account) without touching the one in Application Support.
+        if let index = arguments.firstIndex(of: "--workspace"), arguments.count > index + 1, !isDemo {
+            file = WorkspaceFile(url: URL(fileURLWithPath: arguments[index + 1]).standardizedFileURL)
+        } else {
+            file = WorkspaceFile(url: support.appendingPathComponent(isDemo ? "Lawdie Time Capture Demo/workspace.json" : "Lawdie Time Capture/workspace.json"))
+        }
+        // `--route Settings` opens on that screen (verification screenshots).
+        if let index = arguments.firstIndex(of: "--route"), arguments.count > index + 1, let start = Route(rawValue: arguments[index + 1]) { route = start }
         do {
             if !isDemo { workspaceLock = try WorkspaceLock(directory: file.url.deletingLastPathComponent()) }
             let legacy = support.appendingPathComponent("Lawdie Tempo/workspace.json")
@@ -88,6 +99,7 @@ final class AppModel: ObservableObject {
         now = Date(); ticks += 1
         if ticks % 5 == 0 { accessibilityGranted = AXIsProcessTrusted(); sample() }
         if ticks % 3600 == 0 { change { $0.prune(now: now) } }
+        syncTick(ticks)
     }
 
     func sample() {
