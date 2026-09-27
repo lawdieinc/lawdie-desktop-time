@@ -14,10 +14,10 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "package": "electron-vite build && electron-builder --config electron-builder.yml",
-    "package:mac": "electron-vite build && electron-builder --config electron-builder.yml --mac",
-    "package:win": "electron-vite build && electron-builder --config electron-builder.yml --win",
-    "package:linux": "electron-vite build && electron-builder --config electron-builder.yml --linux"
+    "package": "electron-vite build && electron-builder --config electron-builder.yml --publish never",
+    "package:mac": "electron-vite build && electron-builder --config electron-builder.yml --publish never --mac",
+    "package:win": "electron-vite build && electron-builder --config electron-builder.yml --publish never --win",
+    "package:linux": "electron-vite build && electron-builder --config electron-builder.yml --publish never --linux"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

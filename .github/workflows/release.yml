@@ -1,13 +1,21 @@
 # Cut a release: bump "version" in package.json, commit, then
 #   git tag v0.3.0 && git push origin v0.3.0
 # Each platform builds its own installers (the Windows native helper cannot be
-# cross-built) and attaches them to the GitHub Release for that tag. The Release
+# cross-built) and attaches them to the GitHub Release for that tag. The package
+# scripts pass --publish never so electron-builder does not also try to publish
+# on its own (its default on a tag), which is what uploads here instead. "Run
+# workflow" with a tag name rebuilds an existing release from the current main. The Release
 # is created on first upload and assets are overwritten on re-runs, so a release
 # made by hand from local builds is completed, not duplicated, by this workflow.
 name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and attach installers to, e.g. v0.3.0"
+        required: true
 permissions:
   contents: write
 jobs:
@@ -30,6 +38,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
@@ -38,6 +48,7 @@ jobs:
       - run: npm run package:${{ matrix.target }}
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: ${{ matrix.assets }}
           overwrite_files: true
           generate_release_notes: true
