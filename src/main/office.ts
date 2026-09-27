@@ -38,58 +38,85 @@ export function officeApp(ownerID: string): OfficeApp | null {
 
 // ---------------------------------------------------------------------------
 // The scripts. Each prints NAME=…, PATH=…, TEXT=… lines (TEXT last, may span lines).
+//
+// Two AppleScript traps shaped these. Inside a `tell application` block, `text 1 thru
+// N of …` is the app's own `text` element, so "set theText to text 1 thru 600 of …" is
+// dispatched to Word and the local variable is never assigned — silently. So the scripts
+// only read whole values inside the tell and do the truncation outside it. And Word
+// reports `full name` as an HFS path ("Macintosh HD:Users:…") where Excel reports POSIX;
+// the tail converts through an alias when the file exists and keeps the raw string
+// otherwise (an unsaved document's "full name" is just its name).
 // ---------------------------------------------------------------------------
+
+const MAC_FINISH = `
+try
+  set thePath to POSIX path of (thePath as alias)
+end try
+if (length of theContent) > ${EXCERPT_MAX} then set theContent to text 1 thru ${EXCERPT_MAX} of theContent
+return "NAME=" & theName & linefeed & "PATH=" & thePath & linefeed & "TEXT=" & theContent`;
+
 
 const MAC_SCRIPTS: Record<OfficeApp, string> = {
     word: `
+set theName to ""
+set thePath to ""
+set theContent to ""
 tell application "Microsoft Word"
   if not (exists active document) then return ""
-  set d to active document
-  set t to ""
+  set theDoc to active document
+  set theName to name of theDoc
+  set thePath to full name of theDoc
   try
-    set t to text 1 thru ${EXCERPT_MAX} of (content of text object of d)
-  on error
-    try
-      set t to content of text object of d
-    end try
+    set theContent to content of text object of theDoc
   end try
-  return "NAME=" & (name of d) & linefeed & "PATH=" & (full name of d) & linefeed & "TEXT=" & t
-end tell`,
+end tell
+${MAC_FINISH}`,
     excel: `
+set theName to ""
+set thePath to ""
+set theContent to ""
 tell application "Microsoft Excel"
   if not (exists active workbook) then return ""
-  set wb to active workbook
-  return "NAME=" & (name of wb) & linefeed & "PATH=" & (full name of wb) & linefeed & "TEXT=" & (name of active sheet)
-end tell`,
+  set theBook to active workbook
+  set theName to name of theBook
+  set thePath to full name of theBook
+  try
+    set theContent to name of active sheet
+  end try
+end tell
+${MAC_FINISH}`,
     powerpoint: `
+set theName to ""
+set thePath to ""
+set theContent to ""
 tell application "Microsoft PowerPoint"
   if not (exists active presentation) then return ""
-  set p to active presentation
-  return "NAME=" & (name of p) & linefeed & "PATH=" & (full name of p) & linefeed & "TEXT="
-end tell`,
+  set theDeck to active presentation
+  set theName to name of theDeck
+  set thePath to full name of theDeck
+end tell
+${MAC_FINISH}`,
     outlook: `
+set theName to ""
+set thePath to ""
+set theContent to ""
+set theSender to ""
 tell application "Microsoft Outlook"
-  set items to selected objects
-  if (count of items) is 0 then return ""
-  set m to item 1 of items
-  set s to ""
-  set f to ""
-  set b to ""
+  set theItems to selected objects
+  if (count of theItems) is 0 then return ""
+  set theItem to item 1 of theItems
   try
-    set s to subject of m
+    set theName to subject of theItem
   end try
   try
-    set f to name of sender of m
+    set theSender to name of sender of theItem
   end try
   try
-    set b to text 1 thru ${EXCERPT_MAX} of (plain text content of m)
-  on error
-    try
-      set b to plain text content of m
-    end try
+    set theContent to plain text content of theItem
   end try
-  return "NAME=" & s & linefeed & "PATH=" & linefeed & "TEXT=" & f & " — " & s & " — " & b
-end tell`,
+end tell
+set theContent to theSender & " — " & theName & " — " & theContent
+${MAC_FINISH}`,
 };
 
 const WIN_SCRIPTS: Record<OfficeApp, string> = {

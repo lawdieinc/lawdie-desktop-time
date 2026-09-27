@@ -121,7 +121,17 @@ installed 0.4.0 app (real workspace, paired) captured a segment in Excel with
 `matter_name: "Brantley Millwork, Inc. v. Commissioner", matter_number: "2026-TX-0118",
 match_reason: "matter_number"` — one of the user's real matters, matched from the file
 name. Probe failures now go to `office.log` beside the workspace and under the Settings
-toggle; none occurred. Word remains untested (first-run screen). Windows COM untested.
+toggle; none occurred. Windows COM untested.
+
+Word, later the same day: the first Word script failed with "The variable t is not
+defined" — inside `tell application "Microsoft Word"`, `text 1 thru 600 of …` is Word's
+own `text` element, so the assignment went to Word and the variable was never set.
+Word also reports `full name` as an HFS path. All four scripts now read whole values
+inside the tell and truncate / convert the path outside it. Verified: the installed app
+captured a 20 s Word segment with `document = { name: "Hollis Vance IRS response
+2026-TX-0126.docx", path: /…/…docx, excerpt: "MEMORANDUM Re: Hollis & Vance Staffing,
+LLC — … Matter 2026-TX-0126 …" }` (a hand-written .docx opened through Finder, since
+Word's `make new document` stalls on its start screen).
 
 Found on the way: a computer paired again after a disconnect re-sent its history under a
 new device id, and Kiwi's per-device uniqueness kept every copy (280 rows for 146
