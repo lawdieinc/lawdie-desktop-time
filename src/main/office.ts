@@ -102,9 +102,17 @@ set thePath to ""
 set theContent to ""
 set theSender to ""
 tell application "Microsoft Outlook"
-  set theItems to selected objects
-  if (count of theItems) is 0 then return ""
-  set theItem to item 1 of theItems
+  set theItem to missing value
+  -- An item open in its own window first (legacy Outlook exposes it as the window's
+  -- object), else whatever is selected in the list.
+  try
+    set theItem to object of window 1
+  end try
+  if theItem is missing value then
+    set theItems to selected objects
+    if (count of theItems) is 0 then return ""
+    set theItem to item 1 of theItems
+  end if
   try
     set theName to subject of theItem
   end try
@@ -160,7 +168,9 @@ export function parseProbeOutput(output: string): DocumentInfo | null {
     const name = text.slice(nameAt + 5, pathAt);
     const path = text.slice(pathAt + 6, textAt);
     const excerpt = text.slice(textAt + 6);
-    return cleanDocument({ name, path: path || null, excerpt: excerpt || null });
+    // An unsaved document's "full name" is just its name ("Presentation1"): not a path.
+    const saved = /[\/\\]/.test(path);
+    return cleanDocument({ name, path: saved ? path : null, excerpt: excerpt || null });
 }
 
 // ---------------------------------------------------------------------------

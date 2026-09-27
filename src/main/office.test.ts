@@ -32,6 +32,11 @@ describe("parseProbeOutput", () => {
         });
     });
 
+    it("treats an unsaved document's name-as-path as no path", () => {
+        expect(parseProbeOutput("NAME=Presentation1\nPATH=Presentation1\nTEXT=")).toEqual({ name: "Presentation1", path: null, excerpt: null });
+        expect(parseProbeOutput("NAME=a.docx\nPATH=C:\\Users\\a\\a.docx\nTEXT=")?.path).toBe("C:\\Users\\a\\a.docx");
+    });
+
     it("is null for nothing open, or output that is not the protocol", () => {
         expect(parseProbeOutput("")).toBeNull();
         expect(parseProbeOutput("\n")).toBeNull();

@@ -133,6 +133,19 @@ captured a 20 s Word segment with `document = { name: "Hollis Vance IRS response
 LLC — … Matter 2026-TX-0126 …" }` (a hand-written .docx opened through Finder, since
 Word's `make new document` stalls on its start screen).
 
+PowerPoint: a deck made and saved by automation as "Brantley hearing deck
+2026-TX-0118.pptx"; the installed app captured a 75 s segment with its name and POSIX
+path (no excerpt, by design). First attempt caught a parser gap: PowerPoint had a blank
+unsaved "Presentation1" in front, whose "full name" is just its name, and that was being
+stored as the path — a name without a separator is now no path.
+
+Outlook: cannot be tested on this Mac. It runs as "New Outlook" with **no account
+signed in** (`accounts=0/0`, an "Add Account" window), so no message exists to read;
+`selected objects` and `current messages` answer 0 without error, and a draft made by
+automation is not persisted. The script gained a fallback to the item open in the front
+window (legacy Outlook's `object of window 1`) and runs to completion against New
+Outlook, returning "nothing open". Verifying the body/subject read needs a mailbox.
+
 Found on the way: a computer paired again after a disconnect re-sent its history under a
 new device id, and Kiwi's per-device uniqueness kept every copy (280 rows for 146
 segments, duplicate React keys on the Time page). Kiwi's `20260927_01` migration makes
