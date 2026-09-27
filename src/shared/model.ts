@@ -314,17 +314,29 @@ export function secondsBetween(w: Workspace, start: number, end: number, billabl
 
 export const SYNC_MAX_ITEMS = 500;
 
+/** The machine's IANA zone, or null where Intl cannot say. */
+export function localTimeZone(): string | null {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch {
+        return null;
+    }
+}
+
 export type SyncRequest = {
     app_version: string;
+    /** This computer's IANA zone, so Kiwi dates drafts made from kept entries on the day they happened. */
+    time_zone: string | null;
     activities: { id: string; app: string; bundle_id: string; title: string | null; document_name: string | null; document_path: string | null; excerpt: string | null; started_at: string; ended_at: string; seconds: number; ended_by: string; disposition: string }[];
     entries: { id: string; description: string; project_name: string | null; client_name: string | null; started_at: string; ended_at: string; seconds: number; billable: boolean; hourly_rate: number; source: string; activity_id: string | null }[];
     deleted_entry_ids: string[];
 };
 
 /** Everything Kiwi should know: closed segments within retention, every kept entry, unacknowledged deletions. */
-export function syncRequest(w: Workspace, appVersion: string): SyncRequest {
+export function syncRequest(w: Workspace, appVersion: string, timeZone: string | null = localTimeZone()): SyncRequest {
     return {
         app_version: appVersion,
+        time_zone: timeZone,
         activities: w.activities.map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, document_name: a.document?.name ?? null, document_path: a.document?.path ?? null, excerpt: a.document?.excerpt ?? null, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
         entries: w.entries.map((e) => {
             const p = project(w, e.projectID);
@@ -339,6 +351,7 @@ export function syncBatches(request: SyncRequest, maxItems = SYNC_MAX_ITEMS): Sy
     const count = Math.max(1, Math.ceil(Math.max(request.activities.length, request.entries.length, request.deleted_entry_ids.length) / maxItems));
     return Array.from({ length: count }, (_, i) => ({
         app_version: request.app_version,
+        time_zone: request.time_zone,
         activities: request.activities.slice(i * maxItems, (i + 1) * maxItems),
         entries: request.entries.slice(i * maxItems, (i + 1) * maxItems),
         deleted_entry_ids: request.deleted_entry_ids.slice(i * maxItems, (i + 1) * maxItems),

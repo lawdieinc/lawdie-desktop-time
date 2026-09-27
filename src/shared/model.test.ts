@@ -196,8 +196,9 @@ describe("Kiwi sync", () => {
         w.currentActivity = activity({ app: "Preview" });
         w.entries = [entry({ id: "4fd1c8a2-3b7e-4c1d-9a2f-1b3c4d5e6f70", description: "Prepare motion", projectID: "p", endedAt: iso(1200), billable: true, hourlyRate: 350, source: "desktop", activityID: "a1" })];
         w.sync = { serverURL: "https://lawdie.co/kiwi-api", deviceID: "d", deviceName: "Mac", accountEmail: null, autoSync: true, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["gone"] };
-        const req = syncRequest(w, "0.3.0");
-        expect(Object.keys(req).sort()).toEqual(["activities", "app_version", "deleted_entry_ids", "entries"]);
+        const req = syncRequest(w, "0.3.0", "America/New_York");
+        expect(Object.keys(req).sort()).toEqual(["activities", "app_version", "deleted_entry_ids", "entries", "time_zone"]);
+        expect(req.time_zone).toBe("America/New_York");
         expect(req.activities).toEqual([{ id: "a1", app: "Microsoft Word", bundle_id: "com.microsoft.Word", title: "Motion.docx", document_name: null, document_path: null, excerpt: null, started_at: iso(0), ended_at: iso(1200), seconds: 1200, ended_by: "switched", disposition: "kept" }]);
         expect(req.entries[0]).toEqual({ id: "4fd1c8a2-3b7e-4c1d-9a2f-1b3c4d5e6f70", description: "Prepare motion", project_name: "Whitfield v. Meridian", client_name: "Whitfield", started_at: iso(0), ended_at: iso(1200), seconds: 1200, billable: true, hourly_rate: 350, source: "desktop", activity_id: "a1" });
         expect(req.deleted_entry_ids).toEqual(["gone"]);

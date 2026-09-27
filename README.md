@@ -89,8 +89,9 @@ Kiwi is the one destination. Lawdie CRM is not connected.
    since the last sync. Kiwi upserts on the app's own UUIDs, so a re-sync updates rather
    than duplicates.
 
-Kiwi shows it on the Time page and, on rollup, turns each *billable* kept entry into a
-draft for you to approve. The draft's matter is the one Kiwi matched from what the app
+Kiwi shows it on the Time page and, at each sync, turns each *billable* kept entry into a
+draft for you to approve — nothing to press; a kept entry bills at the 0.1 h minimum
+however short, dated in this computer's time zone. The draft's matter is the one Kiwi matched from what the app
 saw about the stretch it was kept from — the window title and, if switched on, the
 Office document's name, path and excerpt — and only when a matter number or a distinctive
 party name points at exactly one matter; otherwise it lands under "No matter" for you to

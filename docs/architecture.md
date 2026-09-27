@@ -63,8 +63,9 @@ One-way, this computer → Kiwi, Lawdie CRM not connected. The device token is i
 Kiwi's Time page, confirmed by `GET /desktop-time/hello`, then stored encrypted with
 `safeStorage` at `<userData>/kiwi-token.bin`. Every minute (and on Connect / Sync now)
 `POST /desktop-time/sync` carries a full upsert — closed segments within retention, all
-kept entries with their local project/client labels, and deletions not yet acknowledged —
-batched at 500. `SyncState.deletedEntryIDs` is the one outbox; a failed sync leaves
+kept entries with their local project/client labels, deletions not yet acknowledged, and
+this computer's IANA time zone so Kiwi dates drafts on the day they happened — batched
+at 500. Kiwi writes a ledger draft per billable kept entry in the same request. `SyncState.deletedEntryIDs` is the one outbox; a failed sync leaves
 everything for the next tick and records `lastError`. Kiwi upserts on the app's UUIDs and
 recomputes seconds from the instants.
 
