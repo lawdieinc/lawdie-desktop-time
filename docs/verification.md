@@ -112,7 +112,23 @@ Also changed in Kiwi, because the desktop path exposed it: the Time page gate no
 on a connected desktop computer as well as on the extension, hosts the pairing form, and
 "Elsewhere in the browser" reports a missing or paused extension instead of "Capturing".
 
-## 2026-09-26 — Office document details (in progress)
+## 2026-09-27 — Office document details: proven end to end
+
+With Excel signed in and Kiwi's `20260926_02_desktop_documents` migration applied: the
+installed 0.4.0 app (real workspace, paired) captured a segment in Excel with
+`document = { name: "Brantley Millwork 2026-TX-0118 schedule.xlsx", path: …, excerpt:
+"Penalty schedule" }`, synced it, and Kiwi's `/desktop-time/activity` returned it with
+`matter_name: "Brantley Millwork, Inc. v. Commissioner", matter_number: "2026-TX-0118",
+match_reason: "matter_number"` — one of the user's real matters, matched from the file
+name. Probe failures now go to `office.log` beside the workspace and under the Settings
+toggle; none occurred. Word remains untested (first-run screen). Windows COM untested.
+
+Found on the way: a computer paired again after a disconnect re-sent its history under a
+new device id, and Kiwi's per-device uniqueness kept every copy (280 rows for 146
+segments, duplicate React keys on the Time page). Kiwi's `20260927_01` migration makes
+activities and entries unique per user and the sync take rows over.
+
+## 2026-09-26 — Office document details (earlier, before Office was signed in)
 
 Built and unit-verified: the opt-in "Read Office document details" preference, the
 Apple Events / COM probe with its NAME/PATH/TEXT protocol (`src/main/office.test.ts`:

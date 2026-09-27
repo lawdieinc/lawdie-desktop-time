@@ -222,6 +222,14 @@ function KeepSheet({ activity, onClose }: { activity: Activity; onClose: () => v
 function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
     const w = state.workspace, p = w.preferences;
     const [excluded, setExcluded] = useState("");
+    const [office, setOffice] = useState<{ supported: boolean; errors: Record<string, string> } | null>(null);
+    useEffect(() => {
+        if (!p.captureDocuments) return undefined;
+        const ask = () => void window.lawdie.officeStatus().then(setOffice);
+        ask();
+        const t = setInterval(ask, 10_000);
+        return () => clearInterval(t);
+    }, [p.captureDocuments]);
     const [server, setServer] = useState(DEFAULT_SERVER_URL);
     const [token, setToken] = useState("");
     const [advanced, setAdvanced] = useState(false);
@@ -242,6 +250,10 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and its first few lines (Outlook: the sender and subject). Kiwi uses these to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
                     <Toggle on={p.captureDocuments} onChange={(v) => set("captureDocuments", v)} label="Read Office document details" />
                 </Setting>
+                {p.captureDocuments && office && !office.supported && <p className="muted tiny">Not available on this platform.</p>}
+                {p.captureDocuments && office && Object.entries(office.errors).map(([app, message]) => (
+                    <p key={app} className="danger tiny">{{ word: "Word", excel: "Excel", powerpoint: "PowerPoint", outlook: "Outlook" }[app] ?? app} did not answer: {message}</p>
+                ))}
                 <Setting title="Idle timeout" detail="Stops capture and your timer at the last input after this much inactivity.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>

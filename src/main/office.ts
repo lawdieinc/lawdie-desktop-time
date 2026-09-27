@@ -170,6 +170,9 @@ export class OfficeProbe {
     /** The last failure per app, for the Settings screen ("Word did not answer: …"). */
     readonly lastError = new Map<OfficeApp, string>();
 
+    /** Called with each failure as it happens, for a log file; the message is already bounded. */
+    onError: ((app: OfficeApp, message: string) => void) | null = null;
+
     constructor(private readonly runner: Runner | null = process.platform === "darwin" ? runMac : process.platform === "win32" ? runWindows : null) {}
 
     get supported(): boolean {
@@ -190,7 +193,9 @@ export class OfficeProbe {
                 return parseProbeOutput(out);
             })
             .catch((err: Error) => {
-                this.lastError.set(app, err.message.slice(0, 200));
+                const message = err.message.slice(0, 200);
+                this.lastError.set(app, message);
+                this.onError?.(app, message);
                 return null;
             })
             .then((document) => {

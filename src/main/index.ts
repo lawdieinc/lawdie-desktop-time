@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hostname } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from "electron";
@@ -92,6 +92,12 @@ app.whenReady().then(() => {
 
     const store = new Store(new WorkspaceFile(workspacePath), app.getVersion());
     const capture = new Capture(store);
+    // Office probe failures go to a log beside the workspace: the one place to look when
+    // "Read Office document details" is on and nothing arrives (a denied permission, a
+    // modal dialog in Office, a timeout).
+    capture.office.onError = (officeApp, message) => {
+        try { appendFileSync(join(userData, "office.log"), `${new Date().toISOString()} ${officeApp}: ${message}\n`); } catch { /* best effort */ }
+    };
     const deviceLabel = process.platform === "darwin" ? "Mac" : "PC";
     const sync = new Sync(store, new TokenFile(join(userData, "kiwi-token.bin")), deviceLabel);
 
