@@ -1,0 +1,10 @@
+Copyright © 2026 Lawdie. All rights reserved.
+
+This source code is published so that the installers on the Releases page can be
+downloaded and inspected. No license is granted to copy, modify, distribute, or use
+this code or the Lawdie name, logo, and brand assets, except that the installers may
+be downloaded and used to run Lawdie Time Capture.
+
+Third-party components keep their own licenses: the bundled fonts (Playfair Display and
+Fragment Mono under the SIL Open Font License, Source Sans Pro under its license) in
+resources/fonts, and the npm dependencies listed in package.json.

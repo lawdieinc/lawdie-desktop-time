@@ -1,0 +1,43 @@
+# Cut a release: bump "version" in package.json, commit, then
+#   git tag v0.3.0 && git push origin v0.3.0
+# Each platform builds its own installers (the Windows native helper cannot be
+# cross-built) and attaches them to the GitHub Release for that tag. The Release
+# is created on first upload and assets are overwritten on re-runs, so a release
+# made by hand from local builds is completed, not duplicated, by this workflow.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: mac
+            assets: |
+              release/*.dmg
+              release/*-mac.zip
+          - os: windows-latest
+            target: win
+            assets: release/*.exe
+          - os: ubuntu-latest
+            target: linux
+            assets: release/*.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run package:${{ matrix.target }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.assets }}
+          overwrite_files: true
+          generate_release_notes: true

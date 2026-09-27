@@ -11,6 +11,10 @@ kept under `legacy/swift/` for reference and is no longer built.
 
 ## Install
 
+**Download:** <https://github.com/lawdieinc/lawdie-desktop-time/releases/latest> — pick
+the `.dmg` for a Mac (arm64 for Apple Silicon, the other for Intel), the `Setup .exe`
+for Windows, or the `.AppImage` for Linux.
+
 There is no Apple Developer or Windows code-signing certificate yet, so each platform
 asks once before the first launch. That is expected; the app is unchanged after it.
 
@@ -26,8 +30,10 @@ asks once before the first launch. That is expected; the app is unchanged after 
 - **Linux** — `chmod +x Lawdie-Time-Capture-x.y.z.AppImage` and run it. Foreground-app
   capture needs X11 (or XWayland); on pure Wayland the app runs but sees no windows.
 
-Builds come from `npm run package:mac` / `package:win` / `package:linux` (or the GitHub
-Actions workflow, which uploads all three as artifacts). The output is in `release/`.
+Releases are cut by tag: bump `version` in `package.json`, commit, `git tag vX.Y.Z`,
+`git push origin vX.Y.Z`. The Release workflow builds each platform on its own runner
+and attaches the installers to the GitHub Release. Locally, `npm run package:mac` /
+`package:win` / `package:linux` write the same files to `release/`.
 
 ## What works
 
