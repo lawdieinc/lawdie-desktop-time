@@ -45,12 +45,26 @@ export type RunningTimer = {
     hourlyRate: number;
 };
 
+/** What an Office app said it had open, when the person switched that on. */
+export type DocumentInfo = {
+    /** "Whitfield motion.docx", or an email's subject. */
+    name: string;
+    /** Where it is saved, or null for an unsaved document or an email. */
+    path: string | null;
+    /** The first few hundred characters of text (Outlook: sender and subject), or null. */
+    excerpt: string | null;
+};
+
+export const EXCERPT_MAX = 600;
+
 export type Activity = {
     id: string;
     app: string;
     /** The stable id of the app: bundle id on macOS, executable path elsewhere. */
     ownerID: string;
     title: string | null;
+    /** Present only for Office apps with "Read Office document details" on. */
+    document?: DocumentInfo | null;
     startedAt: string;
     endedAt: string;
     endedBy: string;
@@ -60,6 +74,8 @@ export type Activity = {
 export type Preferences = {
     captureEnabled: boolean;
     captureTitles: boolean;
+    /** Ask Word, Excel, PowerPoint and Outlook what is open: name, path, a text excerpt. */
+    captureDocuments: boolean;
     idleMinutes: number;
     retentionDays: number;
     excludedOwnerIDs: string[];
@@ -101,7 +117,7 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export function defaultPreferences(): Preferences {
-    return { captureEnabled: false, captureTitles: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
+    return { captureEnabled: false, captureTitles: false, captureDocuments: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
 }
 
 export function emptyWorkspace(): Workspace {
@@ -205,7 +221,20 @@ export function deleteEntry(w: Workspace, id: string): void {
 // Capture
 // ---------------------------------------------------------------------------
 
-export type Observation = { app: string; ownerID: string; title: string | null; isSelf?: boolean } | null;
+export type Observation = { app: string; ownerID: string; title: string | null; document?: DocumentInfo | null; isSelf?: boolean } | null;
+
+/** A document as stored: bounded, whitespace collapsed, empty fields null. */
+export function cleanDocument(raw: DocumentInfo | null | undefined): DocumentInfo | null {
+    if (!raw) return null;
+    const name = raw.name?.trim().slice(0, 300);
+    if (!name) return null;
+    const path = raw.path?.trim().slice(0, 1000) || null;
+    const excerpt = raw.excerpt?.replace(/\s+/g, " ").trim().slice(0, EXCERPT_MAX) || null;
+    return { name, path, excerpt };
+}
+
+const sameDocument = (a: DocumentInfo | null | undefined, b: DocumentInfo | null | undefined) =>
+    (a?.name ?? null) === (b?.name ?? null) && (a?.path ?? null) === (b?.path ?? null);
 
 /** One sample of the foreground. Bounds are wall-clock timestamps; no interval spans an unobserved gap. */
 export function observe(w: Workspace, foreground: Observation, now: number, idleSeconds: number, suspended = false): void {
@@ -234,16 +263,22 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         return;
     }
     const safeTitle = w.preferences.captureTitles ? foreground.title : null;
+    const document = w.preferences.captureDocuments ? cleanDocument(foreground.document) : null;
     const current = w.currentActivity;
     if (current) {
         const lastSeen = ms(current.endedAt);
         if (now - lastSeen > GAP_SECONDS * 1000 || now < lastSeen) closeActivity(w, lastSeen, "gap");
         else if (current.ownerID !== foreground.ownerID || current.title !== safeTitle) closeActivity(w, now, "switched");
+        // A different document in the same app is different work. A segment that only now
+        // learns its document keeps going, and a probe that failed this once (null) does not
+        // end a segment that already knows its document.
+        else if (document && current.document && !sameDocument(current.document, document)) closeActivity(w, now, "switched");
     }
     if (!w.currentActivity) {
-        w.currentActivity = { id: uuid(), app: foreground.app, ownerID: foreground.ownerID, title: safeTitle, startedAt: iso(now), endedAt: iso(now), endedBy: "switched", disposition: "pending" };
+        w.currentActivity = { id: uuid(), app: foreground.app, ownerID: foreground.ownerID, title: safeTitle, document, startedAt: iso(now), endedAt: iso(now), endedBy: "switched", disposition: "pending" };
     } else {
         w.currentActivity.endedAt = iso(now);
+        if (document) w.currentActivity.document = document;
     }
 }
 
@@ -281,7 +316,7 @@ export const SYNC_MAX_ITEMS = 500;
 
 export type SyncRequest = {
     app_version: string;
-    activities: { id: string; app: string; bundle_id: string; title: string | null; started_at: string; ended_at: string; seconds: number; ended_by: string; disposition: string }[];
+    activities: { id: string; app: string; bundle_id: string; title: string | null; document_name: string | null; document_path: string | null; excerpt: string | null; started_at: string; ended_at: string; seconds: number; ended_by: string; disposition: string }[];
     entries: { id: string; description: string; project_name: string | null; client_name: string | null; started_at: string; ended_at: string; seconds: number; billable: boolean; hourly_rate: number; source: string; activity_id: string | null }[];
     deleted_entry_ids: string[];
 };
@@ -290,7 +325,7 @@ export type SyncRequest = {
 export function syncRequest(w: Workspace, appVersion: string): SyncRequest {
     return {
         app_version: appVersion,
-        activities: w.activities.map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
+        activities: w.activities.map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, document_name: a.document?.name ?? null, document_path: a.document?.path ?? null, excerpt: a.document?.excerpt ?? null, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
         entries: w.entries.map((e) => {
             const p = project(w, e.projectID);
             return { id: e.id, description: e.description, project_name: p?.name ?? null, client_name: p?.client || null, started_at: e.startedAt, ended_at: e.endedAt, seconds: Math.round(seconds(e)), billable: e.billable, hourly_rate: e.hourlyRate, source: e.source, activity_id: e.activityID };
@@ -336,7 +371,7 @@ export function validate(w: Workspace): Workspace {
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition)) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (typeof w.sync.serverURL === "string" && w.sync.serverURL.length > 0 && typeof w.sync.deviceID === "string" && w.sync.deviceID.length > 0));
     if (!ok) throw new WorkspaceError("The workspace contains invalid data. Restore a known-good backup.");
@@ -363,7 +398,7 @@ export function migrateV1(raw: Record<string, unknown>): Workspace {
         activities: arr(raw.activities).map(activity),
         timer: timer ? { description: String(timer.description ?? ""), projectID: (timer.projectID as string | undefined) ?? null, startedAt: fromReference(timer.startedAt), lastHeartbeat: fromReference(timer.lastHeartbeat), billable: timer.billable === true, hourlyRate: Number(timer.hourlyRate ?? 0) } : null,
         currentActivity: current ? activity(current) : null,
-        preferences: { captureEnabled: prefs.captureEnabled === true, captureTitles: prefs.captureTitles === true, idleMinutes: Number(prefs.idleMinutes ?? 3), retentionDays: Number(prefs.retentionDays ?? 14), excludedOwnerIDs: Array.isArray(prefs.excludedBundleIDs) ? (prefs.excludedBundleIDs as string[]) : [...DEFAULT_EXCLUSIONS] },
+        preferences: { captureEnabled: prefs.captureEnabled === true, captureTitles: prefs.captureTitles === true, captureDocuments: false, idleMinutes: Number(prefs.idleMinutes ?? 3), retentionDays: Number(prefs.retentionDays ?? 14), excludedOwnerIDs: Array.isArray(prefs.excludedBundleIDs) ? (prefs.excludedBundleIDs as string[]) : [...DEFAULT_EXCLUSIONS] },
         sync: sync ? { serverURL: String(sync.serverURL ?? ""), deviceID: String(sync.deviceID ?? ""), deviceName: String(sync.deviceName ?? ""), accountEmail: (sync.accountEmail as string | undefined) ?? null, autoSync: sync.autoSync !== false, lastSyncedAt: sync.lastSyncedAt != null ? fromReference(sync.lastSyncedAt) : null, lastError: (sync.lastError as string | undefined) ?? null, deletedEntryIDs: Array.isArray(sync.deletedEntryIDs) ? (sync.deletedEntryIDs as string[]) : [] } : null,
     };
 }

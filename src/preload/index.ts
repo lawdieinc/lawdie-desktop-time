@@ -28,6 +28,7 @@ export const api = {
     dismissMessage: (): Promise<void> => ipcRenderer.invoke("dismissMessage"),
     showDataFolder: (): Promise<void> => ipcRenderer.invoke("showDataFolder"),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke("openExternal", url),
+    officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),
 };
 
 contextBridge.exposeInMainWorld("lawdie", api);

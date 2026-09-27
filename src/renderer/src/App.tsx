@@ -169,8 +169,8 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     <div className="activity" key={a.id}>
                         <span className="app-icon">▭</span>
                         <div className="grow">
-                            <div className="small strong">{a.title || a.app}</div>
-                            <div className="muted tiny">{a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {a.endedBy}</div>
+                            <div className="small strong">{a.document?.name || a.title || a.app}</div>
+                            <div className="muted tiny">{a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {a.endedBy}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
                         </div>
                         <span className="mono">{duration((Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000)}</span>
                         {a.disposition === "pending" ? (
@@ -188,7 +188,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
 }
 
 function KeepSheet({ activity, onClose }: { activity: Activity; onClose: () => void }): ReactNode {
-    const [description, setDescription] = useState(activity.title ?? `Work in ${activity.app}`);
+    const [description, setDescription] = useState(activity.document?.name ?? activity.title ?? `Work in ${activity.app}`);
     const [billable, setBillable] = useState(true);
     const [problem, setProblem] = useState<string | null>(null);
     const save = async (): Promise<void> => {
@@ -238,6 +238,9 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 </Setting>
                 <Setting title="Include window titles" detail={isMac ? "Optional context such as document names. Titles may contain sensitive information. macOS asks for Screen Recording permission the first time." : "Optional context such as document names. Titles may contain sensitive information."}>
                     <Toggle on={p.captureTitles} onChange={(v) => set("captureTitles", v)} label="Include window titles" />
+                </Setting>
+                <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and its first few lines (Outlook: the sender and subject). Kiwi uses these to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
+                    <Toggle on={p.captureDocuments} onChange={(v) => set("captureDocuments", v)} label="Read Office document details" />
                 </Setting>
                 <Setting title="Idle timeout" detail="Stops capture and your timer at the last input after this much inactivity.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>

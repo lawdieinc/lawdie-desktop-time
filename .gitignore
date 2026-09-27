@@ -6,3 +6,4 @@ dist/
 *.xcuserstate
 artifacts/
 legacy/swift/.build/
+*.tsbuildinfo

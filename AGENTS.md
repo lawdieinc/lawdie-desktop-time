@@ -45,6 +45,14 @@ npm 11 blocks install scripts by default; `package.json` `allowScripts` approves
 this app needs (electron, get-windows, esbuild). If Electron's binary is missing, run
 `npm rebuild electron get-windows`.
 
+## Office document details
+
+`src/main/office.ts` asks Word/Excel/PowerPoint/Outlook what is open through OS
+automation (osascript / PowerShell COM), opt-in, throttled, timeboxed; the three-line
+NAME/PATH/TEXT protocol is parsed by `parseProbeOutput()`, which is what the tests
+cover. Real Office is exercised by hand. Kiwi matches to a matter from title + document
+(`kiwi/backend/src/lib/matterMatch.ts`); the app never does.
+
 ## Kiwi
 
 Only Kiwi, not the CRM (user, 2026-09-26). One-way, this computer → Kiwi, over a device

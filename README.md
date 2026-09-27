@@ -50,6 +50,13 @@ and attaches the installers to the GitHub Release. Locally, `npm run package:mac
   wake and unlock.
 - Optional window titles. On macOS they need Screen Recording permission, which the OS
   asks for the first time. No title is read for an excluded app.
+- Optional **Office document details** (Settings → "Read Office document details"): for
+  Word, Excel, PowerPoint and Outlook, the open document's name, where it is saved, and
+  its first few hundred characters (Outlook: sender, subject and the start of the
+  message; Excel: the sheet name; PowerPoint: name and path only). Asked through the
+  OS's own automation — Apple Events on macOS, COM on Windows — so nothing is installed
+  inside Office. macOS asks once per app whether Time Capture may control it. Kiwi uses
+  these, with the title, to match the stretch to a matter. Not available on Linux.
 - Idle cutoff, sleep, and screen-lock handling: a segment and a running timer end at the
   last input; returning does not silently restart billing. Crash recovery ends at the last
   persisted observation, never across the downtime.
@@ -83,8 +90,11 @@ Kiwi is the one destination. Lawdie CRM is not connected.
    than duplicates.
 
 Kiwi shows it on the Time page and, on rollup, turns each *billable* kept entry into a
-draft under "No matter" for you to place and approve. Kiwi never guesses a matter from a
-project label. Deleting an entry here dismisses its draft there if still a draft. Disconnect
+draft for you to approve. The draft's matter is the one Kiwi matched from what the app
+saw about the stretch it was kept from — the window title and, if switched on, the
+Office document's name, path and excerpt — and only when a matter number or a distinctive
+party name points at exactly one matter; otherwise it lands under "No matter" for you to
+place. Kiwi never guesses from the local project label. Deleting an entry here dismisses its draft there if still a draft. Disconnect
 from either side; what was synced stays in Kiwi. The server defaults to
 `https://lawdie.co/kiwi-api` and can be changed under "Kiwi server" (e.g.
 `http://localhost:4100`). Kiwi must have applied its `20260926_01_desktop_time` migration.
@@ -100,7 +110,10 @@ has it), written atomically:
 
 There is no telemetry, no screenshots, no keystroke recording, and no network use at all
 until you connect Kiwi. Titles can contain sensitive data; enabling them does not redact
-anything. A browser is one app to this capture; exclude it if you do not want it seen.
+anything, and neither does the Office excerpt: the first few hundred characters of a
+document or an email leave the machine when Kiwi is connected. Both are off by default
+and both are skipped for excluded apps. A browser is one app to this capture; exclude it
+if you do not want it seen.
 
 ## Development
 

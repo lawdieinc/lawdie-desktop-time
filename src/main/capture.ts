@@ -5,6 +5,7 @@
 
 import { powerMonitor } from "electron";
 import { closeActivity, observe, prune, stopTimer, type Observation } from "@shared/model";
+import { OfficeProbe } from "./office";
 import type { Store } from "./store";
 
 export const SAMPLE_MS = 5_000;
@@ -26,6 +27,8 @@ export class Capture {
     private sampling = false;
     /** Last observation, for the window's "Currently in …" line and for tests. */
     lastForeground: Observation = null;
+
+    readonly office = new OfficeProbe();
 
     constructor(private readonly store: Store) {}
 
@@ -62,6 +65,12 @@ export class Capture {
                     if (win) {
                         const ownerID = process.platform === "darwin" ? win.owner.bundleId || win.owner.path : win.owner.path;
                         foreground = { app: win.owner.name || ownerID, ownerID, title: prefs.captureTitles && win.title ? win.title.slice(0, 300) : null, isSelf: win.owner.processId === process.pid };
+                        // Office document details are asked for only when switched on, only for
+                        // the app in front, and never for an excluded app (observe() checks
+                        // exclusions before using anything, but the ask itself is avoided too).
+                        if (prefs.captureDocuments && !prefs.excludedOwnerIDs.some((x) => x.toLowerCase() === ownerID.toLowerCase())) {
+                            foreground.document = await this.office.probe(ownerID);
+                        }
                     }
                 } catch (err) {
                     console.warn("[capture] foreground unavailable", err instanceof Error ? err.message : err);

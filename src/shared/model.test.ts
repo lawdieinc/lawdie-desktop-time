@@ -100,6 +100,27 @@ describe("capture", () => {
         expect(w.currentActivity?.startedAt).toBe(iso(600));
     });
 
+    it("keeps Office document details only when switched on, and a new document is new work", () => {
+        const w = capturing();
+        const doc = { name: "Whitfield motion.docx", path: "/x/Whitfield motion.docx", excerpt: "Re:   Whitfield v. Meridian\n Matter 2026-014" };
+        observe(w, { ...WORD, document: doc }, at(0), 0);
+        expect(w.currentActivity?.document).toBeNull();
+        w.preferences.captureDocuments = true;
+        observe(w, { ...WORD, document: doc }, at(5), 0);
+        expect(w.currentActivity?.document).toEqual({ name: "Whitfield motion.docx", path: "/x/Whitfield motion.docx", excerpt: "Re: Whitfield v. Meridian Matter 2026-014" });
+        // A probe that failed once does not end the segment or lose what it knew.
+        observe(w, { ...WORD, document: null }, at(10), 0);
+        expect(w.currentActivity?.document?.name).toBe("Whitfield motion.docx");
+        expect(w.activities).toEqual([]);
+        // A different document is a different stretch of work.
+        observe(w, { ...WORD, document: { name: "Lease.docx", path: null, excerpt: null } }, at(15), 0);
+        expect(w.activities).toHaveLength(1);
+        expect(w.activities[0].document?.name).toBe("Whitfield motion.docx");
+        expect(w.currentActivity?.document).toEqual({ name: "Lease.docx", path: null, excerpt: null });
+        const req = syncRequest(w, "t");
+        expect(req.activities[0]).toMatchObject({ document_name: "Whitfield motion.docx", document_path: "/x/Whitfield motion.docx", excerpt: "Re: Whitfield v. Meridian Matter 2026-014" });
+    });
+
     it("brief activity is discarded", () => {
         const w = capturing();
         observe(w, WORD, at(0), 0); closeActivity(w, at(1), "switched");
@@ -177,7 +198,7 @@ describe("Kiwi sync", () => {
         w.sync = { serverURL: "https://lawdie.co/kiwi-api", deviceID: "d", deviceName: "Mac", accountEmail: null, autoSync: true, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["gone"] };
         const req = syncRequest(w, "0.3.0");
         expect(Object.keys(req).sort()).toEqual(["activities", "app_version", "deleted_entry_ids", "entries"]);
-        expect(req.activities).toEqual([{ id: "a1", app: "Microsoft Word", bundle_id: "com.microsoft.Word", title: "Motion.docx", started_at: iso(0), ended_at: iso(1200), seconds: 1200, ended_by: "switched", disposition: "kept" }]);
+        expect(req.activities).toEqual([{ id: "a1", app: "Microsoft Word", bundle_id: "com.microsoft.Word", title: "Motion.docx", document_name: null, document_path: null, excerpt: null, started_at: iso(0), ended_at: iso(1200), seconds: 1200, ended_by: "switched", disposition: "kept" }]);
         expect(req.entries[0]).toEqual({ id: "4fd1c8a2-3b7e-4c1d-9a2f-1b3c4d5e6f70", description: "Prepare motion", project_name: "Whitfield v. Meridian", client_name: "Whitfield", started_at: iso(0), ended_at: iso(1200), seconds: 1200, billable: true, hourly_rate: 350, source: "desktop", activity_id: "a1" });
         expect(req.deleted_entry_ids).toEqual(["gone"]);
         expect(JSON.stringify(req)).not.toContain("ldt_");

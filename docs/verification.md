@@ -111,3 +111,21 @@ the label difference is cosmetic.
 Also changed in Kiwi, because the desktop path exposed it: the Time page gate now opens
 on a connected desktop computer as well as on the extension, hosts the pairing form, and
 "Elsewhere in the browser" reports a missing or paused extension instead of "Capturing".
+
+## 2026-09-26 — Office document details (in progress)
+
+Built and unit-verified: the opt-in "Read Office document details" preference, the
+Apple Events / COM probe with its NAME/PATH/TEXT protocol (`src/main/office.test.ts`:
+app detection by bundle id and exe, parsing incl. Windows line endings, bounding,
+caching, shared in-flight asks, refusal handling), the engine rules for documents on a
+segment (`model.test.ts`), the sync payload, and Kiwi's matcher, routes, rollup and
+panel (93 backend tests, 43 Time-page tests).
+
+Against real Office on this Mac: `version` queries to Excel answer (so Apple Events
+reach Office and the permission path works), but `activate` + creating or reading a
+document in Word or Excel times out (`AppleEvent timed out, -1712`) — both apps were
+freshly installed and are sitting on their first-run / sign-in screens, which block
+automation until a person clicks through them. The end-to-end proof (Excel workbook
+named for a real matter → document details on the segment → matter matched on Kiwi's
+panel) is therefore not yet done; it needs Office signed in once and Kiwi's
+`20260926_02_desktop_documents` migration applied. Windows COM is untested here.

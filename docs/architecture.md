@@ -36,6 +36,27 @@ Three processes, one file, one pure module.
 
 Raw activity is evidence, not billable time. Reports (next slice) sum only kept entries.
 
+## Office document details
+
+`src/main/office.ts`. When "Read Office document details" is on and the app in front is
+Word, Excel, PowerPoint or Outlook (by bundle id or executable name), the sampler asks the
+app what it has open before calling `observe()`: `osascript` on macOS (Apple Events; the
+OS asks the person once per app), `powershell.exe` with COM `GetActiveObject` on Windows
+(nothing to grant), nothing on Linux. Each script prints a three-line `NAME=` / `PATH=` /
+`TEXT=` protocol; `parseProbeOutput()` is the only parser and the only part under unit
+test — the scripts are exercised by hand against real Office. The ask is throttled to
+once per 15 s per app, shares one in-flight call between samples, times out at 4 s, and
+a refusal or timeout reads as "nothing" (remembered in `lastError` for Settings) rather
+than an exception. Exclusions are checked before the ask. The excerpt is capped at 600
+characters and whitespace-collapsed. `observe()` stores the document on the segment; a
+different document in the same app ends the segment, a segment that only now learns its
+document keeps going, and a failed probe never ends one.
+
+Why not an add-in: automation reads the same three facts with nothing installed inside
+Office and works for every document, not only ones opened after an add-in loads. An
+add-in becomes worth it if a firm's IT policy blocks Apple Events / COM, or for richer
+context (the paragraph being edited, tracked-change authorship).
+
 ## Kiwi sync
 
 One-way, this computer → Kiwi, Lawdie CRM not connected. The device token is issued by
@@ -46,6 +67,12 @@ kept entries with their local project/client labels, and deletions not yet ackno
 batched at 500. `SyncState.deletedEntryIDs` is the one outbox; a failed sync leaves
 everything for the next tick and records `lastError`. Kiwi upserts on the app's UUIDs and
 recomputes seconds from the instants.
+
+Matching to a matter happens in Kiwi, at sync (`kiwi/backend/src/lib/matterMatch.ts`):
+the matter number as a whole token, else a distinctive party name that belongs to exactly
+one matter, from the title plus the document name, path and excerpt. Anything ambiguous
+stays unmatched. The match is re-stamped on every sync, so a matter opened later is picked
+up, and a kept entry's rollup draft carries the matter its activity matched.
 
 Not solved: deduplication between this capture ("Google Chrome" as an app) and the
 browser extension's segments of the same minutes. The person reviewing drafts in Kiwi is
