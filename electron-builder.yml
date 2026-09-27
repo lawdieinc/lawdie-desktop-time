@@ -14,7 +14,10 @@ files:
 asarUnpack:
   # get-windows ships native helper binaries that must live on disk.
   - node_modules/get-windows/**
+# Version-free artifact names, so <release>/latest/download/<name> is a stable link a
+# website button can point at. The version is on the release itself.
 mac:
+  artifactName: "Lawdie-Time-Capture-mac-${arch}.${ext}"
   category: public.app-category.productivity
   target:
     - target: dmg
@@ -30,6 +33,7 @@ mac:
       NSAllowsLocalNetworking: true
     LSUIElement: false
 win:
+  artifactName: "Lawdie-Time-Capture-windows-setup.${ext}"
   # x64 only: get-windows' native helper cannot be cross-compiled for win-arm64 from
   # macOS, and Windows on ARM runs x64 builds under emulation.
   target:
@@ -43,6 +47,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   shortcutName: Lawdie Time Capture
 linux:
+  artifactName: "Lawdie-Time-Capture-linux.${ext}"
   target: [AppImage]
   icon: build/icon.png
   category: Office

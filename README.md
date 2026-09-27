@@ -11,9 +11,15 @@ kept under `legacy/swift/` for reference and is no longer built.
 
 ## Install
 
-**Download:** <https://github.com/lawdieinc/lawdie-desktop-time/releases/latest> — pick
-the `.dmg` for a Mac (arm64 for Apple Silicon, the other for Intel), the `Setup .exe`
-for Windows, or the `.AppImage` for Linux.
+**Download** (each link is always the latest release):
+
+- macOS, Apple Silicon: <https://github.com/lawdieinc/lawdie-desktop-time/releases/latest/download/Lawdie-Time-Capture-mac-arm64.dmg>
+- macOS, Intel: <https://github.com/lawdieinc/lawdie-desktop-time/releases/latest/download/Lawdie-Time-Capture-mac-x64.dmg>
+- Windows: <https://github.com/lawdieinc/lawdie-desktop-time/releases/latest/download/Lawdie-Time-Capture-windows-setup.exe>
+- Linux: <https://github.com/lawdieinc/lawdie-desktop-time/releases/latest/download/Lawdie-Time-Capture-linux.AppImage>
+
+All of them, with notes: <https://github.com/lawdieinc/lawdie-desktop-time/releases/latest>.
+Kiwi's Time page links the right one for the visitor's platform.
 
 There is no Apple Developer or Windows code-signing certificate yet, so each platform
 asks once before the first launch. That is expected; the app is unchanged after it.
