@@ -1,4 +1,4 @@
-import { isDestination, type Destination } from "./kiwi";
+import { isProduct, type Product } from "./kiwi";
 /* The workspace and the rules that change it. Pure: no Electron, no filesystem, no
    clock of its own — every function takes `now` in milliseconds — so the whole thing
    runs under vitest and inside the main process unchanged.
@@ -82,17 +82,23 @@ export type Preferences = {
     excludedOwnerIDs: string[];
 };
 
-export type SyncState = {
-    /** Kiwi or Lawdie CRM; workspaces written before the CRM was a destination read as Kiwi. */
-    destination: Destination;
+/** One product this computer syncs to. Each has its own device row, so its own id and name. */
+export type SyncTarget = {
+    product: Product;
     serverURL: string;
     deviceID: string;
     deviceName: string;
     accountEmail: string | null;
-    autoSync: boolean;
     lastSyncedAt: string | null;
     lastError: string | null;
+    /** Deletions this product has not acknowledged yet: the one outbox, per product. */
     deletedEntryIDs: string[];
+};
+
+/** Kiwi, Lawdie CRM, or both — with one token. Files from 0.4.x (one product, flat) are read into this. */
+export type SyncState = {
+    targets: SyncTarget[];
+    autoSync: boolean;
 };
 
 export type Workspace = {
@@ -217,7 +223,7 @@ export function deleteEntry(w: Workspace, id: string): void {
     w.entries = w.entries.filter((e) => e.id !== id);
     const activity = w.activities.find((a) => a.id === entry.activityID);
     if (activity) activity.disposition = "pending";
-    if (w.sync && !w.sync.deletedEntryIDs.includes(id)) w.sync.deletedEntryIDs.push(id);
+    for (const t of w.sync?.targets ?? []) if (!t.deletedEntryIDs.includes(id)) t.deletedEntryIDs.push(id);
 }
 
 // ---------------------------------------------------------------------------
@@ -335,8 +341,8 @@ export type SyncRequest = {
     deleted_entry_ids: string[];
 };
 
-/** Everything Kiwi should know: closed segments within retention, every kept entry, unacknowledged deletions. */
-export function syncRequest(w: Workspace, appVersion: string, timeZone: string | null = localTimeZone()): SyncRequest {
+/** Everything a destination should know: closed segments within retention, every kept entry, the deletions it has not acknowledged. */
+export function syncRequest(w: Workspace, appVersion: string, timeZone: string | null = localTimeZone(), target: SyncTarget | null = w.sync?.targets[0] ?? null): SyncRequest {
     return {
         app_version: appVersion,
         time_zone: timeZone,
@@ -345,7 +351,7 @@ export function syncRequest(w: Workspace, appVersion: string, timeZone: string |
             const p = project(w, e.projectID);
             return { id: e.id, description: e.description, project_name: p?.name ?? null, client_name: p?.client || null, started_at: e.startedAt, ended_at: e.endedAt, seconds: Math.round(seconds(e)), billable: e.billable, hourly_rate: e.hourlyRate, source: e.source, activity_id: e.activityID };
         }),
-        deleted_entry_ids: w.sync?.deletedEntryIDs ?? [],
+        deleted_entry_ids: target?.deletedEntryIDs ?? [],
     };
 }
 
@@ -361,11 +367,32 @@ export function syncBatches(request: SyncRequest, maxItems = SYNC_MAX_ITEMS): Sy
     }));
 }
 
-export function markSynced(w: Workspace, at: number, acknowledgedDeletions: string[]): void {
-    if (!w.sync) return;
-    w.sync.deletedEntryIDs = w.sync.deletedEntryIDs.filter((id) => !acknowledgedDeletions.includes(id));
-    w.sync.lastSyncedAt = iso(at);
-    w.sync.lastError = null;
+/** One product answered: its outbox shrinks by what it acknowledged. Without `product`, every target. */
+export function markSynced(w: Workspace, at: number, acknowledgedDeletions: string[], product: Product | null = null): void {
+    for (const t of w.sync?.targets ?? []) {
+        if (product && t.product !== product) continue;
+        t.deletedEntryIDs = t.deletedEntryIDs.filter((id) => !acknowledgedDeletions.includes(id));
+        t.lastSyncedAt = iso(at);
+        t.lastError = null;
+    }
+}
+
+/** The 0.4.x shape (one product, flat) or the current one, as the current one; anything else as given. */
+export function normalizeSync(raw: unknown): SyncState | null {
+    if (!raw || typeof raw !== "object") return null;
+    const r = raw as Record<string, unknown>;
+    if (Array.isArray(r.targets)) return r as unknown as SyncState;
+    const target: SyncTarget = {
+        product: isProduct(r.destination) ? r.destination : "kiwi",
+        serverURL: String(r.serverURL ?? ""),
+        deviceID: String(r.deviceID ?? ""),
+        deviceName: String(r.deviceName ?? ""),
+        accountEmail: (r.accountEmail as string | undefined) ?? null,
+        lastSyncedAt: (r.lastSyncedAt as string | undefined) ?? null,
+        lastError: (r.lastError as string | undefined) ?? null,
+        deletedEntryIDs: Array.isArray(r.deletedEntryIDs) ? (r.deletedEntryIDs as string[]) : [],
+    };
+    return { targets: [target], autoSync: r.autoSync !== false };
 }
 
 // ---------------------------------------------------------------------------
@@ -389,7 +416,8 @@ export function validate(w: Workspace): Workspace {
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0) &&
         w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
-        (!w.sync || (isDestination(w.sync.destination) && typeof w.sync.serverURL === "string" && w.sync.serverURL.length > 0 && typeof w.sync.deviceID === "string" && w.sync.deviceID.length > 0));
+        (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
+            w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));
     if (!ok) throw new WorkspaceError("The workspace contains invalid data. Restore a known-good backup.");
     return w;
 }
@@ -415,7 +443,7 @@ export function migrateV1(raw: Record<string, unknown>): Workspace {
         timer: timer ? { description: String(timer.description ?? ""), projectID: (timer.projectID as string | undefined) ?? null, startedAt: fromReference(timer.startedAt), lastHeartbeat: fromReference(timer.lastHeartbeat), billable: timer.billable === true, hourlyRate: Number(timer.hourlyRate ?? 0) } : null,
         currentActivity: current ? activity(current) : null,
         preferences: { captureEnabled: prefs.captureEnabled === true, captureTitles: prefs.captureTitles === true, captureDocuments: false, idleMinutes: Number(prefs.idleMinutes ?? 3), retentionDays: Number(prefs.retentionDays ?? 14), excludedOwnerIDs: Array.isArray(prefs.excludedBundleIDs) ? (prefs.excludedBundleIDs as string[]) : [...DEFAULT_EXCLUSIONS] },
-        sync: sync ? { destination: isDestination(sync.destination) ? sync.destination : "kiwi", serverURL: String(sync.serverURL ?? ""), deviceID: String(sync.deviceID ?? ""), deviceName: String(sync.deviceName ?? ""), accountEmail: (sync.accountEmail as string | undefined) ?? null, autoSync: sync.autoSync !== false, lastSyncedAt: sync.lastSyncedAt != null ? fromReference(sync.lastSyncedAt) : null, lastError: (sync.lastError as string | undefined) ?? null, deletedEntryIDs: Array.isArray(sync.deletedEntryIDs) ? (sync.deletedEntryIDs as string[]) : [] } : null,
+        sync: sync ? normalizeSync({ serverURL: sync.serverURL, deviceID: sync.deviceID, deviceName: sync.deviceName, accountEmail: sync.accountEmail ?? null, autoSync: sync.autoSync !== false, lastSyncedAt: sync.lastSyncedAt != null ? fromReference(sync.lastSyncedAt) : null, lastError: sync.lastError ?? null, deletedEntryIDs: sync.deletedEntryIDs }) : null,
     };
 }
 
@@ -426,9 +454,7 @@ export function parseWorkspace(text: string): Workspace {
     if (raw.schemaVersion !== SCHEMA_VERSION) throw new WorkspaceError("This workspace was created by a newer Time Capture version. Update Time Capture before opening it.");
     const w = raw as unknown as Workspace;
     w.preferences = { ...defaultPreferences(), ...(w.preferences ?? {}) };
-    w.sync ??= null;
-    // A file written before the CRM was a destination (0.4.x) synced to Kiwi.
-    if (w.sync && !isDestination(w.sync.destination)) w.sync.destination = "kiwi";
+    w.sync = normalizeSync(w.sync);
     w.timer ??= null;
     w.currentActivity ??= null;
     return validate(w);

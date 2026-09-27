@@ -74,14 +74,15 @@ item reopens it. Quit from the tray to stop.
 
 ## Sync to Kiwi or Lawdie CRM
 
-One destination at a time, chosen in Settings: Kiwi, or Lawdie CRM. Both answer the same two
-calls under their own API base with the same kind of token, so the app is the same either way.
+Kiwi, Lawdie CRM, or both, chosen in Settings, with one token. Both answer the same two
+calls under their own API base, and the Time page that mints a token registers it with the
+other product too (each stores only the hash), so one paste syncs to both.
 
 1. In Kiwi: Time → **Captured activity** → **On your desktop** → **Connect a computer**. In
    Lawdie CRM: Time → **On your desktop** → **Connect a computer**. Either shows a token
-   (`ldt_…`) once and keeps only its hash.
-2. Here: Settings → **Sync to Kiwi or Lawdie CRM** → choose the destination → paste →
-   **Connect**. The app confirms the pairing
+   (`ldt_…`) once, says whether the other product took it as well, and keeps only its hash.
+2. Here: Settings → **Sync to Kiwi or Lawdie CRM** → choose Kiwi, Lawdie CRM or **Both** →
+   paste → **Connect**. The app confirms the pairing with each chosen product
    (`GET /desktop-time/hello`) and only then stores the token, encrypted with the OS
    keystore (Keychain, DPAPI, or the Linux keyring via Electron's `safeStorage`). It never
    enters `workspace.json` or a backup.
@@ -114,7 +115,7 @@ from either side; what was synced stays in Kiwi. The server defaults to
 `https://lawdie.co/kiwi-api` and can be changed under "Kiwi server" (e.g.
 `http://localhost:4100`). Kiwi must have applied its `20260926_01_desktop_time` migration.
 
-Provisioning without typing: `--kiwi-token <ldt_…> [--kiwi-server <url>] [--kiwi-destination kiwi|crm]`.
+Provisioning without typing: `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>] [--crm-server <url>]`.
 
 ## Local data and privacy
 

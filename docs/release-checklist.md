@@ -17,6 +17,10 @@ Manual checks before distributing:
 - Export CSV, save a backup, restore it, verify exact entries and paused capture.
 - Test corrupt workspace recovery without losing the original file.
 - Check reports across midnight and daylight-saving transitions.
+- Both products with one token: pair from either Time page (it says the other took the
+  token too), choose Both in Settings, paste once; the Settings panel lists Kiwi and
+  Lawdie CRM with the account; kept Office entries reach the CRM ledger on the matter
+  they name and Kiwi as drafts (verified 2026-09-27 against local Kiwi and CRM).
 - Kiwi: pair from the Time page, paste the token, confirm the hello names the account;
   keep an activity, wait a minute, see it on Kiwi's "On your desktop" and as a draft after
   rollup; delete it here and see the draft dismissed; disconnect from Kiwi and confirm

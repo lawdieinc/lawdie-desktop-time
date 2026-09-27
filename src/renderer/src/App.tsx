@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
 import type { Activity, TimeEntry, Workspace } from "@shared/model";
-import { DESTINATIONS, destinationLabel, type Destination } from "@shared/kiwi";
+import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
@@ -53,21 +53,21 @@ export function App(): ReactNode {
                 </nav>
                 <div className="capture-card">
                     <div className="row"><span className={"dot" + (w.preferences.captureEnabled ? " on" : "")} /> <strong>{w.preferences.captureEnabled ? "Capture is on" : "Capture is paused"}</strong></div>
-                    <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.destination)}.` : "Your time. On your machine."}</p>
+                    <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}.` : "Your time. On your machine."}</p>
                     <button type="button" className="quiet" disabled={state.loadFailed} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>
                         {w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}
                     </button>
                 </div>
                 <div className="account">
                     <span className="avatar">L</span>
-                    <div><strong className="small">Personal workspace</strong><p className="muted tiny">{w.sync?.accountEmail ?? (connected ? `Synced to ${destinationLabel(w.sync?.destination)}` : "Local • No account needed")}</p></div>
+                    <div><strong className="small">Personal workspace</strong><p className="muted tiny">{w.sync?.targets[0]?.accountEmail ?? (connected ? `Synced to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}` : "Local • No account needed")}</p></div>
                 </div>
             </aside>
             <main className="content">
                 <header className="topbar">
                     <span className="muted">Workspace</span><span className="muted">›</span><span>{ROUTES.find((r) => r.key === route)?.label}</span>
                     <span className="grow" />
-                    <span className={"muted" + (w.sync?.lastError ? " danger" : "")}>{statusLine(state, now)}</span>
+                    <span className={"muted" + (w.sync?.targets.some((t) => t.lastError) ? " danger" : "")}>{statusLine(state, now)}</span>
                     <span className="divider" />
                     <span className="muted">{new Date(now).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
                 </header>
@@ -86,11 +86,13 @@ export function App(): ReactNode {
 function statusLine(state: AppState, now: number): string {
     const sync = state.workspace.sync;
     if (!sync) return "Saved on this computer";
-    const product = destinationLabel(sync.destination);
+    const product = destinationLabel(sync.targets.map((t) => t.product));
     if (state.syncing) return `Syncing to ${product}…`;
-    if (sync.lastError) return `${product} sync failed · ${sync.lastError.slice(0, 60)}`;
-    if (!sync.lastSyncedAt) return `Connected to ${product} · not synced yet`;
-    return `Synced to ${product} · ${ago(sync.lastSyncedAt, now)}`;
+    const failed = sync.targets.find((t) => t.lastError);
+    if (failed) return `${PRODUCTS[failed.product].label} sync failed · ${failed.lastError!.slice(0, 60)}`;
+    const times = sync.targets.map((t) => t.lastSyncedAt);
+    if (times.some((t) => !t)) return `Connected to ${product} · not synced yet`;
+    return `Synced to ${product} · ${ago(times.sort()[0]!, now)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,15 +234,10 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
         return () => clearInterval(t);
     }, [p.captureDocuments]);
     const [destination, setDestination] = useState<Destination>("kiwi");
-    const [server, setServer] = useState(DESTINATIONS.kiwi.defaultServerURL);
+    const [servers, setServers] = useState<Record<Product, string>>({ kiwi: PRODUCTS.kiwi.defaultServerURL, crm: PRODUCTS.crm.defaultServerURL });
     const [token, setToken] = useState("");
     const [advanced, setAdvanced] = useState(false);
-    // Choosing the other product swaps the default address, but never a custom one.
-    const pick = (d: Destination): void => {
-        setDestination(d);
-        if (Object.values(DESTINATIONS).some((x) => x.defaultServerURL === server)) setServer(DESTINATIONS[d].defaultServerURL);
-    };
-    const product = w.sync ? destinationLabel(w.sync.destination) : DESTINATIONS[destination].label;
+    const product = destinationLabel(w.sync ? w.sync.targets.map((t) => t.product) : productsFor(destination));
     const set = <K extends keyof typeof p>(key: K, value: (typeof p)[K]): void => void window.lawdie.setPreference(key, value);
     const isMac = state.platform === "darwin";
     const label = isMac ? "Mac" : "computer";
@@ -291,34 +288,44 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
             <Panel>
                 <div className="row between">
                     <strong>Sync to Kiwi or Lawdie CRM</strong>
-                    <span className="row gap small"><span className={"dot" + (w.sync ? (w.sync.lastError ? " bad" : " on") : "")} />{w.sync ? "Connected" : "Not connected"}</span>
+                    <span className="row gap small"><span className={"dot" + (w.sync ? (w.sync.targets.some((t) => t.lastError) ? " bad" : " on") : "")} />{w.sync ? "Connected" : "Not connected"}</span>
                 </div>
                 {w.sync ? (
                     <>
-                        <p className="muted small">Syncing to {product} ({w.sync.serverURL}) as {w.sync.accountEmail ?? "your account"}. There, this {label} is “{w.sync.deviceName}”.</p>
-                        <p className={"small strong" + (w.sync.lastError ? " danger" : "")}>{statusLine(state, now)}</p>
-                        {w.sync.lastError && <p className="danger tiny">{w.sync.lastError}</p>}
+                        {w.sync.targets.map((t) => (
+                            <div key={t.product}>
+                                <p className="muted small">{PRODUCTS[t.product].label} ({t.serverURL}) as {t.accountEmail ?? "your account"}. There, this {label} is “{t.deviceName}”.</p>
+                                {t.lastError && <p className="danger tiny">{PRODUCTS[t.product].label}: {t.lastError}</p>}
+                            </div>
+                        ))}
+                        <p className={"small strong" + (w.sync.targets.some((t) => t.lastError) ? " danger" : "")}>{statusLine(state, now)}</p>
                         <label className="row gap check"><input type="checkbox" checked={w.sync.autoSync} onChange={(e) => void window.lawdie.setAutoSync(e.target.checked)} /> Sync automatically, about once a minute</label>
                         <div className="row gap">
                             <button type="button" className="primary" disabled={state.syncing} onClick={() => void window.lawdie.syncNow()}>{state.syncing ? "Syncing…" : "Sync now"}</button>
                             <button type="button" className="quiet" disabled={state.syncing} onClick={() => void window.lawdie.disconnectKiwi()}>Disconnect</button>
                         </div>
-                        <p className="muted tiny">What syncs: captured activity (app names, durations, and window titles and Office document details if you switched them on) and the time entries you keep. {product} matches a stretch to a matter only when its title or document names exactly one — never from your local project label. {w.sync.destination === "crm" ? "A kept entry with a matter lands on the CRM's ledger at the next sync; one without waits on its Time page for you to name the matter. Deleting an entry here removes it there unless it has been billed." : "Billable kept entries become drafts on Kiwi's Time page for you to approve, under “No matter” when nothing matched. Deleting an entry here dismisses its draft there."}</p>
+                        <p className="muted tiny">What syncs: captured activity (app names, durations, and window titles and Office document details if you switched them on) and the time entries you keep. {product} matches a stretch to a matter only when its title or document names exactly one — never from your local project label.{w.sync.targets.some((t) => t.product === "kiwi") ? " In Kiwi, billable kept entries become drafts on the Time page for you to approve, under “No matter” when nothing matched; deleting an entry here dismisses its draft there." : ""}{w.sync.targets.some((t) => t.product === "crm") ? " In Lawdie CRM, a kept entry with a matter lands on the ledger at the next sync and one without waits on its Time page for you to name the matter; deleting an entry here removes it there unless it has been billed." : ""}</p>
                     </>
                 ) : (
                     <>
                         <div className="segmented" role="radiogroup" aria-label="Sync destination">
-                            {(Object.keys(DESTINATIONS) as Destination[]).map((d) => (
-                                <button key={d} type="button" role="radio" aria-checked={destination === d} className={destination === d ? "active" : ""} onClick={() => pick(d)}>{DESTINATIONS[d].label}</button>
+                            {(Object.keys(DESTINATION_LABELS) as Destination[]).map((d) => (
+                                <button key={d} type="button" role="radio" aria-checked={destination === d} className={destination === d ? "active" : ""} onClick={() => setDestination(d)}>{DESTINATION_LABELS[d]}</button>
                             ))}
                         </div>
-                        <p className="muted small">{DESTINATIONS[destination].pairHint} Paste the token it shows here; it is shown once. Until you connect, nothing leaves this {label}.</p>
-                        <form className="row gap" onSubmit={(e) => { e.preventDefault(); void window.lawdie.connectKiwi(destination, server, token).then((ok) => { if (ok) setToken(""); }); }}>
-                            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={`ldt_… token from ${DESTINATIONS[destination].label}`} autoComplete="off" />
+                        <p className="muted small">{pairHint(destination)} Paste the token it shows here; it is shown once. Until you connect, nothing leaves this {label}.</p>
+                        <form className="row gap" onSubmit={(e) => { e.preventDefault(); void window.lawdie.connectKiwi(destination, servers, token).then((ok) => { if (ok) setToken(""); }); }}>
+                            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={`ldt_… token from ${product}`} autoComplete="off" />
                             <button type="submit" className="primary" disabled={state.syncing || !token.trim()}>{state.syncing ? "Connecting…" : "Connect"}</button>
                         </form>
-                        <button type="button" className="link" onClick={() => setAdvanced(!advanced)}>{advanced ? "▾" : "▸"} {DESTINATIONS[destination].label} server</button>
-                        {advanced && <div className="row gap"><input value={server} onChange={(e) => setServer(e.target.value)} /><span className="muted tiny">Change only for a self-hosted or local {DESTINATIONS[destination].label}.</span></div>}
+                        <button type="button" className="link" onClick={() => setAdvanced(!advanced)}>{advanced ? "▾" : "▸"} Server {productsFor(destination).length > 1 ? "addresses" : "address"}</button>
+                        {advanced && productsFor(destination).map((p) => (
+                            <div key={p} className="row gap">
+                                <span className="muted small">{PRODUCTS[p].label}</span>
+                                <input value={servers[p]} onChange={(e) => setServers({ ...servers, [p]: e.target.value })} aria-label={`${PRODUCTS[p].label} server`} />
+                                <span className="muted tiny">Change only for a self-hosted or local {PRODUCTS[p].label}.</span>
+                            </div>
+                        ))}
                     </>
                 )}
             </Panel>

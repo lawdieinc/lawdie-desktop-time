@@ -6,10 +6,12 @@
 
 import type { SyncRequest } from "./model";
 
-/** Where kept time goes. One at a time: a firm works in Kiwi or in the CRM. */
-export type Destination = "kiwi" | "crm";
+/** The two products kept time can go to. */
+export type Product = "kiwi" | "crm";
+/** What the person chooses in Settings: one product, or both with the one token. */
+export type Destination = Product | "both";
 
-export const DESTINATIONS: Record<Destination, { label: string; defaultServerURL: string; pairHint: string }> = {
+export const PRODUCTS: Record<Product, { label: string; defaultServerURL: string; pairHint: string }> = {
     kiwi: {
         label: "Kiwi",
         defaultServerURL: "https://lawdie.co/kiwi-api",
@@ -22,10 +24,24 @@ export const DESTINATIONS: Record<Destination, { label: string; defaultServerURL
     },
 };
 
-export const isDestination = (value: unknown): value is Destination => value === "kiwi" || value === "crm";
-export const destinationLabel = (destination: Destination | null | undefined): string => DESTINATIONS[destination ?? "kiwi"].label;
+export const DESTINATION_LABELS: Record<Destination, string> = { kiwi: "Kiwi", crm: "Lawdie CRM", both: "Both" };
 
-export const DEFAULT_SERVER_URL = DESTINATIONS.kiwi.defaultServerURL;
+export const isProduct = (value: unknown): value is Product => value === "kiwi" || value === "crm";
+export const isDestination = (value: unknown): value is Destination => isProduct(value) || value === "both";
+/** The products a destination means, in the order they sync. */
+export const productsFor = (destination: Destination): Product[] => (destination === "both" ? ["kiwi", "crm"] : [destination]);
+/** "Kiwi", "Lawdie CRM", or "Kiwi and Lawdie CRM" — the products in a sentence. */
+export const destinationLabel = (products: readonly Product[]): string => {
+    const names = [...new Set(products)].map((p) => PRODUCTS[p].label);
+    return names.length ? names.join(" and ") : PRODUCTS.kiwi.label;
+};
+/** Where to paste a token from, for a destination. A token from either Time page works for both. */
+export const pairHint = (destination: Destination): string =>
+    destination === "both"
+        ? "In Kiwi or Lawdie CRM, open the Time page and click “Connect a computer”; the token it shows is registered with both."
+        : PRODUCTS[destination].pairHint;
+
+export const DEFAULT_SERVER_URL = PRODUCTS.kiwi.defaultServerURL;
 
 export type HelloResponse = { ok: boolean; device: { id: string; name: string }; user: { email: string | null } };
 export type SyncResponse = { ok: boolean; activities: number; entries: number; deleted: number };
@@ -40,7 +56,7 @@ export class KiwiFailure extends Error {
 }
 
 const messages = (product: string): Record<Exclude<KiwiFailureCode, "http" | "transport">, string> => ({
-    invalid_server_url: `Enter the ${product} server address, such as ${product === "Kiwi" ? DESTINATIONS.kiwi.defaultServerURL : DESTINATIONS.crm.defaultServerURL}.`,
+    invalid_server_url: `Enter the ${product} server address, such as ${product === "Kiwi" ? PRODUCTS.kiwi.defaultServerURL : PRODUCTS.crm.defaultServerURL}.`,
     invalid_token: `${product} did not accept this token. Connect this computer again from the Time page there and paste the new token.`,
     device_revoked: `This computer was disconnected in ${product}. Connect it again from the Time page there to resume syncing.`,
     migration_pending: `${product} is not ready for desktop sync yet (its database migration is pending).`,

@@ -1,7 +1,7 @@
 {
   "name": "lawdie-time-capture",
   "productName": "Lawdie Time Capture",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Local-first desktop time capture for Lawdie, with optional sync to Kiwi.",
   "private": true,
   "main": "./out/main/index.js",

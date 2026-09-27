@@ -168,3 +168,20 @@ automation until a person clicks through them. The end-to-end proof (Excel workb
 named for a real matter → document details on the segment → matter matched on Kiwi's
 panel) is therefore not yet done; it needs Office signed in once and Kiwi's
 `20260926_02_desktop_documents` migration applied. Windows COM is untested here.
+
+## 2026-09-27 — Lawdie CRM as a second destination, one token for both
+
+- `npm test` (35), `npm run typecheck` clean. The sync state became per-product targets
+  (`SyncState.targets`), each with its own device id and deletion outbox; a 0.4.x file is
+  read by `normalizeSync()`.
+- Live, against a local Kiwi (`:4100`) and a local CRM (`:4000/api`): the CRM's Time page
+  minted a token and registered it with Kiwi; the built app launched with
+  `--kiwi-token … --kiwi-destination both` said hello to both, synced a copy of the real
+  workspace (252 activities, 3 kept Office entries), and the CRM matched 7 activities by
+  matter number and wrote the 3 kept entries to its ledger on 2026-TX-0118 / 0126 with the
+  matter's rate; the CRM Time page showed them as "On the ledger". Kiwi took the same rows
+  under the new device.
+- Found on the way: the CRM's gate opened on its poll while the token was still on screen
+  (now held until Done), and the ledger table did not learn about entries a sync logged
+  (now reloads when the poll shows new ones).
+

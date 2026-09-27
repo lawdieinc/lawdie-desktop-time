@@ -59,10 +59,11 @@ context (the paragraph being edited, tracked-change authorship).
 
 ## Sync (Kiwi or Lawdie CRM)
 
-One-way, this computer → one destination, chosen at pairing (`SyncState.destination`).
-Kiwi and Lawdie CRM answer the same two paths under their own API base and mint the same
-kind of token from their Time pages. The device token is issued there, confirmed by
-`GET /desktop-time/hello`, then stored encrypted with
+One-way, this computer → Kiwi, Lawdie CRM, or both (`SyncState.targets`, one per product,
+each with its own device id and deletion outbox). Both products answer the same two paths
+under their own API base. One token: the Time page that mints it registers the same token
+with the other product (each stores only its sha256), so the app pastes once. The token is
+confirmed by `GET /desktop-time/hello` on every chosen product, then stored encrypted with
 `safeStorage` at `<userData>/kiwi-token.bin`. Every minute (and on Connect / Sync now)
 `POST /desktop-time/sync` carries a full upsert — closed segments within retention, all
 kept entries with their local project/client labels, deletions not yet acknowledged, and

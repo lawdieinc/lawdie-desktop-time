@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { hostname } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import { DESTINATIONS, isDestination, type Destination } from "@shared/kiwi";
+import { isDestination, type Destination, type Product } from "@shared/kiwi";
 import { deleteEntry, dismissActivity, keepActivity, closeActivity, type Preferences } from "@shared/model";
 import { Capture } from "./capture";
 import { Store } from "./store";
@@ -114,7 +114,7 @@ app.whenReady().then(() => {
     ipcMain.handle("dismissActivity", (_e, id: string) => store.change((w) => dismissActivity(w, id)));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
     ipcMain.handle("clearActivity", () => { const ok = store.change((w) => { w.activities = []; w.currentActivity = null; w.preferences.captureEnabled = false; }); if (ok) store.say("Activity cleared and capture paused. Saved time entries are unchanged."); return ok; });
-    ipcMain.handle("connectKiwi", (_e, destination: Destination, serverURL: string, token: string) => sync.connect(isDestination(destination) ? destination : "kiwi", serverURL, token));
+    ipcMain.handle("connectKiwi", (_e, destination: Destination, servers: Partial<Record<Product, string>>, token: string) => sync.connect(isDestination(destination) ? destination : "kiwi", servers ?? {}, token));
     ipcMain.handle("disconnectKiwi", () => sync.disconnect());
     ipcMain.handle("syncNow", () => sync.syncNow());
     ipcMain.handle("setAutoSync", (_e, on: boolean) => store.change((w) => { if (w.sync) w.sync.autoSync = on; }));
@@ -139,15 +139,19 @@ app.whenReady().then(() => {
     capture.start();
     sync.start();
 
-    // `--kiwi-token <ldt_…> [--kiwi-server <url>] [--kiwi-destination kiwi|crm]` pairs on
-    // launch without a person typing the token: provisioning by an admin, and verification.
-    // The token is used once and then lives only in the encrypted token file, like one
-    // pasted into Settings. The destination defaults to Kiwi, as Settings does.
+    // `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>]
+    // [--crm-server <url>]` pairs on launch without a person typing the token: provisioning
+    // by an admin, and verification. The token is used once and then lives only in the
+    // encrypted token file, like one pasted into Settings. The destination defaults to
+    // Kiwi, as Settings does; a server left out is that product's default.
     const provisionToken = argValue("--kiwi-token");
     if (provisionToken && !store.workspace.sync) {
         const rawDestination = argValue("--kiwi-destination");
         const destination: Destination = isDestination(rawDestination) ? rawDestination : "kiwi";
-        void sync.connect(destination, argValue("--kiwi-server") ?? DESTINATIONS[destination].defaultServerURL, provisionToken);
+        const servers: Partial<Record<Product, string>> = {};
+        const kiwiServer = argValue("--kiwi-server"); if (kiwiServer) servers.kiwi = kiwiServer;
+        const crmServer = argValue("--crm-server"); if (crmServer) servers.crm = crmServer;
+        void sync.connect(destination, servers, provisionToken);
     }
 
     app.on("second-instance", () => showWindow(store));

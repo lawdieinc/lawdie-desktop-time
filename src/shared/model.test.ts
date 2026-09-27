@@ -3,7 +3,7 @@ import {
     closeActivity, deleteEntry, emptyWorkspace, keepActivity, markSynced, migrateV1, observe, parseWorkspace, prune,
     recover, saveEntry, startTimer, stopTimer, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
-import { DESTINATIONS, KiwiClient, KiwiFailure, destinationLabel, isDestination, normalizeServerURL, type Destination } from "./kiwi";
+import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
 // The Swift app's 20 core checks, carried over as the contract this engine keeps.
 
@@ -195,7 +195,7 @@ describe("Kiwi sync", () => {
         w.activities = [a];
         w.currentActivity = activity({ app: "Preview" });
         w.entries = [entry({ id: "4fd1c8a2-3b7e-4c1d-9a2f-1b3c4d5e6f70", description: "Prepare motion", projectID: "p", endedAt: iso(1200), billable: true, hourlyRate: 350, source: "desktop", activityID: "a1" })];
-        w.sync = { destination: "kiwi", serverURL: "https://lawdie.co/kiwi-api", deviceID: "d", deviceName: "Mac", accountEmail: null, autoSync: true, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["gone"] };
+        w.sync = { targets: [{ product: "kiwi", serverURL: "https://lawdie.co/kiwi-api", deviceID: "d", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["gone"] }], autoSync: true };
         const req = syncRequest(w, "0.3.0", "America/New_York");
         expect(Object.keys(req).sort()).toEqual(["activities", "app_version", "deleted_entry_ids", "entries", "time_zone"]);
         expect(req.time_zone).toBe("America/New_York");
@@ -213,24 +213,28 @@ describe("Kiwi sync", () => {
         expect(w.entries).toEqual([]);
         expect(w.activities[0].disposition).toBe("pending");
         expect(w.sync).toBeNull();
-        w.sync = { destination: "kiwi", serverURL: "https://kiwi.test", deviceID: "d", deviceName: "Mac", accountEmail: null, autoSync: true, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] };
+        w.sync = { targets: [{ product: "kiwi", serverURL: "https://kiwi.test", deviceID: "d", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] }, { product: "crm", serverURL: "https://crm.test/api", deviceID: "e", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] }], autoSync: true };
         saveEntry(w, entry({ id: kept.id, description: "Again" }), at(700));
         deleteEntry(w, kept.id); deleteEntry(w, kept.id); deleteEntry(w, "nothing");
-        expect(w.sync.deletedEntryIDs).toEqual([kept.id]);
+        expect(w.sync.targets.map((t) => t.deletedEntryIDs)).toEqual([[kept.id], [kept.id]]);
     });
 
     it("clears only the deletions Kiwi acknowledged", () => {
         const w = emptyWorkspace();
-        w.sync = { destination: "kiwi", serverURL: "https://kiwi.test", deviceID: "d", deviceName: "Mac", accountEmail: null, autoSync: true, lastSyncedAt: null, lastError: "boom", deletedEntryIDs: ["seen", "later"] };
-        markSynced(w, at(10), ["seen"]);
-        expect(w.sync).toMatchObject({ deletedEntryIDs: ["later"], lastSyncedAt: iso(10), lastError: null });
+        w.sync = { targets: [{ product: "kiwi", serverURL: "https://kiwi.test", deviceID: "d", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: "boom", deletedEntryIDs: ["seen", "later"] }, { product: "crm", serverURL: "https://crm.test/api", deviceID: "e", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["seen", "later"] }], autoSync: true };
+        markSynced(w, at(10), ["seen"], "kiwi");
+        expect(w.sync.targets[0]).toMatchObject({ deletedEntryIDs: ["later"], lastSyncedAt: iso(10), lastError: null });
+        expect(w.sync.targets[1]).toMatchObject({ deletedEntryIDs: ["seen", "later"], lastSyncedAt: null });
+        expect(syncRequest(w, "t", null, w.sync.targets[1]).deleted_entry_ids).toEqual(["seen", "later"]);
+        markSynced(w, at(11), ["seen", "later"]);
+        expect(w.sync.targets.map((t) => t.deletedEntryIDs)).toEqual([[], []]);
     });
 
     it("batches under Kiwi's limit with deletions first", () => {
         const w = emptyWorkspace();
         w.activities = Array.from({ length: 1201 }, (_, i) => activity({ id: `a${i}` }));
         w.entries = Array.from({ length: 7 }, (_, i) => entry({ id: `e${i}`, startedAt: iso(i * 1000), endedAt: iso(i * 1000 + 600) }));
-        w.sync = { destination: "kiwi", serverURL: "https://kiwi.test", deviceID: "d", deviceName: "Mac", accountEmail: null, autoSync: true, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["x", "y"] };
+        w.sync = { targets: [{ product: "kiwi", serverURL: "https://kiwi.test", deviceID: "d", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["x", "y"] }], autoSync: true };
         const batches = syncBatches(syncRequest(w, "t"));
         expect(batches.map((b) => b.activities.length)).toEqual([500, 500, 201]);
         expect(batches.map((b) => b.entries.length)).toEqual([7, 0, 0]);
@@ -256,23 +260,29 @@ describe("Kiwi sync", () => {
 
     it("names the destination in what it says, so a CRM user is never told about Kiwi", async () => {
         const respond = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
-        const crm = new KiwiClient(DESTINATIONS.crm.defaultServerURL, "t", respond(401, { code: "device_revoked" }), 30_000, DESTINATIONS.crm.label);
+        const crm = new KiwiClient(PRODUCTS.crm.defaultServerURL, "t", respond(401, { code: "device_revoked" }), 30_000, PRODUCTS.crm.label);
         expect(crm.baseURL).toBe("https://crm-api.lawdie.co/api");
         await expect(crm.hello()).rejects.toThrow(/disconnected in Lawdie CRM/);
         await expect(new KiwiClient("https://k.test", "t", respond(503, {})).hello()).rejects.toThrow(/^Kiwi is not ready/);
         expect(() => new KiwiClient("nope", "t", fetch, 30_000, "Lawdie CRM")).toThrow(/Lawdie CRM server address, such as https:\/\/crm-api\.lawdie\.co\/api/);
         expect(isDestination("crm") && isDestination("kiwi") && !isDestination("other")).toBe(true);
-        expect(destinationLabel(undefined)).toBe("Kiwi");
+        expect(destinationLabel([])).toBe("Kiwi");
     });
 
-    it("reads a workspace paired before the CRM was a destination as Kiwi's", () => {
+    it("reads a 0.4.x workspace (one product, flat) as one target, and refuses an unknown product", () => {
         const w = emptyWorkspace();
-        w.sync = { destination: "crm", serverURL: "https://crm-api.lawdie.co/api", deviceID: "d", deviceName: "PC", accountEmail: null, autoSync: true, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] };
-        const { destination: _d, ...older } = w.sync;
-        const back = parseWorkspace(JSON.stringify({ ...w, sync: older }));
-        expect(back.sync?.destination).toBe("kiwi");
-        expect(parseWorkspace(JSON.stringify(w)).sync?.destination).toBe("crm");
-        expect(() => validate({ ...w, sync: { ...w.sync!, destination: "elsewhere" as Destination } })).toThrow(WorkspaceError);
+        const flat = { destination: "crm", serverURL: "https://crm-api.lawdie.co/api", deviceID: "d", deviceName: "PC", accountEmail: "a@b", autoSync: false, lastSyncedAt: null, lastError: null, deletedEntryIDs: ["z"] };
+        const back = parseWorkspace(JSON.stringify({ ...w, sync: flat }));
+        expect(back.sync).toEqual({ targets: [{ product: "crm", serverURL: flat.serverURL, deviceID: "d", deviceName: "PC", accountEmail: "a@b", lastSyncedAt: null, lastError: null, deletedEntryIDs: ["z"] }], autoSync: false });
+        const { destination: _d, ...older } = flat;
+        expect(parseWorkspace(JSON.stringify({ ...w, sync: older })).sync?.targets[0].product).toBe("kiwi");
+        w.sync = { targets: [{ product: "kiwi", serverURL: "https://k", deviceID: "d", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] }, { product: "crm", serverURL: "https://c/api", deviceID: "e", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] }], autoSync: true };
+        expect(parseWorkspace(JSON.stringify(w)).sync).toEqual(w.sync);
+        expect(() => validate({ ...w, sync: { ...w.sync!, targets: [{ ...w.sync!.targets[0], product: "elsewhere" as Product }] } })).toThrow(WorkspaceError);
+        expect(() => validate({ ...w, sync: { ...w.sync!, targets: [w.sync!.targets[0], w.sync!.targets[0]] } })).toThrow(WorkspaceError);
+        expect(productsFor("both")).toEqual(["kiwi", "crm"]);
+        expect(destinationLabel(["kiwi", "crm"])).toBe("Kiwi and Lawdie CRM");
+        expect(isDestination("both") && !isDestination("elsewhere")).toBe(true);
     });
 });
 

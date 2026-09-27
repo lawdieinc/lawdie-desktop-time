@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppState } from "@shared/state";
 import type { Preferences } from "@shared/model";
-import type { Destination } from "@shared/kiwi";
+import type { Destination, Product } from "@shared/kiwi";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
 export const api = {
@@ -22,7 +22,7 @@ export const api = {
     dismissActivity: (id: string): Promise<boolean> => ipcRenderer.invoke("dismissActivity", id),
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
     clearActivity: (): Promise<boolean> => ipcRenderer.invoke("clearActivity"),
-    connectKiwi: (destination: Destination, serverURL: string, token: string): Promise<boolean> => ipcRenderer.invoke("connectKiwi", destination, serverURL, token),
+    connectKiwi: (destination: Destination, servers: Partial<Record<Product, string>>, token: string): Promise<boolean> => ipcRenderer.invoke("connectKiwi", destination, servers, token),
     disconnectKiwi: (): Promise<void> => ipcRenderer.invoke("disconnectKiwi"),
     syncNow: (): Promise<void> => ipcRenderer.invoke("syncNow"),
     setAutoSync: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setAutoSync", on),

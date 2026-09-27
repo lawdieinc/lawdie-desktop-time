@@ -55,8 +55,10 @@ cover. Real Office is exercised by hand. Kiwi matches to a matter from title + d
 
 ## Kiwi and Lawdie CRM
 
-One destination at a time (`SyncState.destination`, 2026-09-27; before that Kiwi only).
-One-way, this computer → the destination, over a device token from its Time page. Both
+Kiwi, the CRM, or both (`SyncState.targets`, one per product, 2026-09-27; before that
+Kiwi only, flat — `normalizeSync()` reads the old shape). One-way, this computer → each
+target, over ONE device token: the Time page that mints it registers it with the other
+product too (`POST …/devices { name, token }` on both backends). Both
 answer `GET /desktop-time/hello` and `POST /desktop-time/sync` under their API base
 (`https://lawdie.co/kiwi-api`, `https://crm-api.lawdie.co/api`). The wire contract is
 `syncRequest()` in `src/shared/model.ts`, `cleanSyncBody()` in
@@ -73,4 +75,5 @@ and the app was re-founded on Electron + TypeScript rather than grafted (the cap
 ideas were carried over from the Swift notes, not the code). Version 0.3.0. Installers
 are unsigned: macOS users click Open Anyway once, Windows users Run anyway once.
 2026-09-27: Lawdie CRM became the second destination (its `057_crm_desktop_time`
-migration, `/api/desktop-time/*`, Time page "On your desktop"); Settings gained the picker.
+migration, `/api/desktop-time/*`, Time page "On your desktop"); Settings gained the picker,
+then "Both" with one token registered on both sides at pairing.
