@@ -37,9 +37,9 @@ jobs:
             assets: release/*.AppImage
     runs-on: ${{ matrix.os }}
     steps:
+      # A dispatched run builds the branch it was started from (main), not the tag's
+      # commit, so a workflow fix can rebuild an existing release.
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
