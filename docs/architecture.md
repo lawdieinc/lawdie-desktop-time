@@ -57,10 +57,12 @@ Office and works for every document, not only ones opened after an add-in loads.
 add-in becomes worth it if a firm's IT policy blocks Apple Events / COM, or for richer
 context (the paragraph being edited, tracked-change authorship).
 
-## Kiwi sync
+## Sync (Kiwi or Lawdie CRM)
 
-One-way, this computer → Kiwi, Lawdie CRM not connected. The device token is issued by
-Kiwi's Time page, confirmed by `GET /desktop-time/hello`, then stored encrypted with
+One-way, this computer → one destination, chosen at pairing (`SyncState.destination`).
+Kiwi and Lawdie CRM answer the same two paths under their own API base and mint the same
+kind of token from their Time pages. The device token is issued there, confirmed by
+`GET /desktop-time/hello`, then stored encrypted with
 `safeStorage` at `<userData>/kiwi-token.bin`. Every minute (and on Connect / Sync now)
 `POST /desktop-time/sync` carries a full upsert — closed segments within retention, all
 kept entries with their local project/client labels, deletions not yet acknowledged, and
@@ -69,11 +71,14 @@ at 500. Kiwi writes a ledger draft per billable kept entry in the same request. 
 everything for the next tick and records `lastError`. Kiwi upserts on the app's UUIDs and
 recomputes seconds from the instants.
 
-Matching to a matter happens in Kiwi, at sync (`kiwi/backend/src/lib/matterMatch.ts`):
-the matter number as a whole token, else a distinctive party name that belongs to exactly
-one matter, from the title plus the document name, path and excerpt. Anything ambiguous
-stays unmatched. The match is re-stamped on every sync, so a matter opened later is picked
-up, and a kept entry's rollup draft carries the matter its activity matched.
+Matching to a matter happens on the server, at sync (`kiwi/backend/src/lib/matterMatch.ts`;
+`lawdie-crm/server/services/desktopTimeService.js`): the matter number as a whole token
+(the CRM also tries the court's case number), else a distinctive party name that belongs
+to exactly one matter, from the title plus the document name, path and excerpt. Anything
+ambiguous stays unmatched. The match is re-stamped on every sync, so a matter opened later
+is picked up. In Kiwi a kept entry's draft carries the matter its activity matched; in the
+CRM a kept entry with a matter is written to `crm_time_entries` (source `desktop`) at sync
+and one without waits on the Time page for a person to name it.
 
 Not solved: deduplication between this capture ("Google Chrome" as an app) and the
 browser extension's segments of the same minutes. The person reviewing drafts in Kiwi is

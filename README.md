@@ -2,7 +2,7 @@
 
 A local-first desktop time tracker for macOS, Windows and Linux. See your day across
 desktop apps — Word, Acrobat, Outlook, everything a browser extension cannot see — review
-captured work, and turn it into accurate time. Optionally connect it to Kiwi, and the
+captured work, and turn it into accurate time. Optionally connect it to Kiwi or Lawdie CRM, and the
 activity you capture and the time you keep sync there.
 
 Electron + TypeScript. The capture rules live in one pure module (`src/shared/model.ts`)
@@ -64,7 +64,7 @@ and attaches the installers to the GitHub Release. Locally, `npm run package:mac
   Keeping never overlaps time already kept. Retention removes raw activity, never entries.
 - Exclusions (password managers and system settings by default; add your own by bundle id
   or `.exe` name), pause/resume from the window or the tray, clear-activity control.
-- Kiwi sync: pair this computer from Kiwi's Time page; captured activity and kept entries
+- Sync to Kiwi or Lawdie CRM: pair this computer from either Time page; captured activity and kept entries
   sync every minute. Off until you connect.
 - Reads a workspace written by the Swift app (`schemaVersion` 1) and migrates it in place.
 
@@ -72,13 +72,16 @@ Capture starts **off**. Enable it from the sidebar, the tray, or Settings; use a
 app; switch apps to see a completed segment. Closing the window keeps capturing; the tray
 item reopens it. Quit from the tray to stop.
 
-## Kiwi sync
+## Sync to Kiwi or Lawdie CRM
 
-Kiwi is the one destination. Lawdie CRM is not connected.
+One destination at a time, chosen in Settings: Kiwi, or Lawdie CRM. Both answer the same two
+calls under their own API base with the same kind of token, so the app is the same either way.
 
-1. In Kiwi: Time → **Captured activity** → **On your desktop** → **Connect a computer**. Kiwi shows
-   a token (`ldt_…`) once and keeps only its hash.
-2. Here: Settings → **Connect to Kiwi** → paste → **Connect**. The app confirms the pairing
+1. In Kiwi: Time → **Captured activity** → **On your desktop** → **Connect a computer**. In
+   Lawdie CRM: Time → **On your desktop** → **Connect a computer**. Either shows a token
+   (`ldt_…`) once and keeps only its hash.
+2. Here: Settings → **Sync to Kiwi or Lawdie CRM** → choose the destination → paste →
+   **Connect**. The app confirms the pairing
    (`GET /desktop-time/hello`) and only then stores the token, encrypted with the OS
    keystore (Keychain, DPAPI, or the Linux keyring via Electron's `safeStorage`). It never
    enters `workspace.json` or a backup.
@@ -86,8 +89,19 @@ Kiwi is the one destination. Lawdie CRM is not connected.
    (`POST /desktop-time/sync`): every closed activity segment within retention (app, id,
    title only if titles are on, start/end, how it ended, kept/dismissed); every time entry
    you kept, with its local project and client labels; and the ids of entries you deleted
-   since the last sync. Kiwi upserts on the app's own UUIDs, so a re-sync updates rather
+   since the last sync. The server upserts on the app's own UUIDs, so a re-sync updates rather
    than duplicates.
+
+**In Lawdie CRM** each stretch is matched to a matter by its matter number, the court's case
+number, or a distinctive party name in the window title or Office document (only when
+exactly one matter fits), and a kept entry with a matter goes straight onto the ledger as a
+time entry from the desktop, in six-minute increments, dated in this computer's time zone.
+A kept entry with no matter waits on the CRM's Time page with a matter picker. Deleting an
+entry here removes its ledger row unless it has been billed. The CRM must have applied
+`server/db/057_crm_desktop_time.sql`; the server address defaults to
+`https://crm-api.lawdie.co/api` (a local CRM API is `http://localhost:4000/api`).
+
+**In Kiwi:**
 
 Kiwi shows it on the Time page and, at each sync, turns each *billable* kept entry into a
 draft for you to approve — nothing to press; a kept entry bills at the 0.1 h minimum
@@ -100,6 +114,8 @@ from either side; what was synced stays in Kiwi. The server defaults to
 `https://lawdie.co/kiwi-api` and can be changed under "Kiwi server" (e.g.
 `http://localhost:4100`). Kiwi must have applied its `20260926_01_desktop_time` migration.
 
+Provisioning without typing: `--kiwi-token <ldt_…> [--kiwi-server <url>] [--kiwi-destination kiwi|crm]`.
+
 ## Local data and privacy
 
 The workspace is one JSON file, private to your OS account (mode 0600 where the platform
@@ -110,9 +126,9 @@ has it), written atomically:
 - Linux: `~/.config/Lawdie Time Capture/workspace.json`
 
 There is no telemetry, no screenshots, no keystroke recording, and no network use at all
-until you connect Kiwi. Titles can contain sensitive data; enabling them does not redact
+until you connect Kiwi or Lawdie CRM. Titles can contain sensitive data; enabling them does not redact
 anything, and neither does the Office excerpt: the first few hundred characters of a
-document or an email leave the machine when Kiwi is connected. Both are off by default
+document or an email leave the machine when a destination is connected. Both are off by default
 and both are skipped for excluded apps. A browser is one app to this capture; exclude it
 if you do not want it seen.
 

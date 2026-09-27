@@ -2,8 +2,8 @@
 
 Cross-platform (macOS, Windows, Linux) desktop time tracker: Electron + TypeScript. Work
 in this repo; do not modify `lawdie`, `lawdie-crm`, or `lawdie-time-capture` unless the
-user explicitly expands scope. `kiwi` is the sync destination; changes to the wire
-contract land in both repos together.
+user explicitly expands scope. `kiwi` and `lawdie-crm` are the sync destinations; changes to
+the wire contract land in all three repos together.
 
 ## Layout
 
@@ -53,11 +53,15 @@ NAME/PATH/TEXT protocol is parsed by `parseProbeOutput()`, which is what the tes
 cover. Real Office is exercised by hand. Kiwi matches to a matter from title + document
 (`kiwi/backend/src/lib/matterMatch.ts`); the app never does.
 
-## Kiwi
+## Kiwi and Lawdie CRM
 
-Only Kiwi, not the CRM (user, 2026-09-26). One-way, this computer → Kiwi, over a device
-token from Kiwi's Time page. The wire contract is `syncRequest()` in `src/shared/model.ts`
-and `cleanSyncBody()` in `kiwi/backend/src/lib/desktopTime.ts`; change both. Kiwi's
+One destination at a time (`SyncState.destination`, 2026-09-27; before that Kiwi only).
+One-way, this computer → the destination, over a device token from its Time page. Both
+answer `GET /desktop-time/hello` and `POST /desktop-time/sync` under their API base
+(`https://lawdie.co/kiwi-api`, `https://crm-api.lawdie.co/api`). The wire contract is
+`syncRequest()` in `src/shared/model.ts`, `cleanSyncBody()` in
+`kiwi/backend/src/lib/desktopTime.ts` and `lawdie-crm/server/services/desktopTimeService.js`;
+change all three. `KiwiClient` serves both; its `product` names the destination in messages. Kiwi's
 `RUN_LIVE_DESKTOP_TIME=1 … desktopTime.live.test.ts` spawns `src/shared/kiwi.live.test.ts`
 here against its real routes.
 
@@ -68,3 +72,5 @@ here against its real routes.
 and the app was re-founded on Electron + TypeScript rather than grafted (the capture
 ideas were carried over from the Swift notes, not the code). Version 0.3.0. Installers
 are unsigned: macOS users click Open Anyway once, Windows users Run anyway once.
+2026-09-27: Lawdie CRM became the second destination (its `057_crm_desktop_time`
+migration, `/api/desktop-time/*`, Time page "On your desktop"); Settings gained the picker.

@@ -1,3 +1,4 @@
+import { isDestination, type Destination } from "./kiwi";
 /* The workspace and the rules that change it. Pure: no Electron, no filesystem, no
    clock of its own — every function takes `now` in milliseconds — so the whole thing
    runs under vitest and inside the main process unchanged.
@@ -82,6 +83,8 @@ export type Preferences = {
 };
 
 export type SyncState = {
+    /** Kiwi or Lawdie CRM; workspaces written before the CRM was a destination read as Kiwi. */
+    destination: Destination;
     serverURL: string;
     deviceID: string;
     deviceName: string;
@@ -386,7 +389,7 @@ export function validate(w: Workspace): Workspace {
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0) &&
         w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
-        (!w.sync || (typeof w.sync.serverURL === "string" && w.sync.serverURL.length > 0 && typeof w.sync.deviceID === "string" && w.sync.deviceID.length > 0));
+        (!w.sync || (isDestination(w.sync.destination) && typeof w.sync.serverURL === "string" && w.sync.serverURL.length > 0 && typeof w.sync.deviceID === "string" && w.sync.deviceID.length > 0));
     if (!ok) throw new WorkspaceError("The workspace contains invalid data. Restore a known-good backup.");
     return w;
 }
@@ -412,7 +415,7 @@ export function migrateV1(raw: Record<string, unknown>): Workspace {
         timer: timer ? { description: String(timer.description ?? ""), projectID: (timer.projectID as string | undefined) ?? null, startedAt: fromReference(timer.startedAt), lastHeartbeat: fromReference(timer.lastHeartbeat), billable: timer.billable === true, hourlyRate: Number(timer.hourlyRate ?? 0) } : null,
         currentActivity: current ? activity(current) : null,
         preferences: { captureEnabled: prefs.captureEnabled === true, captureTitles: prefs.captureTitles === true, captureDocuments: false, idleMinutes: Number(prefs.idleMinutes ?? 3), retentionDays: Number(prefs.retentionDays ?? 14), excludedOwnerIDs: Array.isArray(prefs.excludedBundleIDs) ? (prefs.excludedBundleIDs as string[]) : [...DEFAULT_EXCLUSIONS] },
-        sync: sync ? { serverURL: String(sync.serverURL ?? ""), deviceID: String(sync.deviceID ?? ""), deviceName: String(sync.deviceName ?? ""), accountEmail: (sync.accountEmail as string | undefined) ?? null, autoSync: sync.autoSync !== false, lastSyncedAt: sync.lastSyncedAt != null ? fromReference(sync.lastSyncedAt) : null, lastError: (sync.lastError as string | undefined) ?? null, deletedEntryIDs: Array.isArray(sync.deletedEntryIDs) ? (sync.deletedEntryIDs as string[]) : [] } : null,
+        sync: sync ? { destination: isDestination(sync.destination) ? sync.destination : "kiwi", serverURL: String(sync.serverURL ?? ""), deviceID: String(sync.deviceID ?? ""), deviceName: String(sync.deviceName ?? ""), accountEmail: (sync.accountEmail as string | undefined) ?? null, autoSync: sync.autoSync !== false, lastSyncedAt: sync.lastSyncedAt != null ? fromReference(sync.lastSyncedAt) : null, lastError: (sync.lastError as string | undefined) ?? null, deletedEntryIDs: Array.isArray(sync.deletedEntryIDs) ? (sync.deletedEntryIDs as string[]) : [] } : null,
     };
 }
 
@@ -424,6 +427,8 @@ export function parseWorkspace(text: string): Workspace {
     const w = raw as unknown as Workspace;
     w.preferences = { ...defaultPreferences(), ...(w.preferences ?? {}) };
     w.sync ??= null;
+    // A file written before the CRM was a destination (0.4.x) synced to Kiwi.
+    if (w.sync && !isDestination(w.sync.destination)) w.sync.destination = "kiwi";
     w.timer ??= null;
     w.currentActivity ??= null;
     return validate(w);

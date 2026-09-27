@@ -1,10 +1,31 @@
-/* The two calls the app makes to Kiwi. Plain fetch, no Electron, so it runs in the main
-   process and under vitest alike. The token comes from the caller (main/sync.ts keeps it
-   encrypted with safeStorage); it is never part of the workspace. */
+/* The two calls the app makes to its sync destination — Kiwi, or Lawdie CRM; both answer
+   the same paths under their own API base with the same device token. Plain fetch, no
+   Electron, so it runs in the main process and under vitest alike. The token comes from
+   the caller (main/sync.ts keeps it encrypted with safeStorage); it is never part of the
+   workspace. */
 
 import type { SyncRequest } from "./model";
 
-export const DEFAULT_SERVER_URL = "https://lawdie.co/kiwi-api";
+/** Where kept time goes. One at a time: a firm works in Kiwi or in the CRM. */
+export type Destination = "kiwi" | "crm";
+
+export const DESTINATIONS: Record<Destination, { label: string; defaultServerURL: string; pairHint: string }> = {
+    kiwi: {
+        label: "Kiwi",
+        defaultServerURL: "https://lawdie.co/kiwi-api",
+        pairHint: "In Kiwi, open Time → Captured activity → On your desktop and click “Connect a computer”.",
+    },
+    crm: {
+        label: "Lawdie CRM",
+        defaultServerURL: "https://crm-api.lawdie.co/api",
+        pairHint: "In Lawdie CRM, open Time → On your desktop and click “Connect a computer”.",
+    },
+};
+
+export const isDestination = (value: unknown): value is Destination => value === "kiwi" || value === "crm";
+export const destinationLabel = (destination: Destination | null | undefined): string => DESTINATIONS[destination ?? "kiwi"].label;
+
+export const DEFAULT_SERVER_URL = DESTINATIONS.kiwi.defaultServerURL;
 
 export type HelloResponse = { ok: boolean; device: { id: string; name: string }; user: { email: string | null } };
 export type SyncResponse = { ok: boolean; activities: number; entries: number; deleted: number };
@@ -18,14 +39,14 @@ export class KiwiFailure extends Error {
     }
 }
 
-const MESSAGES: Record<Exclude<KiwiFailureCode, "http" | "transport">, string> = {
-    invalid_server_url: "Enter the Kiwi server address, such as https://lawdie.co/kiwi-api.",
-    invalid_token: "Kiwi did not accept this token. Connect this computer again from Kiwi's Time page and paste the new token.",
-    device_revoked: "This computer was disconnected in Kiwi. Connect it again from Kiwi's Time page to resume syncing.",
-    migration_pending: "Kiwi is not ready for desktop sync yet (its database migration is pending).",
-    too_large: "Kiwi refused the sync as too large. Try again; the app sends it in smaller pieces.",
-    bad_response: "Kiwi answered in a way this app does not understand.",
-};
+const messages = (product: string): Record<Exclude<KiwiFailureCode, "http" | "transport">, string> => ({
+    invalid_server_url: `Enter the ${product} server address, such as ${product === "Kiwi" ? DESTINATIONS.kiwi.defaultServerURL : DESTINATIONS.crm.defaultServerURL}.`,
+    invalid_token: `${product} did not accept this token. Connect this computer again from the Time page there and paste the new token.`,
+    device_revoked: `This computer was disconnected in ${product}. Connect it again from the Time page there to resume syncing.`,
+    migration_pending: `${product} is not ready for desktop sync yet (its database migration is pending).`,
+    too_large: `${product} refused the sync as too large. Try again; the app sends it in smaller pieces.`,
+    bad_response: `${product} answered in a way this app does not understand.`,
+});
 
 /** An http(s) URL with a host, without a trailing slash, or null. */
 export function normalizeServerURL(text: string): string | null {
@@ -41,9 +62,12 @@ export function normalizeServerURL(text: string): string | null {
 
 export class KiwiClient {
     readonly baseURL: string;
-    constructor(serverURL: string, private readonly token: string, private readonly fetchImpl: typeof fetch = fetch, private readonly timeoutMs = 30_000) {
+    private readonly messages: ReturnType<typeof messages>;
+    /** `product` names the destination in every message: "Kiwi" or "Lawdie CRM". */
+    constructor(serverURL: string, private readonly token: string, private readonly fetchImpl: typeof fetch = fetch, private readonly timeoutMs = 30_000, readonly product = "Kiwi") {
+        this.messages = messages(product);
         const url = normalizeServerURL(serverURL);
-        if (!url) throw new KiwiFailure("invalid_server_url", MESSAGES.invalid_server_url);
+        if (!url) throw new KiwiFailure("invalid_server_url", this.messages.invalid_server_url);
         this.baseURL = url;
     }
 
@@ -65,22 +89,22 @@ export class KiwiClient {
                 signal: AbortSignal.timeout(this.timeoutMs),
             });
         } catch (err) {
-            throw new KiwiFailure("transport", `Could not reach Kiwi: ${err instanceof Error ? err.message : String(err)}`);
+            throw new KiwiFailure("transport", `Could not reach ${this.product}: ${err instanceof Error ? err.message : String(err)}`);
         }
         if (response.ok) {
             try {
                 return (await response.json()) as T;
             } catch {
-                throw new KiwiFailure("bad_response", MESSAGES.bad_response);
+                throw new KiwiFailure("bad_response", this.messages.bad_response);
             }
         }
         if (response.status === 401) {
             const code = await response.json().then((j) => (j as { code?: string }).code).catch(() => undefined);
-            if (code === "device_revoked") throw new KiwiFailure("device_revoked", MESSAGES.device_revoked);
-            throw new KiwiFailure("invalid_token", MESSAGES.invalid_token);
+            if (code === "device_revoked") throw new KiwiFailure("device_revoked", this.messages.device_revoked);
+            throw new KiwiFailure("invalid_token", this.messages.invalid_token);
         }
-        if (response.status === 413) throw new KiwiFailure("too_large", MESSAGES.too_large);
-        if (response.status === 503) throw new KiwiFailure("migration_pending", MESSAGES.migration_pending);
-        throw new KiwiFailure("http", `Kiwi answered with an unexpected status (${response.status}).`);
+        if (response.status === 413) throw new KiwiFailure("too_large", this.messages.too_large);
+        if (response.status === 503) throw new KiwiFailure("migration_pending", this.messages.migration_pending);
+        throw new KiwiFailure("http", `${this.product} answered with an unexpected status (${response.status}).`);
     }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
 import type { Activity, TimeEntry, Workspace } from "@shared/model";
-import { DEFAULT_SERVER_URL } from "@shared/kiwi";
+import { DESTINATIONS, destinationLabel, type Destination } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
@@ -53,14 +53,14 @@ export function App(): ReactNode {
                 </nav>
                 <div className="capture-card">
                     <div className="row"><span className={"dot" + (w.preferences.captureEnabled ? " on" : "")} /> <strong>{w.preferences.captureEnabled ? "Capture is on" : "Capture is paused"}</strong></div>
-                    <p className="muted small">{connected ? "Kept time syncs to Kiwi." : "Your time. On your machine."}</p>
+                    <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.destination)}.` : "Your time. On your machine."}</p>
                     <button type="button" className="quiet" disabled={state.loadFailed} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>
                         {w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}
                     </button>
                 </div>
                 <div className="account">
                     <span className="avatar">L</span>
-                    <div><strong className="small">Personal workspace</strong><p className="muted tiny">{w.sync?.accountEmail ?? (connected ? "Synced to Kiwi" : "Local • No account needed")}</p></div>
+                    <div><strong className="small">Personal workspace</strong><p className="muted tiny">{w.sync?.accountEmail ?? (connected ? `Synced to ${destinationLabel(w.sync?.destination)}` : "Local • No account needed")}</p></div>
                 </div>
             </aside>
             <main className="content">
@@ -86,10 +86,11 @@ export function App(): ReactNode {
 function statusLine(state: AppState, now: number): string {
     const sync = state.workspace.sync;
     if (!sync) return "Saved on this computer";
-    if (state.syncing) return "Syncing to Kiwi…";
-    if (sync.lastError) return `Kiwi sync failed · ${sync.lastError.slice(0, 60)}`;
-    if (!sync.lastSyncedAt) return "Connected to Kiwi · not synced yet";
-    return `Synced to Kiwi · ${ago(sync.lastSyncedAt, now)}`;
+    const product = destinationLabel(sync.destination);
+    if (state.syncing) return `Syncing to ${product}…`;
+    if (sync.lastError) return `${product} sync failed · ${sync.lastError.slice(0, 60)}`;
+    if (!sync.lastSyncedAt) return `Connected to ${product} · not synced yet`;
+    return `Synced to ${product} · ${ago(sync.lastSyncedAt, now)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,9 +231,16 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
         const t = setInterval(ask, 10_000);
         return () => clearInterval(t);
     }, [p.captureDocuments]);
-    const [server, setServer] = useState(DEFAULT_SERVER_URL);
+    const [destination, setDestination] = useState<Destination>("kiwi");
+    const [server, setServer] = useState(DESTINATIONS.kiwi.defaultServerURL);
     const [token, setToken] = useState("");
     const [advanced, setAdvanced] = useState(false);
+    // Choosing the other product swaps the default address, but never a custom one.
+    const pick = (d: Destination): void => {
+        setDestination(d);
+        if (Object.values(DESTINATIONS).some((x) => x.defaultServerURL === server)) setServer(DESTINATIONS[d].defaultServerURL);
+    };
+    const product = w.sync ? destinationLabel(w.sync.destination) : DESTINATIONS[destination].label;
     const set = <K extends keyof typeof p>(key: K, value: (typeof p)[K]): void => void window.lawdie.setPreference(key, value);
     const isMac = state.platform === "darwin";
     const label = isMac ? "Mac" : "computer";
@@ -247,7 +255,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 <Setting title="Include window titles" detail={isMac ? "Optional context such as document names. Titles may contain sensitive information. macOS asks for Screen Recording permission the first time." : "Optional context such as document names. Titles may contain sensitive information."}>
                     <Toggle on={p.captureTitles} onChange={(v) => set("captureTitles", v)} label="Include window titles" />
                 </Setting>
-                <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and its first few lines (Outlook: the sender and subject). Kiwi uses these to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
+                <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and its first few lines (Outlook: the sender and subject). Kiwi or Lawdie CRM uses these to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
                     <Toggle on={p.captureDocuments} onChange={(v) => set("captureDocuments", v)} label="Read Office document details" />
                 </Setting>
                 {p.captureDocuments && office && !office.supported && <p className="muted tiny">Not available on this platform.</p>}
@@ -272,7 +280,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
             </Panel>
             <Panel>
                 <strong>Your data belongs here</strong>
-                <p className="muted small">No telemetry, screenshots, keystroke recording, or local network service. Nothing leaves this {label} unless you connect Kiwi below, and then only captured activity and your time entries. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
+                <p className="muted small">No telemetry, screenshots, keystroke recording, or local network service. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
                 <p className="mono tiny muted">{state.workspacePath}</p>
                 <div className="row gap">
                     <button type="button" className="quiet" onClick={() => void window.lawdie.showDataFolder()}>Show data folder</button>
@@ -282,12 +290,12 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
             </Panel>
             <Panel>
                 <div className="row between">
-                    <strong>Connect to Kiwi</strong>
+                    <strong>Sync to Kiwi or Lawdie CRM</strong>
                     <span className="row gap small"><span className={"dot" + (w.sync ? (w.sync.lastError ? " bad" : " on") : "")} />{w.sync ? "Connected" : "Not connected"}</span>
                 </div>
                 {w.sync ? (
                     <>
-                        <p className="muted small">Syncing to {w.sync.serverURL} as {w.sync.accountEmail ?? "your account"}. In Kiwi this {label} is “{w.sync.deviceName}”.</p>
+                        <p className="muted small">Syncing to {product} ({w.sync.serverURL}) as {w.sync.accountEmail ?? "your account"}. There, this {label} is “{w.sync.deviceName}”.</p>
                         <p className={"small strong" + (w.sync.lastError ? " danger" : "")}>{statusLine(state, now)}</p>
                         {w.sync.lastError && <p className="danger tiny">{w.sync.lastError}</p>}
                         <label className="row gap check"><input type="checkbox" checked={w.sync.autoSync} onChange={(e) => void window.lawdie.setAutoSync(e.target.checked)} /> Sync automatically, about once a minute</label>
@@ -295,17 +303,22 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                             <button type="button" className="primary" disabled={state.syncing} onClick={() => void window.lawdie.syncNow()}>{state.syncing ? "Syncing…" : "Sync now"}</button>
                             <button type="button" className="quiet" disabled={state.syncing} onClick={() => void window.lawdie.disconnectKiwi()}>Disconnect</button>
                         </div>
-                        <p className="muted tiny">What syncs: captured activity (app names, durations, and window titles if you switched them on) and the time entries you keep. Kiwi never guesses a matter from them; billable entries become drafts under “No matter” on Kiwi's Time page for you to place and approve. Deleting an entry here dismisses its draft there. Lawdie CRM is not connected.</p>
+                        <p className="muted tiny">What syncs: captured activity (app names, durations, and window titles and Office document details if you switched them on) and the time entries you keep. {product} matches a stretch to a matter only when its title or document names exactly one — never from your local project label. {w.sync.destination === "crm" ? "A kept entry with a matter lands on the CRM's ledger at the next sync; one without waits on its Time page for you to name the matter. Deleting an entry here removes it there unless it has been billed." : "Billable kept entries become drafts on Kiwi's Time page for you to approve, under “No matter” when nothing matched. Deleting an entry here dismisses its draft there."}</p>
                     </>
                 ) : (
                     <>
-                        <p className="muted small">In Kiwi, open Time → Captured activity → On your desktop and click “Connect a computer”. Paste the token it shows here; it is shown once. Until you connect, nothing leaves this {label}.</p>
-                        <form className="row gap" onSubmit={(e) => { e.preventDefault(); void window.lawdie.connectKiwi(server, token).then((ok) => { if (ok) setToken(""); }); }}>
-                            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="ldt_… token from Kiwi" autoComplete="off" />
+                        <div className="segmented" role="radiogroup" aria-label="Sync destination">
+                            {(Object.keys(DESTINATIONS) as Destination[]).map((d) => (
+                                <button key={d} type="button" role="radio" aria-checked={destination === d} className={destination === d ? "active" : ""} onClick={() => pick(d)}>{DESTINATIONS[d].label}</button>
+                            ))}
+                        </div>
+                        <p className="muted small">{DESTINATIONS[destination].pairHint} Paste the token it shows here; it is shown once. Until you connect, nothing leaves this {label}.</p>
+                        <form className="row gap" onSubmit={(e) => { e.preventDefault(); void window.lawdie.connectKiwi(destination, server, token).then((ok) => { if (ok) setToken(""); }); }}>
+                            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={`ldt_… token from ${DESTINATIONS[destination].label}`} autoComplete="off" />
                             <button type="submit" className="primary" disabled={state.syncing || !token.trim()}>{state.syncing ? "Connecting…" : "Connect"}</button>
                         </form>
-                        <button type="button" className="link" onClick={() => setAdvanced(!advanced)}>{advanced ? "▾" : "▸"} Kiwi server</button>
-                        {advanced && <div className="row gap"><input value={server} onChange={(e) => setServer(e.target.value)} /><span className="muted tiny">Change only for a self-hosted or local Kiwi.</span></div>}
+                        <button type="button" className="link" onClick={() => setAdvanced(!advanced)}>{advanced ? "▾" : "▸"} {DESTINATIONS[destination].label} server</button>
+                        {advanced && <div className="row gap"><input value={server} onChange={(e) => setServer(e.target.value)} /><span className="muted tiny">Change only for a self-hosted or local {DESTINATIONS[destination].label}.</span></div>}
                     </>
                 )}
             </Panel>
