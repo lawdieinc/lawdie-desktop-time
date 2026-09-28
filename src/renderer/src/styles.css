@@ -78,3 +78,9 @@ input, select { padding: 9px 11px; border: 1px solid var(--line); border-radius:
 .sheet .heading h2 { font-size: 26px; }
 
 @media (prefers-reduced-transparency: reduce) { .panel { background: #fff; backdrop-filter: none; } }
+/* Sittings inside a stretch (Activity inbox) */
+.icon-space { width: 28px; flex: none; }
+.activity > .icon { width: 28px; flex: none; padding: 0; }
+.sittings { margin: -6px 0 8px 85px; padding: 4px 12px; border-left: 2px solid var(--line); }
+.sitting { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.link.tiny { font-size: 11px; }

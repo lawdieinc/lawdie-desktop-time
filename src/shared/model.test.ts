@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     closeActivity, deleteEntry, dismissActivities, emptyWorkspace, keepActivity, keepStretch, markSynced, migrateV1, observe, parseWorkspace, prune,
-    recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
+    recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
@@ -234,9 +234,23 @@ describe("stretches", () => {
         expect(() => saveEntry(w, { ...entry, id: "y", sittings: [{ startedAt: iso(0), endedAt: iso(2000) }] }, at(3000))).toThrow(WorkspaceError);
         deleteEntry(w, entry.id);
         expect(w.activities.filter((a) => a.disposition === "pending").map((a) => a.id)).toEqual(["a", "c"]);
+        // A person can settle the span before keeping: several sittings are clipped to it,
+        // a single sitting takes the span as given (the work may have started before capture).
+        deleteEntry(w, excel.id);
+        const trimmed = keepStretch(w, ["a", "c"], { description: "Hollis", projectID: null, billable: true, startedAt: iso(300), endedAt: iso(1200) }, at(3000));
+        expect(trimmed.sittings).toEqual([{ startedAt: iso(300), endedAt: iso(600) }, { startedAt: iso(900), endedAt: iso(1200) }]);
+        expect(seconds(trimmed)).toBe(600);
+        deleteEntry(w, trimmed.id);
+        const widened = keepStretch(w, ["b"], { description: "Schedule", projectID: null, billable: true, startedAt: iso(560), endedAt: iso(900) }, at(3000));
+        expect(widened).toMatchObject({ startedAt: iso(560), endedAt: iso(900) });
+        expect(seconds(widened)).toBe(340);
+        expect(() => keepStretch(w, ["a", "c"], { description: "x", projectID: null, billable: true, startedAt: iso(600), endedAt: iso(900) }, at(3000))).toThrow(/No captured time/);
+        expect(() => keepStretch(w, ["a", "c"], { description: "x", projectID: null, billable: true, startedAt: iso(900), endedAt: iso(300) }, at(3000))).toThrow(/after the start/);
+        expect(stretchSpan([{ startedAt: iso(0), endedAt: iso(600) }, { startedAt: iso(900), endedAt: iso(1500) }], at(1000), at(1200))).toEqual({ startedAt: iso(1000), endedAt: iso(1200) });
+        deleteEntry(w, widened.id);
         // Dismissing a stretch dismisses every sitting; a stretch cannot be kept twice.
         dismissActivities(w, ["a", "c"]);
-        expect(w.activities.map((a) => a.disposition)).toEqual(["dismissed", "kept", "dismissed"]);
+        expect(w.activities.map((a) => a.disposition)).toEqual(["dismissed", "pending", "dismissed"]); // b was deleted back to pending above
         expect(() => keepStretch(w, ["a", "c"], { description: "x", projectID: null, billable: true }, at(3000))).toThrow(WorkspaceError);
     });
 });

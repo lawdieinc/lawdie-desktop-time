@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, STRETCH_GAP_MS, seconds as entrySeconds, secondsWithin, stretchesOf, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { NOISE_SECONDS, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, stretchesOf, type Activity, type Interval, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
@@ -142,11 +142,16 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
 function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNode {
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
     const [reviewing, setReviewing] = useState<Stretch | null>(null);
+    const [open, setOpen] = useState<Record<string, boolean>>({});
+    const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
     const { stretches, short } = useMemo(() => stretchesOf(w.activities), [w.activities]);
+    const kept = useMemo(() => w.entries.filter((e) => e.activityID).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.entries]);
     const raw = useMemo(() => w.activities.filter((a) => filter === "all" || a.disposition === filter).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.activities, filter]);
+    const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
     const current = w.currentActivity;
     const shortSeconds = short.reduce((n, st) => n + st.seconds, 0);
     const gapMinutes = Math.round(STRETCH_GAP_MS / 60_000);
+    const count = filter === "pending" ? `${stretches.length} stretches` : filter === "kept" ? `${kept.length} entries` : `${raw.length} sittings`;
     return (
         <>
             <div className="row between">
@@ -166,7 +171,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                 <div className="segmented" role="tablist">
                     {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All" }[f]}</button>)}
                 </div>
-                <span className="muted small">{filter === "pending" ? `${stretches.length} stretches` : `${raw.length} sittings`} · retained {w.preferences.retentionDays} days</span>
+                <span className="muted small">{count} · retained {w.preferences.retentionDays} days</span>
             </div>
             <Panel>
                 {filter === "pending" ? (
@@ -175,19 +180,28 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, go idle, or pause capture." />
                         )}
                         {stretches.map((st) => (
-                            <div className="activity" key={st.id}>
-                                <span className="app-icon">▭</span>
-                                <div className="grow">
-                                    <div className="small strong">{st.name}</div>
-                                    <div className="muted tiny">{st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)} · ${st.sittings} sittings` : ` · ${st.endedBy}`}{st.document?.path ? ` · ${st.document.path}` : ""}</div>
+                            <div key={st.id}>
+                                <div className="activity">
+                                    {st.sittings > 1
+                                        ? <button type="button" className="icon" aria-expanded={!!open[st.id]} aria-label={open[st.id] ? "Hide sittings" : "Show sittings"} onClick={() => toggle(st.id)}>{open[st.id] ? "▾" : "▸"}</button>
+                                        : <span className="icon-space" aria-hidden="true" />}
+                                    <span className="app-icon">▭</span>
+                                    <div className="grow">
+                                        <div className="small strong">{st.name}</div>
+                                        <div className="muted tiny">{st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)} · ${st.sittings} sittings` : ` · ${st.endedBy}`}{st.document?.path ? ` · ${st.document.path}` : ""}</div>
+                                    </div>
+                                    <span className="mono">{duration(st.seconds)}</span>
+                                    <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
+                                    <button type="button" className="primary" onClick={() => setReviewing(st)}>Keep time</button>
                                 </div>
-                                <span className="mono">{duration(st.seconds)}</span>
-                                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
-                                <button type="button" className="primary" onClick={() => setReviewing(st)}>Keep time</button>
+                                {open[st.id] && st.sittings > 1 && (
+                                    <Sittings items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={(id) => void window.lawdie.dismissActivity(id)} />
+                                )}
                             </div>
                         ))}
                         {short.length > 0 && (
                             <div className="activity">
+                                <span className="icon-space" aria-hidden="true" />
                                 <span className="app-icon muted">·</span>
                                 <div className="grow">
                                     <div className="small strong">{short.length} short {short.length === 1 ? "switch" : "switches"}</div>
@@ -198,10 +212,36 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             </div>
                         )}
                     </>
+                ) : filter === "kept" ? (
+                    kept.length === 0 ? (
+                        <Empty title="Nothing kept yet." detail="Keep a stretch from To review and it appears here as the entry it became." />
+                    ) : kept.map((e) => {
+                        const spans = intervals(e);
+                        const first = byID.get(e.activityID as string);
+                        return (
+                            <div key={e.id}>
+                                <div className="activity">
+                                    {spans.length > 1
+                                        ? <button type="button" className="icon" aria-expanded={!!open[e.id]} aria-label={open[e.id] ? "Hide sittings" : "Show sittings"} onClick={() => toggle(e.id)}>{open[e.id] ? "▾" : "▸"}</button>
+                                        : <span className="icon-space" aria-hidden="true" />}
+                                    <span className="app-icon">▭</span>
+                                    <div className="grow">
+                                        <div className="small strong">{e.description}</div>
+                                        <div className="muted tiny">{first ? `${first.app} · ` : ""}{dayLabel(e.startedAt)} {clock(e.startedAt)}–{clock(e.endedAt)}{spans.length > 1 ? ` · ${spans.length} sittings` : ""}{e.billable ? " · billable" : " · not billable"}</div>
+                                    </div>
+                                    <span className="mono">{duration(entrySeconds(e))}</span>
+                                    <span className="muted small status kept">Kept</span>
+                                    <button type="button" className="quiet" onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
+                                </div>
+                                {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
+                            </div>
+                        );
+                    })
                 ) : raw.length === 0 ? (
                     <Empty title="No activities here yet." detail="Each sitting — one stay in one app — is listed here once reviewed." />
                 ) : raw.map((a) => (
                     <div className="activity" key={a.id}>
+                        <span className="icon-space" aria-hidden="true" />
                         <span className="app-icon">▭</span>
                         <div className="grow">
                             <div className="small strong">{a.document?.name || a.title || a.app}</div>
@@ -212,18 +252,53 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     </div>
                 ))}
             </Panel>
-            {reviewing && <KeepSheet stretch={reviewing} onClose={() => setReviewing(null)} />}
+            {reviewing && <KeepSheet stretch={reviewing} sittings={reviewing.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onClose={() => setReviewing(null)} />}
         </>
     );
 }
 
-function KeepSheet({ stretch, onClose }: { stretch: Stretch; onClose: () => void }): ReactNode {
+/** The sittings inside a stretch or a kept entry, one line each. With `onDismiss`, each can be dropped from the stretch. */
+function Sittings({ items, onDismiss }: { items: (Interval & { id?: string; endedBy?: string })[]; onDismiss?: (id: string) => void }): ReactNode {
+    return (
+        <div className="sittings">
+            {items.map((i, n) => (
+                <div className="sitting" key={i.id ?? n}>
+                    <span className="muted tiny">{clock(i.startedAt)}–{clock(i.endedAt)}{i.endedBy ? ` · ${i.endedBy}` : ""}</span>
+                    <span className="grow" />
+                    <span className="mono tiny">{duration((Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000)}</span>
+                    {onDismiss && i.id && <button type="button" className="link tiny" onClick={() => onDismiss(i.id as string)}>Dismiss</button>}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/** "HH:MM" in local time, and back onto the stretch's day (an end before the start rolls to the next day). */
+const timeValue = (isoText: string): string => { const d = new Date(isoText); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const onDay = (dayIso: string, hhmm: string, notBefore: number | null = null): number => {
+    const [h, m] = hhmm.split(":").map(Number);
+    const d = new Date(dayIso); d.setHours(h, m, 0, 0);
+    if (notBefore !== null && d.getTime() <= notBefore) d.setDate(d.getDate() + 1);
+    return d.getTime();
+};
+
+function KeepSheet({ stretch, sittings, onClose }: { stretch: Stretch; sittings: Activity[]; onClose: () => void }): ReactNode {
     const [description, setDescription] = useState(stretch.document?.name ?? stretch.name);
     const [billable, setBillable] = useState(true);
+    const [startText, setStartText] = useState(timeValue(stretch.startedAt));
+    const [endText, setEndText] = useState(timeValue(stretch.endedAt));
     const [problem, setProblem] = useState<string | null>(null);
+    const start = onDay(stretch.startedAt, startText);
+    const end = onDay(stretch.startedAt, endText, start);
+    const spans: Interval[] = sittings.map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt }));
+    const preview = stretchSpan(spans, start, end);
+    const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
+    const changed = startText !== timeValue(stretch.startedAt) || endText !== timeValue(stretch.endedAt);
     const save = async (): Promise<void> => {
         if (!description.trim()) { setProblem("Add a description."); return; }
-        if (await window.lawdie.keepActivity(stretch.activityIDs, { description, projectID: null, billable })) onClose();
+        if (!preview) { setProblem("No captured time falls between those times."); return; }
+        const input = { description, projectID: null, billable, ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}) };
+        if (await window.lawdie.keepActivity(stretch.activityIDs, input)) onClose();
         else setProblem("That could not be saved. It may overlap time you already kept.");
     };
     return (
@@ -232,14 +307,15 @@ function KeepSheet({ stretch, onClose }: { stretch: Stretch; onClose: () => void
                 <Heading eyebrow="From desktop activity" title="Keep time" subtitle={stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
                 <label className="field"><span className="eyebrow">Description</span><input autoFocus value={description} onChange={(e) => setDescription(e.target.value)} /></label>
                 <div className="row gap">
-                    <div className="field"><span className="eyebrow">Start</span><span>{dayLabel(stretch.startedAt)} {clock(stretch.startedAt)}</span></div>
-                    <div className="field"><span className="eyebrow">End</span><span>{clock(stretch.endedAt)}</span></div>
+                    <label className="field"><span className="eyebrow">Start · {dayLabel(stretch.startedAt)}</span><input type="time" value={startText} onChange={(e) => setStartText(e.target.value)} /></label>
+                    <label className="field"><span className="eyebrow">End</span><input type="time" value={endText} onChange={(e) => setEndText(e.target.value)} /></label>
                     <label className="row gap check"><input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
                 </div>
-                <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; time in other apps between them stays free to keep on its own." : "Captured times are preserved."} If this overlaps tracked time, dismiss the activity instead.</p>
+                {stretch.sittings > 1 && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
+                <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>
                 {problem && <p className="danger small">{problem}</p>}
                 <div className="row between">
-                    <span className="mono accent big">{duration(stretch.seconds)}</span>
+                    <span className="mono accent big">{duration(previewSeconds)}</span>
                     <span className="row gap"><button type="button" className="quiet" onClick={onClose}>Cancel</button><button type="submit" className="primary">Keep time</button></span>
                 </div>
             </form>

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppState } from "@shared/state";
-import type { Preferences } from "@shared/model";
+import type { KeepInput, Preferences } from "@shared/model";
 import type { Destination, Product } from "@shared/kiwi";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
@@ -19,7 +19,7 @@ export const api = {
     setCapture: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setCapture", on),
     setPreference: <K extends keyof Preferences>(key: K, value: Preferences[K]): Promise<boolean> => ipcRenderer.invoke("setPreference", key, value),
     /** One activity, or every sitting of a stretch, as one entry. */
-    keepActivity: (ids: string | string[], input: { description: string; projectID: string | null; billable: boolean }): Promise<boolean> => ipcRenderer.invoke("keepActivity", ids, input),
+    keepActivity: (ids: string | string[], input: KeepInput): Promise<boolean> => ipcRenderer.invoke("keepActivity", ids, input),
     dismissActivity: (ids: string | string[]): Promise<boolean> => ipcRenderer.invoke("dismissActivity", ids),
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
     clearActivity: (): Promise<boolean> => ipcRenderer.invoke("clearActivity"),

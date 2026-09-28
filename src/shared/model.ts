@@ -234,29 +234,62 @@ function mergeAdjacent(list: Interval[]): Interval[] {
     return out;
 }
 
+export type KeepInput = {
+    description: string;
+    projectID: string | null;
+    billable: boolean;
+    /** The span the person settled on before keeping, when they changed it. */
+    startedAt?: string;
+    endedAt?: string;
+};
+
+/** The parts of the sittings inside [start, end]. */
+export function clipSittings(list: Interval[], start: number, end: number): Interval[] {
+    return list
+        .map((i) => ({ startedAt: iso(Math.max(ms(i.startedAt), start)), endedAt: iso(Math.min(ms(i.endedAt), end)) }))
+        .filter((i) => ms(i.endedAt) > ms(i.startedAt));
+}
+
+/**
+ * The entry a stretch would become for a span: one sitting takes the span as given (a
+ * person may stretch it to when the work really started); several sittings are clipped
+ * to it and only they count. Returns null when no captured time falls inside.
+ */
+export function stretchSpan(sittings: Interval[], start: number, end: number): { startedAt: string; endedAt: string; sittings?: Interval[] } | null {
+    if (!(end > start)) return null;
+    if (sittings.length <= 1) return { startedAt: iso(start), endedAt: iso(end) };
+    const clipped = clipSittings(sittings, start, end);
+    if (!clipped.length) return null;
+    return clipped.length > 1 ? { startedAt: iso(start), endedAt: iso(end), sittings: clipped } : { startedAt: clipped[0].startedAt, endedAt: clipped[0].endedAt };
+}
+
 /**
  * Keep a stretch — one or more pending activities — as ONE entry. The entry spans the
- * first sitting's start to the last one's end, but only the sittings count as time and
- * only they are held against overlap, so the minutes spent in another document between
- * two sittings stay free to be kept on their own.
+ * first sitting's start to the last one's end (or the span the person set), but only the
+ * sittings count as time and only they are held against overlap, so the minutes spent in
+ * another document between two sittings stay free to be kept on their own.
  */
-export function keepStretch(w: Workspace, activityIDs: string[], input: { description: string; projectID: string | null; billable: boolean }, now: number): TimeEntry {
+export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInput, now: number): TimeEntry {
     const ids = [...new Set(activityIDs)];
     const picked = ids.map((id) => w.activities.find((a) => a.id === id));
     if (!ids.length || picked.some((a) => !a || a.disposition !== "pending")) throw new WorkspaceError("This activity has already been reviewed.");
-    const sittings = mergeAdjacent((picked as Activity[]).map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt })));
-    const first = sittings[0], last = sittings[sittings.length - 1];
+    const merged = mergeAdjacent((picked as Activity[]).map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt })));
+    const start = input.startedAt ? ms(input.startedAt) : ms(merged[0].startedAt);
+    const end = input.endedAt ? ms(input.endedAt) : ms(merged[merged.length - 1].endedAt);
+    if (!(end > start)) throw new WorkspaceError("The end must be after the start.");
+    const span = stretchSpan(merged, start, end);
+    if (!span) throw new WorkspaceError("No captured time falls between those times.");
     const entry: TimeEntry = {
-        id: uuid(), description: input.description.trim(), projectID: input.projectID, startedAt: first.startedAt, endedAt: last.endedAt,
+        id: uuid(), description: input.description.trim(), projectID: input.projectID, ...span,
         billable: input.billable, hourlyRate: project(w, input.projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
-        ...(sittings.length > 1 ? { sittings } : {}), ...(ids.length > 1 ? { activityIDs: ids } : {}),
+        ...(ids.length > 1 ? { activityIDs: ids } : {}),
     };
     saveEntry(w, entry, now);
     for (const a of picked as Activity[]) a.disposition = "kept";
     return entry;
 }
 
-export function keepActivity(w: Workspace, id: string, input: { description: string; projectID: string | null; billable: boolean }, now: number): TimeEntry {
+export function keepActivity(w: Workspace, id: string, input: KeepInput, now: number): TimeEntry {
     return keepStretch(w, [id], input, now);
 }
 

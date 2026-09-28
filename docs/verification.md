@@ -195,3 +195,12 @@ panel) is therefore not yet done; it needs Office signed in once and Kiwi's
   stretches with sitting counts and a single "short switches" line instead of one row per
   hop (screenshot looked at).
 
+## 2026-09-28 — sittings on show, times editable (local only, not pushed at the user's ask)
+
+- A stretch row folds its sittings behind a chevron, each with its own Dismiss, so a stray
+  sitting can be dropped before keeping. The Kept tab lists the entries a stretch became
+  (with their sittings folded the same way) rather than the raw sittings; Delete there
+  reopens them. The Keep sheet's start and end are editable: several sittings are clipped
+  to the span (`stretchSpan`), a single sitting takes the span as given.
+- `npm test` (37), typecheck clean; built app opened on the workspace copy and looked at.
+

@@ -4,7 +4,7 @@ import { hostname } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
-import { closeActivity, deleteEntry, dismissActivities, keepStretch, type Preferences } from "@shared/model";
+import { closeActivity, deleteEntry, dismissActivities, keepStretch, type KeepInput, type Preferences } from "@shared/model";
 import { Capture } from "./capture";
 import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
@@ -110,7 +110,7 @@ app.whenReady().then(() => {
         (w.preferences as Record<string, unknown>)[key] = value;
         if (key === "excludedOwnerIDs" && w.currentActivity && Array.isArray(value) && value.includes(w.currentActivity.ownerID)) w.currentActivity = null;
     }));
-    ipcMain.handle("keepActivity", (_e, ids: string | string[], input: { description: string; projectID: string | null; billable: boolean }) => store.change((w) => { keepStretch(w, Array.isArray(ids) ? ids : [ids], input, Date.now()); }));
+    ipcMain.handle("keepActivity", (_e, ids: string | string[], input: KeepInput) => store.change((w) => { keepStretch(w, Array.isArray(ids) ? ids : [ids], input, Date.now()); }));
     ipcMain.handle("dismissActivity", (_e, ids: string | string[]) => store.change((w) => dismissActivities(w, Array.isArray(ids) ? ids : [ids])));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
     ipcMain.handle("clearActivity", () => { const ok = store.change((w) => { w.activities = []; w.currentActivity = null; w.preferences.captureEnabled = false; }); if (ok) store.say("Activity cleared and capture paused. Saved time entries are unchanged."); return ok; });
