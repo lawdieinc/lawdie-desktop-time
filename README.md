@@ -43,7 +43,7 @@ and attaches the installers to the GitHub Release. Locally, `npm run package:mac
 
 ## What works
 
-- Today, Activity and Settings screens, in the Lawdie brand (cream, espresso, brown-gold,
+- Time (today, this week, this month, all time, or any range: tracked and billable totals, billable by project, entries by day), Activity and Settings screens, in the Lawdie brand (cream, espresso, brown-gold,
   Playfair Display / Source Sans Pro / Fragment Mono, all bundled).
 - Desktop foreground-app capture: app name, stable id (bundle id on macOS, executable
   path elsewhere), duration, and why the stretch ended. Sampled every 5 seconds plus on

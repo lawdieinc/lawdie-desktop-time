@@ -12,7 +12,7 @@ import kiwiMark from "../../../resources/brand/kiwi.png";
 
 type Route = "today" | "activity" | "settings";
 const ROUTES: { key: Route; label: string; icon: string }[] = [
-    { key: "today", label: "Today", icon: "▦" },
+    { key: "today", label: "Time", icon: "▦" },
     { key: "activity", label: "Activity", icon: "∿" },
     { key: "settings", label: "Settings", icon: "⚙" },
 ];
@@ -98,26 +98,81 @@ function statusLine(state: AppState, now: number): string {
 
 // ---------------------------------------------------------------------------
 
+type RangeKey = "today" | "week" | "month" | "all" | "custom";
+const RANGES: { key: RangeKey; label: string }[] = [
+    { key: "today", label: "Today" }, { key: "week", label: "This week" }, { key: "month", label: "This month" }, { key: "all", label: "All time" }, { key: "custom", label: "Custom" },
+];
+const dayKey = (t: number): string => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const dayStartOf = (t: number): number => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+/** [start, end) for a range, in local time. Custom takes YYYY-MM-DD from and to, inclusive. */
+function rangeBounds(key: RangeKey, now: number, from: string, to: string): { start: number; end: number; label: string } {
+    const today = dayStartOf(now);
+    if (key === "today") return { start: today, end: today + 86_400_000, label: new Date(now).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }) };
+    if (key === "week") { const d = new Date(today); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return { start: d.getTime(), end: today + 86_400_000, label: `Week of ${d.toLocaleDateString([], { month: "long", day: "numeric" })}` }; }
+    if (key === "month") { const d = new Date(today); d.setDate(1); return { start: d.getTime(), end: today + 86_400_000, label: d.toLocaleDateString([], { month: "long", year: "numeric" }) }; }
+    if (key === "all") return { start: 0, end: today + 86_400_000, label: "All time" };
+    const f = from ? new Date(`${from}T00:00:00`).getTime() : today, t = to ? new Date(`${to}T00:00:00`).getTime() + 86_400_000 : today + 86_400_000;
+    return { start: f, end: Math.max(t, f + 86_400_000), label: `${new Date(f).toLocaleDateString([], { month: "short", day: "numeric" })} – ${new Date(t - 1).toLocaleDateString([], { month: "short", day: "numeric" })}` };
+}
+
 function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
-    const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
-    const start = dayStart.getTime(), end = start + 86_400_000;
+    const [range, setRange] = useState<RangeKey>("today");
+    const [from, setFrom] = useState(dayKey(now - 6 * 86_400_000));
+    const [to, setTo] = useState(dayKey(now));
+    const { start, end, label } = rangeBounds(range, now, from, to);
     const entries = w.entries.filter((e) => Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
     const tracked = entries.reduce((s, e) => s + secondsWithin(e, start, end), 0);
     const billable = entries.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0);
     const pending = stretchesOf(w.activities).stretches.length;
+    // Grouped by day, newest first; a day's figure is only what fell inside the range.
+    const days = new Map<string, TimeEntry[]>();
+    for (const e of entries) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
+    const byProject = new Map<string, number>();
+    for (const e of entries.filter((x) => x.billable)) { const name = w.projects.find((p) => p.id === e.projectID)?.name ?? "No project"; byProject.set(name, (byProject.get(name) ?? 0) + secondsWithin(e, start, end)); }
+    const projects = [...byProject.entries()].sort((a, b) => b[1] - a[1]);
     return (
         <>
-            <Heading eyebrow={new Date(now).toLocaleDateString([], { weekday: "long" })} title="Your day, accounted for." subtitle="Track your work across matters, documents, and desktop apps." />
+            <Heading eyebrow={label} title={range === "today" ? "Your day, accounted for." : "Your time, accounted for."} subtitle="Every entry you kept, tracked or typed — and what of it is billable." />
+            <div className="row between wrap">
+                <div className="segmented" role="tablist" aria-label="Range">
+                    {RANGES.map((r) => <button key={r.key} type="button" role="tab" aria-selected={range === r.key} className={range === r.key ? "active" : ""} onClick={() => setRange(r.key)}>{r.label}</button>)}
+                </div>
+                {range === "custom" && (
+                    <span className="row gap small">
+                        <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
+                        <span className="muted">to</span>
+                        <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="To" />
+                    </span>
+                )}
+            </div>
             <div className="metrics">
-                <Metric label="Tracked today" value={duration(tracked)} detail={`${entries.length} saved entries`} />
-                <Metric label="Billable time" value={duration(billable)} detail="Ready for your next invoice" />
+                <Metric label={range === "today" ? "Tracked today" : "Tracked"} value={duration(tracked)} detail={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`} />
+                <Metric label="Billable time" value={duration(billable)} detail={tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "Ready for your next invoice"} />
                 <Metric label="To review" value={String(pending)} detail="Stretches of desktop work" />
             </div>
+            {projects.length > 1 && (
+                <Panel>
+                    <div className="row between"><strong>Billable, by project</strong><span className="eyebrow">{label}</span></div>
+                    {projects.map(([name, secs]) => (
+                        <div className="row between small" key={name} style={{ padding: "8px 0" }}><span>{name}</span><span className="mono">{duration(secs)}</span></div>
+                    ))}
+                </Panel>
+            )}
             <Panel>
-                <div className="row between"><strong>Your day, in focus</strong><span className="eyebrow">Today</span></div>
+                <div className="row between"><strong>{range === "today" ? "Your day, in focus" : "Entries"}</strong><span className="eyebrow">{label}</span></div>
                 {entries.length === 0 ? (
-                    <Empty title="A fresh start" detail="Enable capture, work in another app, then keep what matters from the Activity inbox. Your day will take shape here." />
-                ) : entries.map((e) => <EntryRow key={e.id} entry={e} w={w} />)}
+                    <Empty title={range === "today" ? "A fresh start" : "Nothing in this range"} detail="Enable capture, work in another app, then keep what matters from the Activity inbox. Your time will take shape here." />
+                ) : [...days.entries()].map(([k, list]) => (
+                    <div key={k}>
+                        {range !== "today" && (
+                            <div className="row between day-head">
+                                <span className="eyebrow">{dayLabel(list[0].startedAt, new Date(now))}</span>
+                                <span className="muted tiny mono">{duration(list.reduce((s, e) => s + secondsWithin(e, start, end), 0))} · billable {duration(list.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0))}</span>
+                            </div>
+                        )}
+                        {list.map((e) => <EntryRow key={e.id} entry={e} w={w} />)}
+                    </div>
+                ))}
             </Panel>
         </>
     );

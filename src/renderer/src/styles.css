@@ -97,3 +97,7 @@ input, select { padding: 9px 11px; border: 1px solid var(--line); border-radius:
 .sitting-dismiss { font-size: 11px; opacity: 0; transition: opacity 0.12s ease; }
 .sitting:hover .sitting-dismiss, .sitting-dismiss:focus-visible { opacity: 1; }
 .sheet .sittings { margin-left: 0; border-bottom: 0; max-height: 180px; overflow: auto; }
+/* Time screen: ranges and day groups */
+.row.wrap { flex-wrap: wrap; gap: 10px; }
+.day-head { padding: 14px 0 2px; }
+input[type="date"] { font: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.6); color: var(--text); }
