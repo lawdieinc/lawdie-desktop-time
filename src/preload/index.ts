@@ -18,8 +18,9 @@ export const api = {
     },
     setCapture: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setCapture", on),
     setPreference: <K extends keyof Preferences>(key: K, value: Preferences[K]): Promise<boolean> => ipcRenderer.invoke("setPreference", key, value),
-    keepActivity: (id: string, input: { description: string; projectID: string | null; billable: boolean }): Promise<boolean> => ipcRenderer.invoke("keepActivity", id, input),
-    dismissActivity: (id: string): Promise<boolean> => ipcRenderer.invoke("dismissActivity", id),
+    /** One activity, or every sitting of a stretch, as one entry. */
+    keepActivity: (ids: string | string[], input: { description: string; projectID: string | null; billable: boolean }): Promise<boolean> => ipcRenderer.invoke("keepActivity", ids, input),
+    dismissActivity: (ids: string | string[]): Promise<boolean> => ipcRenderer.invoke("dismissActivity", ids),
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
     clearActivity: (): Promise<boolean> => ipcRenderer.invoke("clearActivity"),
     connectKiwi: (destination: Destination, servers: Partial<Record<Product, string>>, token: string): Promise<boolean> => ipcRenderer.invoke("connectKiwi", destination, servers, token),

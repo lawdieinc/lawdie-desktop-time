@@ -85,6 +85,20 @@ Not solved: deduplication between this capture ("Google Chrome" as an app) and t
 browser extension's segments of the same minutes. The person reviewing drafts in Kiwi is
 the guard today.
 
+## Review: stretches, not switches
+
+`stretchesOf()` in `src/shared/model.ts` is the inbox's grouping. Pending activities in
+time order; the key is the app's owner id plus the document name (else the window title);
+a sitting joins the open stretch of its key when it starts within `STRETCH_GAP_MS` (15
+minutes) of that stretch's end on the same local day, whatever came between. Stretches
+under `NOISE_SECONDS` (60) are returned apart as "short switches". `keepStretch()` writes
+ONE entry: `startedAt`/`endedAt` span first to last, `sittings` hold the merged sitting
+intervals, `activityIDs` every sitting. `seconds()`, `secondsWithin()` and `overlaps()`
+read `intervals()` — the sittings when present — so the gaps are neither billed nor
+reserved. The wire request sends `seconds` as worked; both servers' `cleanEntry` honour it
+when it is under the span (`kiwi/backend/src/lib/desktopTime.ts`,
+`lawdie-crm/server/services/desktopTimeService.js`). Deleting the entry reopens every sitting.
+
 ## Platforms
 
 | | macOS | Windows | Linux |

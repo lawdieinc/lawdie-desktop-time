@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-    closeActivity, deleteEntry, emptyWorkspace, keepActivity, markSynced, migrateV1, observe, parseWorkspace, prune,
-    recover, saveEntry, startTimer, stopTimer, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
+    closeActivity, deleteEntry, dismissActivities, emptyWorkspace, keepActivity, keepStretch, markSynced, migrateV1, observe, parseWorkspace, prune,
+    recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
@@ -184,6 +184,60 @@ describe("timer and entries", () => {
         prune(w, at(8 * 86400));
         expect(w.activities).toEqual([]);
         expect(w.entries).toHaveLength(1);
+    });
+});
+
+describe("stretches", () => {
+    const seg = (id: string, start: number, end: number, name: string, app = "Microsoft Word", extra: Partial<Activity> = {}): Activity =>
+        ({ id, app, ownerID: `com.${app.replace(/\s/g, "")}`, title: null, document: { name, path: null, excerpt: null }, startedAt: iso(start), endedAt: iso(end), endedBy: "switched", disposition: "pending", ...extra });
+
+    it("groups sittings on one document within the gap into one stretch, across other documents' sittings, and sets short hops apart", () => {
+        const acts = [
+            seg("a", 0, 600, "Hollis letter.docx"),
+            seg("b", 600, 900, "Brantley schedule.xlsx", "Microsoft Excel"),
+            seg("c", 900, 1500, "Hollis letter.docx"),
+            seg("d", 1500, 1530, "Slack", "Slack", { document: null, title: "Slack" }),
+            seg("e", 1530, 1800, "Brantley schedule.xlsx", "Microsoft Excel"),
+            seg("f", 1800 + 20 * 60, 1800 + 20 * 60 + 300, "Hollis letter.docx"), // 20 minutes later: a new stretch
+            seg("g", 100, 400, "Kept already.docx", "Microsoft Word", { disposition: "kept" }),
+        ];
+        const { stretches, short } = stretchesOf(acts);
+        expect(stretches.map((st) => [st.name, st.sittings, st.seconds])).toEqual([
+            ["Hollis letter.docx", 1, 300],
+            ["Brantley schedule.xlsx", 2, 570],
+            ["Hollis letter.docx", 2, 1200],
+        ]);
+        expect(stretches[2].activityIDs).toEqual(["a", "c"]);
+        expect(stretches[2]).toMatchObject({ startedAt: iso(0), endedAt: iso(1500), endedBy: "switched" });
+        expect(short.map((st) => [st.name, st.seconds])).toEqual([["Slack", 30]]);
+    });
+
+    it("keeps a stretch as one entry whose sittings alone count and alone block overlap, and reopens all of them on delete", () => {
+        const w = emptyWorkspace();
+        w.activities = [seg("a", 0, 600, "Hollis letter.docx"), seg("b", 600, 900, "Brantley schedule.xlsx", "Microsoft Excel"), seg("c", 900, 1500, "Hollis letter.docx")];
+        const hollis = stretchesOf(w.activities).stretches.find((st) => st.sittings === 2)!;
+        const entry = keepStretch(w, hollis.activityIDs, { description: "Drafted the Hollis letter", projectID: null, billable: true }, at(2000));
+        expect(entry).toMatchObject({ startedAt: iso(0), endedAt: iso(1500), activityID: "a", activityIDs: ["a", "c"] });
+        expect(entry.sittings).toEqual([{ startedAt: iso(0), endedAt: iso(600) }, { startedAt: iso(900), endedAt: iso(1500) }]);
+        expect(seconds(entry)).toBe(1200);
+        expect(secondsWithin(entry, at(500), at(1000))).toBe(200);
+        expect(w.activities.filter((a) => a.disposition === "kept").map((a) => a.id)).toEqual(["a", "c"]);
+        // The Excel sitting sits in the gap: it is still free to keep.
+        const excel = keepActivity(w, "b", { description: "Schedule", projectID: null, billable: true }, at(2000));
+        expect(excel.sittings).toBeUndefined();
+        expect(seconds(excel)).toBe(300);
+        // But nothing may land on a sitting.
+        expect(() => saveEntry(w, { ...excel, id: "x", startedAt: iso(1000), endedAt: iso(1100) }, at(2000))).toThrow(WorkspaceError);
+        // The wire request carries the worked seconds, which both servers honour.
+        expect(syncRequest(w, "t").entries.find((e) => e.id === entry.id)?.seconds).toBe(1200);
+        // Sittings must stay inside the span and in order.
+        expect(() => saveEntry(w, { ...entry, id: "y", sittings: [{ startedAt: iso(0), endedAt: iso(2000) }] }, at(3000))).toThrow(WorkspaceError);
+        deleteEntry(w, entry.id);
+        expect(w.activities.filter((a) => a.disposition === "pending").map((a) => a.id)).toEqual(["a", "c"]);
+        // Dismissing a stretch dismisses every sitting; a stretch cannot be kept twice.
+        dismissActivities(w, ["a", "c"]);
+        expect(w.activities.map((a) => a.disposition)).toEqual(["dismissed", "kept", "dismissed"]);
+        expect(() => keepStretch(w, ["a", "c"], { description: "x", projectID: null, billable: true }, at(3000))).toThrow(WorkspaceError);
     });
 });
 

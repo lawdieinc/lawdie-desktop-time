@@ -77,3 +77,6 @@ are unsigned: macOS users click Open Anyway once, Windows users Run anyway once.
 2026-09-27: Lawdie CRM became the second destination (its `057_crm_desktop_time`
 migration, `/api/desktop-time/*`, Time page "On your desktop"); Settings gained the picker,
 then "Both" with one token registered on both sides at pairing.
+2026-09-28: the inbox reviews stretches (sittings on one document grouped, 15-minute gap,
+one entry with `sittings`), after "too many entries a user needs to manually accept".
+Servers honour the entry's `seconds`. Version 0.6.0.

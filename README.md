@@ -60,8 +60,15 @@ and attaches the installers to the GitHub Release. Locally, `npm run package:mac
 - Idle cutoff, sleep, and screen-lock handling: a segment and a running timer end at the
   last input; returning does not silently restart billing. Crash recovery ends at the last
   persisted observation, never across the downtime.
-- Activity inbox: keep a segment as a time entry (description, billable) or dismiss it.
-  Keeping never overlaps time already kept. Retention removes raw activity, never entries.
+- Activity inbox: review **stretches**, not switches. A segment ends every time focus
+  changes (that is what keeps the minutes honest), but the inbox groups the sittings on one
+  document within 15 minutes of each other into one stretch — even with other documents'
+  sittings in between — and offers it once: keep it as one time entry (description,
+  billable) or dismiss it. Hops under a minute are set apart as "short switches" and
+  dismissed in one click. A stretch entry spans first sitting to last, but only the
+  sittings count as time and only they block overlap, so the minutes in another document
+  between two sittings stay free to keep on their own. Retention removes raw activity,
+  never entries.
 - Exclusions (password managers and system settings by default; add your own by bundle id
   or `.exe` name), pause/resume from the window or the tray, clear-activity control.
 - Sync to Kiwi or Lawdie CRM: pair this computer from either Time page; captured activity and kept entries

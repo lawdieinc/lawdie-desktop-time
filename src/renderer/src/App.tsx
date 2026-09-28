@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import type { Activity, TimeEntry, Workspace } from "@shared/model";
+import { NOISE_SECONDS, STRETCH_GAP_MS, seconds as entrySeconds, secondsWithin, stretchesOf, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
@@ -32,7 +32,7 @@ export function App(): ReactNode {
     if (!state) return <div className="loading">Opening your workspace…</div>;
     const w = state.workspace;
     const connected = w.sync !== null;
-    const pending = w.activities.filter((a) => a.disposition === "pending").length;
+    const pending = stretchesOf(w.activities).stretches.length; // no hook: this sits after the early return above
 
     return (
         <div className="shell">
@@ -101,16 +101,16 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
     const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
     const start = dayStart.getTime(), end = start + 86_400_000;
     const entries = w.entries.filter((e) => Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
-    const tracked = entries.reduce((s, e) => s + (Math.min(Date.parse(e.endedAt), end) - Math.max(Date.parse(e.startedAt), start)) / 1000, 0);
-    const billable = entries.filter((e) => e.billable).reduce((s, e) => s + (Math.min(Date.parse(e.endedAt), end) - Math.max(Date.parse(e.startedAt), start)) / 1000, 0);
-    const pending = w.activities.filter((a) => a.disposition === "pending").length;
+    const tracked = entries.reduce((s, e) => s + secondsWithin(e, start, end), 0);
+    const billable = entries.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0);
+    const pending = stretchesOf(w.activities).stretches.length;
     return (
         <>
             <Heading eyebrow={new Date(now).toLocaleDateString([], { weekday: "long" })} title="Your day, accounted for." subtitle="Track your work across matters, documents, and desktop apps." />
             <div className="metrics">
                 <Metric label="Tracked today" value={duration(tracked)} detail={`${entries.length} saved entries`} />
                 <Metric label="Billable time" value={duration(billable)} detail="Ready for your next invoice" />
-                <Metric label="To review" value={String(pending)} detail="Captured desktop activities" />
+                <Metric label="To review" value={String(pending)} detail="Stretches of desktop work" />
             </div>
             <Panel>
                 <div className="row between"><strong>Your day, in focus</strong><span className="eyebrow">Today</span></div>
@@ -129,9 +129,9 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
             <span className="bar" />
             <div className="grow">
                 <div className="small strong">{entry.description}</div>
-                <div className="muted tiny">{p?.name ?? "No project"} · {clock(entry.startedAt)}{entry.billable ? " · billable" : ""}</div>
+                <div className="muted tiny">{p?.name ?? "No project"} · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : ""}</div>
             </div>
-            <span className="mono">{duration((Date.parse(entry.endedAt) - Date.parse(entry.startedAt)) / 1000)}</span>
+            <span className="mono">{duration(entrySeconds(entry))}</span>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete entry" onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
         </div>
     );
@@ -141,9 +141,12 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
 
 function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNode {
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
-    const [reviewing, setReviewing] = useState<Activity | null>(null);
-    const list = useMemo(() => w.activities.filter((a) => filter === "all" || a.disposition === filter).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.activities, filter]);
+    const [reviewing, setReviewing] = useState<Stretch | null>(null);
+    const { stretches, short } = useMemo(() => stretchesOf(w.activities), [w.activities]);
+    const raw = useMemo(() => w.activities.filter((a) => filter === "all" || a.disposition === filter).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.activities, filter]);
     const current = w.currentActivity;
+    const shortSeconds = short.reduce((n, st) => n + st.seconds, 0);
+    const gapMinutes = Math.round(STRETCH_GAP_MS / 60_000);
     return (
         <>
             <div className="row between">
@@ -155,20 +158,49 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     <span className="big-icon">{w.preferences.captureEnabled ? "∿" : "‖"}</span>
                     <div className="grow">
                         <strong>{w.preferences.captureEnabled ? "Desktop capture is active" : "Capture is paused"}</strong>
-                        <p className="muted small">{current ? `Currently in ${current.app} · ${duration((Date.now() - Date.parse(current.startedAt)) / 1000)}` : "App names and durations only by default. No screenshots, keystrokes, or page content."}</p>
+                        <p className="muted small">{current ? `Currently in ${current.app} · ${duration((Date.now() - Date.parse(current.startedAt)) / 1000)}` : "App names and durations only by default. No screenshots, keystrokes, or page contents."}</p>
                     </div>
                 </div>
             </Panel>
             <div className="row between">
                 <div className="segmented" role="tablist">
-                    {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All activity" }[f]}</button>)}
+                    {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All" }[f]}</button>)}
                 </div>
-                <span className="muted small">{list.length} activities · retained {w.preferences.retentionDays} days</span>
+                <span className="muted small">{filter === "pending" ? `${stretches.length} stretches` : `${raw.length} sittings`} · retained {w.preferences.retentionDays} days</span>
             </div>
             <Panel>
-                {list.length === 0 ? (
-                    <Empty title={filter === "pending" ? "You're all caught up." : "No activities here yet."} detail="Enable capture, then work in another app. Activity appears here when you switch apps, go idle, or pause capture." />
-                ) : list.map((a) => (
+                {filter === "pending" ? (
+                    <>
+                        {stretches.length === 0 && short.length === 0 && (
+                            <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, go idle, or pause capture." />
+                        )}
+                        {stretches.map((st) => (
+                            <div className="activity" key={st.id}>
+                                <span className="app-icon">▭</span>
+                                <div className="grow">
+                                    <div className="small strong">{st.name}</div>
+                                    <div className="muted tiny">{st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)} · ${st.sittings} sittings` : ` · ${st.endedBy}`}{st.document?.path ? ` · ${st.document.path}` : ""}</div>
+                                </div>
+                                <span className="mono">{duration(st.seconds)}</span>
+                                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
+                                <button type="button" className="primary" onClick={() => setReviewing(st)}>Keep time</button>
+                            </div>
+                        ))}
+                        {short.length > 0 && (
+                            <div className="activity">
+                                <span className="app-icon muted">·</span>
+                                <div className="grow">
+                                    <div className="small strong">{short.length} short {short.length === 1 ? "switch" : "switches"}</div>
+                                    <div className="muted tiny">Under {NOISE_SECONDS} seconds each — app hops, not work. Sittings on one document within {gapMinutes} minutes are already grouped above.</div>
+                                </div>
+                                <span className="mono">{duration(shortSeconds)}</span>
+                                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(short.flatMap((st) => st.activityIDs))}>Dismiss all</button>
+                            </div>
+                        )}
+                    </>
+                ) : raw.length === 0 ? (
+                    <Empty title="No activities here yet." detail="Each sitting — one stay in one app — is listed here once reviewed." />
+                ) : raw.map((a) => (
                     <div className="activity" key={a.id}>
                         <span className="app-icon">▭</span>
                         <div className="grow">
@@ -176,43 +208,38 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <div className="muted tiny">{a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {a.endedBy}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
                         </div>
                         <span className="mono">{duration((Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000)}</span>
-                        {a.disposition === "pending" ? (
-                            <>
-                                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(a.id)}>Dismiss</button>
-                                <button type="button" className="primary" onClick={() => setReviewing(a)}>Keep time</button>
-                            </>
-                        ) : <span className={"muted small status " + a.disposition}>{a.disposition === "kept" ? "Kept" : "Dismissed"}</span>}
+                        <span className={"muted small status " + a.disposition}>{a.disposition === "kept" ? "Kept" : a.disposition === "dismissed" ? "Dismissed" : "To review"}</span>
                     </div>
                 ))}
             </Panel>
-            {reviewing && <KeepSheet activity={reviewing} onClose={() => setReviewing(null)} />}
+            {reviewing && <KeepSheet stretch={reviewing} onClose={() => setReviewing(null)} />}
         </>
     );
 }
 
-function KeepSheet({ activity, onClose }: { activity: Activity; onClose: () => void }): ReactNode {
-    const [description, setDescription] = useState(activity.document?.name ?? activity.title ?? `Work in ${activity.app}`);
+function KeepSheet({ stretch, onClose }: { stretch: Stretch; onClose: () => void }): ReactNode {
+    const [description, setDescription] = useState(stretch.document?.name ?? stretch.name);
     const [billable, setBillable] = useState(true);
     const [problem, setProblem] = useState<string | null>(null);
     const save = async (): Promise<void> => {
         if (!description.trim()) { setProblem("Add a description."); return; }
-        if (await window.lawdie.keepActivity(activity.id, { description, projectID: null, billable })) onClose();
+        if (await window.lawdie.keepActivity(stretch.activityIDs, { description, projectID: null, billable })) onClose();
         else setProblem("That could not be saved. It may overlap time you already kept.");
     };
     return (
         <div className="scrim" onClick={onClose}>
             <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
-                <Heading eyebrow="From desktop activity" title="Keep time" subtitle="Review this activity and choose where it belongs." />
+                <Heading eyebrow="From desktop activity" title="Keep time" subtitle={stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
                 <label className="field"><span className="eyebrow">Description</span><input autoFocus value={description} onChange={(e) => setDescription(e.target.value)} /></label>
                 <div className="row gap">
-                    <div className="field"><span className="eyebrow">Start</span><span>{dayLabel(activity.startedAt)} {clock(activity.startedAt)}</span></div>
-                    <div className="field"><span className="eyebrow">End</span><span>{clock(activity.endedAt)}</span></div>
+                    <div className="field"><span className="eyebrow">Start</span><span>{dayLabel(stretch.startedAt)} {clock(stretch.startedAt)}</span></div>
+                    <div className="field"><span className="eyebrow">End</span><span>{clock(stretch.endedAt)}</span></div>
                     <label className="row gap check"><input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
                 </div>
-                <p className="muted tiny">Captured times are preserved. If this overlaps tracked time, dismiss the activity instead.</p>
+                <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; time in other apps between them stays free to keep on its own." : "Captured times are preserved."} If this overlaps tracked time, dismiss the activity instead.</p>
                 {problem && <p className="danger small">{problem}</p>}
                 <div className="row between">
-                    <span className="mono accent big">{duration((Date.parse(activity.endedAt) - Date.parse(activity.startedAt)) / 1000)}</span>
+                    <span className="mono accent big">{duration(stretch.seconds)}</span>
                     <span className="row gap"><button type="button" className="quiet" onClick={onClose}>Cancel</button><button type="submit" className="primary">Keep time</button></span>
                 </div>
             </form>

@@ -185,3 +185,13 @@ panel) is therefore not yet done; it needs Office signed in once and Kiwi's
   (now held until Done), and the ledger table did not learn about entries a sync logged
   (now reloads when the poll shows new ones).
 
+## 2026-09-28 — stretches in the inbox
+
+- `npm test` (37), `npm run typecheck` clean. New: `stretchesOf` grouping across other
+  documents' sittings with the gap and the noise floor; `keepStretch` writing one entry
+  whose sittings alone count and alone block overlap; delete reopening every sitting; the
+  wire `seconds`. Kiwi (39) and the CRM (17) tests cover `cleanEntry` honouring `seconds`.
+- The built app opened on a copy of the real workspace (252 sittings): the inbox showed
+  stretches with sitting counts and a single "short switches" line instead of one row per
+  hop (screenshot looked at).
+

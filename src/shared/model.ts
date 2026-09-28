@@ -35,7 +35,13 @@ export type TimeEntry = {
     /** manual | timer | desktop | timer-idle | timer-suspended | timer-recovered */
     source: string;
     activityID: string | null;
+    /** A stretch kept from several sittings: the sittings, in order, inside [startedAt, endedAt]. Only their time counts. */
+    sittings?: Interval[];
+    /** Every activity a stretch entry was kept from (activityID is the first). */
+    activityIDs?: string[];
 };
+
+export type Interval = { startedAt: string; endedAt: string };
 
 export type RunningTimer = {
     description: string;
@@ -137,7 +143,14 @@ export class WorkspaceError extends Error {}
 
 const ms = (iso: string) => Date.parse(iso);
 const iso = (t: number) => new Date(t).toISOString();
-export const seconds = (a: { startedAt: string; endedAt: string }) => Math.max(0, (ms(a.endedAt) - ms(a.startedAt)) / 1000);
+/** The spans an entry's time is made of: its sittings when it was kept as a stretch, else the whole interval. */
+export const intervals = (e: Interval & { sittings?: Interval[] }): Interval[] => (e.sittings && e.sittings.length ? e.sittings : [e]);
+const spanSeconds = (a: Interval) => Math.max(0, (ms(a.endedAt) - ms(a.startedAt)) / 1000);
+/** Seconds of work in an entry or activity: a stretch counts only its sittings, never the gaps between them. */
+export const seconds = (a: Interval & { sittings?: Interval[] }) => intervals(a).reduce((sum, i) => sum + spanSeconds(i), 0);
+/** The seconds of an entry that fall inside [start, end]. */
+export const secondsWithin = (e: Interval & { sittings?: Interval[] }, start: number, end: number) =>
+    intervals(e).reduce((sum, i) => sum + Math.max(0, Math.min(ms(i.endedAt), end) - Math.max(ms(i.startedAt), start)) / 1000, 0);
 
 export function uuid(): string {
     return globalThis.crypto.randomUUID();
@@ -159,7 +172,7 @@ export function isExcluded(prefs: Preferences, ownerID: string): boolean {
 
 export function overlaps(w: Workspace, start: number, end: number, excluding: string | null = null): boolean {
     return (
-        w.entries.some((e) => e.id !== excluding && ms(e.startedAt) < end && ms(e.endedAt) > start) ||
+        w.entries.some((e) => e.id !== excluding && intervals(e).some((i) => ms(i.startedAt) < end && ms(i.endedAt) > start)) ||
         (w.timer !== null && ms(w.timer.startedAt) < end)
     );
 }
@@ -196,24 +209,63 @@ export function saveEntry(w: Workspace, entry: TimeEntry, now: number): void {
     if (!(end > start) || end > now + 1000) throw new WorkspaceError("The end must be after the start and cannot be in the future.");
     if (!Number.isFinite(entry.hourlyRate) || entry.hourlyRate < 0) throw new WorkspaceError("Enter a valid hourly rate.");
     if (entry.projectID && !project(w, entry.projectID)) throw new WorkspaceError("Choose an existing project.");
-    if (overlaps(w, start, end, entry.id)) throw new WorkspaceError("This time overlaps another entry or the running timer. Adjust the times to avoid double counting.");
+    if (entry.sittings && !sittingsValid(entry)) throw new WorkspaceError("The sittings of this entry are out of order or outside its span.");
+    if (intervals(entry).some((i) => overlaps(w, ms(i.startedAt), ms(i.endedAt), entry.id))) throw new WorkspaceError("This time overlaps another entry or the running timer. Adjust the times to avoid double counting.");
     const index = w.entries.findIndex((e) => e.id === entry.id);
     if (index >= 0) w.entries[index] = entry;
     else w.entries.push(entry);
 }
 
-export function keepActivity(w: Workspace, id: string, input: { description: string; projectID: string | null; billable: boolean }, now: number): TimeEntry {
-    const activity = w.activities.find((a) => a.id === id);
-    if (!activity || activity.disposition !== "pending") throw new WorkspaceError("This activity has already been reviewed.");
-    const entry: TimeEntry = { id: uuid(), description: input.description.trim(), projectID: input.projectID, startedAt: activity.startedAt, endedAt: activity.endedAt, billable: input.billable, hourlyRate: project(w, input.projectID)?.hourlyRate ?? 0, source: "desktop", activityID: id };
+/** Sittings inside the entry's span, in order, not overlapping one another. */
+export function sittingsValid(e: TimeEntry): boolean {
+    const list = e.sittings ?? [];
+    return list.every((i, n) => validIso(i.startedAt) && validIso(i.endedAt) && ms(i.endedAt) > ms(i.startedAt)
+        && ms(i.startedAt) >= ms(e.startedAt) && ms(i.endedAt) <= ms(e.endedAt) && (n === 0 || ms(i.startedAt) >= ms(list[n - 1].endedAt)));
+}
+
+/** Adjacent or touching spans become one. */
+function mergeAdjacent(list: Interval[]): Interval[] {
+    const out: Interval[] = [];
+    for (const i of [...list].sort((a, b) => ms(a.startedAt) - ms(b.startedAt))) {
+        const last = out[out.length - 1];
+        if (last && ms(i.startedAt) <= ms(last.endedAt)) { if (ms(i.endedAt) > ms(last.endedAt)) last.endedAt = i.endedAt; }
+        else out.push({ startedAt: i.startedAt, endedAt: i.endedAt });
+    }
+    return out;
+}
+
+/**
+ * Keep a stretch — one or more pending activities — as ONE entry. The entry spans the
+ * first sitting's start to the last one's end, but only the sittings count as time and
+ * only they are held against overlap, so the minutes spent in another document between
+ * two sittings stay free to be kept on their own.
+ */
+export function keepStretch(w: Workspace, activityIDs: string[], input: { description: string; projectID: string | null; billable: boolean }, now: number): TimeEntry {
+    const ids = [...new Set(activityIDs)];
+    const picked = ids.map((id) => w.activities.find((a) => a.id === id));
+    if (!ids.length || picked.some((a) => !a || a.disposition !== "pending")) throw new WorkspaceError("This activity has already been reviewed.");
+    const sittings = mergeAdjacent((picked as Activity[]).map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt })));
+    const first = sittings[0], last = sittings[sittings.length - 1];
+    const entry: TimeEntry = {
+        id: uuid(), description: input.description.trim(), projectID: input.projectID, startedAt: first.startedAt, endedAt: last.endedAt,
+        billable: input.billable, hourlyRate: project(w, input.projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
+        ...(sittings.length > 1 ? { sittings } : {}), ...(ids.length > 1 ? { activityIDs: ids } : {}),
+    };
     saveEntry(w, entry, now);
-    activity.disposition = "kept";
+    for (const a of picked as Activity[]) a.disposition = "kept";
     return entry;
 }
 
+export function keepActivity(w: Workspace, id: string, input: { description: string; projectID: string | null; billable: boolean }, now: number): TimeEntry {
+    return keepStretch(w, [id], input, now);
+}
+
 export function dismissActivity(w: Workspace, id: string): void {
-    const activity = w.activities.find((a) => a.id === id);
-    if (activity && activity.disposition === "pending") activity.disposition = "dismissed";
+    dismissActivities(w, [id]);
+}
+
+export function dismissActivities(w: Workspace, ids: string[]): void {
+    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") a.disposition = "dismissed";
 }
 
 /** Removes an entry, reopens the activity it came from, and remembers the deletion for Kiwi. */
@@ -221,8 +273,8 @@ export function deleteEntry(w: Workspace, id: string): void {
     const entry = w.entries.find((e) => e.id === id);
     if (!entry) return;
     w.entries = w.entries.filter((e) => e.id !== id);
-    const activity = w.activities.find((a) => a.id === entry.activityID);
-    if (activity) activity.disposition = "pending";
+    const from = new Set([entry.activityID, ...(entry.activityIDs ?? [])]);
+    for (const a of w.activities) if (from.has(a.id)) a.disposition = "pending";
     for (const t of w.sync?.targets ?? []) if (!t.deletedEntryIDs.includes(id)) t.deletedEntryIDs.push(id);
 }
 
@@ -314,7 +366,65 @@ export function prune(w: Workspace, now: number): void {
 
 /** Seconds of kept time inside [start, end), clipped. */
 export function secondsBetween(w: Workspace, start: number, end: number, billableOnly = false): number {
-    return w.entries.filter((e) => !billableOnly || e.billable).reduce((sum, e) => sum + Math.max(0, Math.min(ms(e.endedAt), end) - Math.max(ms(e.startedAt), start)) / 1000, 0);
+    return w.entries.filter((e) => !billableOnly || e.billable).reduce((sum, e) => sum + secondsWithin(e, start, end), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Stretches: how the inbox groups sittings for review
+// ---------------------------------------------------------------------------
+
+/** Sittings on the same document at most this far apart are one stretch. */
+export const STRETCH_GAP_MS = 15 * 60_000;
+/** A stretch shorter than this is an app hop, not work; it is offered only in bulk. */
+export const NOISE_SECONDS = 60;
+
+export type Stretch = {
+    /** The first sitting's id; stable while the stretch is pending. */
+    id: string;
+    app: string;
+    ownerID: string;
+    /** The document, else the window title, else the app. */
+    name: string;
+    document: DocumentInfo | null;
+    activityIDs: string[];
+    startedAt: string;
+    endedAt: string;
+    /** Only the sittings' time. */
+    seconds: number;
+    sittings: number;
+    endedBy: string;
+};
+
+const stretchKey = (a: Activity): string => `${a.ownerID}\n${a.document?.name ?? a.title ?? ""}`;
+const localDayOf = (isoText: string): string => { const d = new Date(isoText); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+
+/**
+ * Pending activities as stretches: consecutive sittings in the same app on the same
+ * document (or title), on the same day, with gaps under STRETCH_GAP_MS, become one — even
+ * with other documents' sittings in between, which is how real work goes. Stretches under
+ * NOISE_SECONDS are returned apart, to be dismissed in one go. Newest first.
+ */
+export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP_MS, noiseSeconds = NOISE_SECONDS): { stretches: Stretch[]; short: Stretch[] } {
+    const pending = activities.filter((a) => a.disposition === "pending").sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
+    const open = new Map<string, Stretch>();
+    const all: Stretch[] = [];
+    for (const a of pending) {
+        const key = stretchKey(a);
+        const last = open.get(key);
+        if (last && ms(a.startedAt) - ms(last.endedAt) <= gapMs && localDayOf(a.startedAt) === localDayOf(last.startedAt)) {
+            last.activityIDs.push(a.id);
+            last.endedAt = a.endedAt;
+            last.seconds += spanSeconds(a);
+            last.sittings += 1;
+            last.endedBy = a.endedBy;
+            continue;
+        }
+        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: a.document?.name ?? a.title ?? a.app, document: a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy };
+        open.set(key, fresh);
+        all.push(fresh);
+    }
+    all.sort((x, y) => ms(y.startedAt) - ms(x.startedAt));
+    return { stretches: all.filter((st) => st.seconds >= noiseSeconds), short: all.filter((st) => st.seconds < noiseSeconds) };
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +523,7 @@ export function validate(w: Workspace): Workspace {
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0) &&
-        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0) &&
+        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs))) &&
         w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
