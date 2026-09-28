@@ -133,7 +133,12 @@ app.whenReady().then(() => {
     const shot = argValue("--screenshot");
     if (shot) {
         mainWindow.webContents.on("console-message", (event) => console.log(`[renderer:${event.level}] ${event.message}`));
-        mainWindow.webContents.once("did-finish-load", () => setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 2500));
+        // `--click <css selector>` presses one control first, so a folded part of a screen can be captured open.
+        const click = argValue("--click");
+        mainWindow.webContents.once("did-finish-load", () => {
+            if (click) setTimeout(() => void mainWindow?.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(click)})?.click()`), 1500);
+            setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 2500);
+        });
     }
     buildTray(store, capture);
     capture.start();

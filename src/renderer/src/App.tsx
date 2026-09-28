@@ -4,6 +4,7 @@ import { NOISE_SECONDS, STRETCH_GAP_MS, intervals, seconds as entrySeconds, seco
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
+import kiwiMark from "../../../resources/brand/kiwi.png";
 
 /* The window. Three screens for now — Today, Activity, Settings — and the Kiwi
    connection. Everything it shows is the main process's AppState; everything it does
@@ -38,7 +39,7 @@ export function App(): ReactNode {
         <div className="shell">
             <aside className="sidebar">
                 <div className="brand">
-                    <img src={wordmark} alt="Lawdie" className="wordmark" draggable={false} />
+                    <span className="marks"><img src={kiwiMark} alt="" className="kiwi-mark" draggable={false} /><img src={wordmark} alt="Lawdie" className="wordmark" draggable={false} /></span>
                     <h1 className="display">Time capture</h1>
                 </div>
                 <p className="eyebrow">Workspace</p>
@@ -182,26 +183,25 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                         {stretches.map((st) => (
                             <div key={st.id}>
                                 <div className="activity">
-                                    {st.sittings > 1
-                                        ? <button type="button" className="icon" aria-expanded={!!open[st.id]} aria-label={open[st.id] ? "Hide sittings" : "Show sittings"} onClick={() => toggle(st.id)}>{open[st.id] ? "▾" : "▸"}</button>
-                                        : <span className="icon-space" aria-hidden="true" />}
                                     <span className="app-icon">▭</span>
                                     <div className="grow">
                                         <div className="small strong">{st.name}</div>
-                                        <div className="muted tiny">{st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)} · ${st.sittings} sittings` : ` · ${st.endedBy}`}{st.document?.path ? ` · ${st.document.path}` : ""}</div>
+                                        <div className="muted tiny meta">
+                                            <span>{st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)}` : ` · ${endedLabel(st.endedBy)}`}{st.document?.path ? ` · ${st.document.path}` : ""}</span>
+                                            {st.sittings > 1 && <SittingsToggle count={st.sittings} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
+                                        </div>
                                     </div>
                                     <span className="mono">{duration(st.seconds)}</span>
                                     <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
                                     <button type="button" className="primary" onClick={() => setReviewing(st)}>Keep time</button>
                                 </div>
                                 {open[st.id] && st.sittings > 1 && (
-                                    <Sittings items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={(id) => void window.lawdie.dismissActivity(id)} />
+                                    <Sittings items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
                                 )}
                             </div>
                         ))}
                         {short.length > 0 && (
                             <div className="activity">
-                                <span className="icon-space" aria-hidden="true" />
                                 <span className="app-icon muted">·</span>
                                 <div className="grow">
                                     <div className="small strong">{short.length} short {short.length === 1 ? "switch" : "switches"}</div>
@@ -221,13 +221,13 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                         return (
                             <div key={e.id}>
                                 <div className="activity">
-                                    {spans.length > 1
-                                        ? <button type="button" className="icon" aria-expanded={!!open[e.id]} aria-label={open[e.id] ? "Hide sittings" : "Show sittings"} onClick={() => toggle(e.id)}>{open[e.id] ? "▾" : "▸"}</button>
-                                        : <span className="icon-space" aria-hidden="true" />}
                                     <span className="app-icon">▭</span>
                                     <div className="grow">
                                         <div className="small strong">{e.description}</div>
-                                        <div className="muted tiny">{first ? `${first.app} · ` : ""}{dayLabel(e.startedAt)} {clock(e.startedAt)}–{clock(e.endedAt)}{spans.length > 1 ? ` · ${spans.length} sittings` : ""}{e.billable ? " · billable" : " · not billable"}</div>
+                                        <div className="muted tiny meta">
+                                            <span>{first ? `${first.app} · ` : ""}{dayLabel(e.startedAt)} {clock(e.startedAt)}–{clock(e.endedAt)}{e.billable ? " · billable" : " · not billable"}</span>
+                                            {spans.length > 1 && <SittingsToggle count={spans.length} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
+                                        </div>
                                     </div>
                                     <span className="mono">{duration(entrySeconds(e))}</span>
                                     <span className="muted small status kept">Kept</span>
@@ -241,11 +241,10 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     <Empty title="No activities here yet." detail="Each sitting — one stay in one app — is listed here once reviewed." />
                 ) : raw.map((a) => (
                     <div className="activity" key={a.id}>
-                        <span className="icon-space" aria-hidden="true" />
                         <span className="app-icon">▭</span>
                         <div className="grow">
                             <div className="small strong">{a.document?.name || a.title || a.app}</div>
-                            <div className="muted tiny">{a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {a.endedBy}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
+                            <div className="muted tiny">{a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {endedLabel(a.endedBy)}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
                         </div>
                         <span className="mono">{duration((Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000)}</span>
                         <span className={"muted small status " + a.disposition}>{a.disposition === "kept" ? "Kept" : a.disposition === "dismissed" ? "Dismissed" : "To review"}</span>
@@ -257,18 +256,46 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
     );
 }
 
-/** The sittings inside a stretch or a kept entry, one line each. With `onDismiss`, each can be dropped from the stretch. */
+/** How a sitting ended, in words. */
+const ENDED_BY: Record<string, string> = {
+    switched: "switched apps", idle: "went idle", suspended: "the computer slept", gap: "lost track", paused: "paused capture",
+    quit: "quit the app", excluded: "opened a private app", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down",
+};
+const endedLabel = (by: string | undefined): string => (by ? ENDED_BY[by] ?? by : "");
+
+/** "6 sittings ▾" — the count is the control that opens them. */
+function SittingsToggle({ count, open, onClick }: { count: number; open: boolean; onClick: () => void }): ReactNode {
+    return (
+        <button type="button" className={"sittings-toggle" + (open ? " open" : "")} aria-expanded={open} onClick={onClick}>
+            {count} sittings
+            <svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M0.6 1.2h7.8L4.5 5.2z" fill="currentColor" /></svg>
+        </button>
+    );
+}
+
+/** The sittings inside a stretch or a kept entry as a timeline: each sitting on the rail,
+ *  the time away between two of them named, and, while a stretch is still under review,
+ *  a Dismiss on each that drops it from the stretch. */
 function Sittings({ items, onDismiss }: { items: (Interval & { id?: string; endedBy?: string })[]; onDismiss?: (id: string) => void }): ReactNode {
     return (
         <div className="sittings">
-            {items.map((i, n) => (
-                <div className="sitting" key={i.id ?? n}>
-                    <span className="muted tiny">{clock(i.startedAt)}–{clock(i.endedAt)}{i.endedBy ? ` · ${i.endedBy}` : ""}</span>
-                    <span className="grow" />
-                    <span className="mono tiny">{duration((Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000)}</span>
-                    {onDismiss && i.id && <button type="button" className="link tiny" onClick={() => onDismiss(i.id as string)}>Dismiss</button>}
-                </div>
-            ))}
+            {items.map((i, n) => {
+                const prev = items[n - 1];
+                const away = prev ? (Date.parse(i.startedAt) - Date.parse(prev.endedAt)) / 1000 : 0;
+                return (
+                    <div key={i.id ?? n}>
+                        {prev && away >= 30 && <div className="sitting-gap"><span className="sitting-rail" aria-hidden="true" /><span className="tiny muted">{duration(away)} away</span></div>}
+                        <div className="sitting">
+                            <span className="sitting-dot" aria-hidden="true" />
+                            <span className="small">{clock(i.startedAt)}–{clock(i.endedAt)}</span>
+                            {i.endedBy && <span className="tiny muted">{endedLabel(i.endedBy)}</span>}
+                            <span className="grow" />
+                            <span className="mono small">{duration((Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000)}</span>
+                            {onDismiss && i.id && <button type="button" className="link sitting-dismiss" onClick={() => onDismiss(i.id as string)}>Dismiss</button>}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }

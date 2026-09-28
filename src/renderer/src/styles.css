@@ -31,7 +31,7 @@ h1, h2 { margin: 0; font-weight: 600; }
 .shell { display: flex; height: 100%; }
 .sidebar { width: 218px; background: var(--sidebar); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 48px 0 0; -webkit-app-region: drag; }
 .sidebar button, .sidebar nav { -webkit-app-region: no-drag; }
-.brand { padding: 0 23px 38px; } .wordmark { width: 139px; height: auto; display: block; margin-bottom: 15px; } .brand h1 { font-size: 22px; }
+.brand { padding: 0 23px 38px; } .marks { display: flex; align-items: center; gap: 9px; margin-bottom: 15px; } .kiwi-mark { width: 32px; height: 32px; object-fit: contain; display: block; } .wordmark { width: 108px; height: auto; display: block; } .brand h1 { font-size: 22px; }
 .sidebar > .eyebrow { padding: 0 24px 15px; }
 .nav { display: flex; align-items: center; gap: 12px; width: calc(100% - 24px); margin: 0 12px 4px; padding: 13px 14px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); text-align: left; }
 .nav:hover { color: var(--text); } .nav.active { color: var(--accent); background: rgba(139, 92, 42, 0.07); font-weight: 600; }
@@ -79,8 +79,21 @@ input, select { padding: 9px 11px; border: 1px solid var(--line); border-radius:
 
 @media (prefers-reduced-transparency: reduce) { .panel { background: #fff; backdrop-filter: none; } }
 /* Sittings inside a stretch (Activity inbox) */
-.icon-space { width: 28px; flex: none; }
-.activity > .icon { width: 28px; flex: none; padding: 0; }
-.sittings { margin: -6px 0 8px 85px; padding: 4px 12px; border-left: 2px solid var(--line); }
-.sitting { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-.link.tiny { font-size: 11px; }
+.meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sittings-toggle {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--line); background: rgba(255, 255, 255, 0.5); color: var(--muted); font-size: 11px; font-weight: 600;
+}
+.sittings-toggle:hover { color: var(--text); border-color: rgba(139, 92, 42, 0.35); }
+.sittings-toggle.open { color: var(--accent); background: rgba(139, 92, 42, 0.08); border-color: rgba(139, 92, 42, 0.25); }
+.sittings-toggle svg { transition: transform 0.15s ease; transform: rotate(-90deg); opacity: 0.8; }
+.sittings-toggle.open svg { transform: none; }
+.sittings { margin: -4px 0 10px 57px; padding: 6px 14px 4px 0; border-bottom: 1px solid var(--line); }
+.sitting { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 0 7px 22px; }
+.sitting::before { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+.sitting-dot { position: absolute; left: 0; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
+.sitting-gap { position: relative; display: flex; align-items: center; padding: 2px 0 2px 22px; }
+.sitting-gap .sitting-rail { position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: repeating-linear-gradient(to bottom, var(--line) 0 3px, transparent 3px 6px); }
+.sitting-dismiss { font-size: 11px; opacity: 0; transition: opacity 0.12s ease; }
+.sitting:hover .sitting-dismiss, .sitting-dismiss:focus-visible { opacity: 1; }
+.sheet .sittings { margin-left: 0; border-bottom: 0; max-height: 180px; overflow: auto; }
