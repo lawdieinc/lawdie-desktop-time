@@ -27,6 +27,9 @@ export const api = {
     disconnectKiwi: (): Promise<void> => ipcRenderer.invoke("disconnectKiwi"),
     syncNow: (): Promise<void> => ipcRenderer.invoke("syncNow"),
     setAutoSync: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setAutoSync", on),
+    openAtLogin: (): Promise<boolean> => ipcRenderer.invoke("openAtLogin"),
+    /** Resolves to what the OS now reports, which may differ if it refused. */
+    setOpenAtLogin: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setOpenAtLogin", on),
     dismissMessage: (): Promise<void> => ipcRenderer.invoke("dismissMessage"),
     showDataFolder: (): Promise<void> => ipcRenderer.invoke("showDataFolder"),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke("openExternal", url),

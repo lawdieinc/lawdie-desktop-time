@@ -6,6 +6,7 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
 import { closeActivity, deleteEntry, dismissActivities, keepStretch, type KeepInput, type Preferences } from "@shared/model";
 import { Capture } from "./capture";
+import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
 import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
 import { acquireLock, WorkspaceFile } from "./workspace";
@@ -22,7 +23,7 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 
-function createWindow(store: Store): BrowserWindow {
+function createWindow(store: Store, hidden = false): BrowserWindow {
     const window = new BrowserWindow({
         width: 1280,
         height: 860,
@@ -36,7 +37,8 @@ function createWindow(store: Store): BrowserWindow {
         // electron-vite emits the preload as .mjs for a "type": "module" package; ESM preloads need sandbox off.
         webPreferences: { preload: join(__dirname, "../preload/index.mjs"), sandbox: false, contextIsolation: true },
     });
-    window.on("ready-to-show", () => window.show());
+    // Opened at login: straight to the tray; the window waits until someone asks for it.
+    if (!hidden) window.on("ready-to-show", () => window.show());
     window.on("close", (event) => {
         // Capture continues in the background; the tray reopens the window.
         if (!quitting) { event.preventDefault(); window.hide(); }
@@ -118,6 +120,8 @@ app.whenReady().then(() => {
     ipcMain.handle("disconnectKiwi", () => sync.disconnect());
     ipcMain.handle("syncNow", () => sync.syncNow());
     ipcMain.handle("setAutoSync", (_e, on: boolean) => store.change((w) => { if (w.sync) w.sync.autoSync = on; }));
+    ipcMain.handle("openAtLogin", () => openAtLogin());
+    ipcMain.handle("setOpenAtLogin", (_e, on: boolean) => { setOpenAtLogin(on === true); return openAtLogin(); });
     ipcMain.handle("dismissMessage", () => { store.error = null; store.notice = null; store.publish(); });
     ipcMain.handle("showDataFolder", () => shell.showItemInFolder(workspacePath));
     ipcMain.handle("openExternal", (_e, url: string) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); });
@@ -127,7 +131,9 @@ app.whenReady().then(() => {
     store.subscribe((state) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("state", state); });
 
     app.on("browser-window-created", (_e, window) => optimizer.watchWindowShortcuts(window));
-    mainWindow = createWindow(store);
+    // Opened at login: capture resumes as it was left; a pause survives a restart.
+    const atLogin = launchedAtLogin() && openAtLogin();
+    mainWindow = createWindow(store, atLogin);
     if (argValue("--route")) mainWindow.webContents.once("did-finish-load", () => mainWindow?.webContents.send("route", argValue("--route")));
     // `--screenshot <file.png>` writes the window as rendered, for verification without a person at the screen.
     const shot = argValue("--screenshot");

@@ -418,6 +418,8 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
         const t = setInterval(ask, 10_000);
         return () => clearInterval(t);
     }, [p.captureDocuments]);
+    const [atLogin, setAtLogin] = useState(false);
+    useEffect(() => { void window.lawdie.openAtLogin().then(setAtLogin); }, []);
     const [destination, setDestination] = useState<Destination>("kiwi");
     const [servers, setServers] = useState<Record<Product, string>>({ kiwi: PRODUCTS.kiwi.defaultServerURL, crm: PRODUCTS.crm.defaultServerURL });
     const [token, setToken] = useState("");
@@ -433,6 +435,9 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 <strong>Desktop capture</strong>
                 <Setting title="Capture app activity" detail="Records the foreground app and duration across your desktop. Start and stop at any time.">
                     <Toggle on={p.captureEnabled} onChange={(v) => void window.lawdie.setCapture(v)} label="Capture app activity" />
+                </Setting>
+                <Setting title="Start at login" detail={`Opens Time Capture in the ${isMac ? "menu bar" : "tray"} when you sign in to this ${label}, so capture carries on without you opening the app. If you paused capture, it stays paused.`}>
+                    <Toggle on={atLogin} onChange={(v) => void window.lawdie.setOpenAtLogin(v).then(setAtLogin)} label="Start at login" />
                 </Setting>
                 <Setting title="Include window titles" detail={isMac ? "Optional context such as document names. Titles may contain sensitive information. macOS asks for Screen Recording permission the first time." : "Optional context such as document names. Titles may contain sensitive information."}>
                     <Toggle on={p.captureTitles} onChange={(v) => set("captureTitles", v)} label="Include window titles" />
