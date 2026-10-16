@@ -7,7 +7,7 @@ import { isDestination, type Destination, type Product } from "@shared/kiwi";
 import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
-import { Matters } from "./matters";
+import { Matters, SUGGEST_ON_OPEN_MS } from "./matters";
 import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
 import { acquireLock, WorkspaceFile } from "./workspace";
@@ -136,7 +136,7 @@ app.whenReady().then(() => {
     ipcMain.handle("dismissActivity", (_e, ids: string | string[]) => store.change((w) => dismissActivities(w, Array.isArray(ids) ? ids : [ids])));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
     ipcMain.handle("setMatter", (_e, ids: string[], matter: string | null) => store.change((w) => setMatter(w, Array.isArray(ids) ? ids : [], typeof matter === "string" ? matter : null)));
-    ipcMain.handle("suggestMatters", () => matters.suggest());
+    ipcMain.handle("suggestMatters", (_e, fromButton: boolean) => matters.suggest(fromButton === true ? 0 : SUGGEST_ON_OPEN_MS));
     ipcMain.handle("updateProject", (_e, id: string, change: { name?: string; client?: string; hourlyRate?: number }) => store.change((w) => updateProject(w, String(id), {
         ...(typeof change?.name === "string" ? { name: change.name } : {}),
         ...(typeof change?.client === "string" ? { client: change.client } : {}),

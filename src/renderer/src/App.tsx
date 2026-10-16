@@ -203,6 +203,8 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
     const { groups, stretches, short } = useMemo(() => inboxOf(w.activities), [w.activities]);
+    // Opening the inbox freshens it; the main process skips this when it ran in the last ten minutes.
+    useEffect(() => { if (w.preferences.suggestMatters) void window.lawdie.suggestMatters(); }, [w.preferences.suggestMatters]);
     const kept = useMemo(() => w.entries.filter((e) => e.activityID).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.entries]);
     const raw = useMemo(() => w.activities.filter((a) => filter === "all" || a.disposition === filter).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.activities, filter]);
     const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
@@ -228,8 +230,8 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
             {w.preferences.suggestMatters && (
                 <div className="row gap small matter-status">
                     <span className={"dot" + (state.matters.error ? " bad" : state.matters.running ? " on" : "")} />
-                    <span className={"grow" + (state.matters.error ? " danger" : " muted")}>{state.matters.running ? "Naming the matters in your activity…" : state.matters.error ?? "Each stretch of work is named by its matter, across apps. Correct the name when you keep the time and later suggestions follow it."}</span>
-                    <button type="button" className="quiet" disabled={state.matters.running} onClick={() => void window.lawdie.suggestMatters()}>Suggest now</button>
+                    <span className={"grow" + (state.matters.error ? " danger" : " muted")}>{state.matters.running ? "Kiwi's AI is naming matters and drafting descriptions…" : state.matters.error ?? "Kiwi's AI names each stretch of work's matter and drafts its description. Correct either when you keep the time and later suggestions follow you."}</span>
+                    <button type="button" className="quiet" disabled={state.matters.running} onClick={() => void window.lawdie.suggestMatters(true)}>Suggest now</button>
                 </div>
             )}
             <div className="row between">
@@ -707,10 +709,10 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 {p.captureDocuments && office && Object.entries(office.errors).map(([app, message]) => (
                     <p key={app} className="danger tiny">{{ word: "Word", excel: "Excel", powerpoint: "PowerPoint", outlook: "Outlook" }[app] ?? app} did not answer: {message}</p>
                 ))}
-                <Setting title="Suggest matters" detail="Sends the titles and Office document details of finished, unreviewed activity to Kiwi, whose AI names the matter each was work on, so the inbox shows a matter's day across every app as one entry. The activity in progress, kept and dismissed time are never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
-                    <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="Suggest matters" />
+                <Setting title="AI suggestions" detail="Kiwi's AI names the matter of your finished, unreviewed activity (so the inbox shows a matter's day across every app as one row), drafts a billing description for each row, and writes an insight on each matter's page. It sees titles, Office document details and on-screen text with personal details already removed, and your kept entries' descriptions and times. The activity in progress is never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
+                    <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" />
                 </Setting>
-                {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to suggest matters.</p>}
+                {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to get AI suggestions.</p>}
                 <Setting title="Idle timeout" detail="Stops capture and your timer at the last input after this much inactivity.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>

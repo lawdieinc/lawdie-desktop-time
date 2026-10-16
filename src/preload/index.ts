@@ -24,7 +24,8 @@ export const api = {
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
     /** The person names (or, with null, clears) the matter of pending activities. */
     setMatter: (ids: string[], matter: string | null): Promise<boolean> => ipcRenderer.invoke("setMatter", ids, matter),
-    suggestMatters: (): Promise<void> => ipcRenderer.invoke("suggestMatters"),
+    /** From the button: now. Otherwise (opening Activity): only if the last run was over ten minutes ago. */
+    suggestMatters: (fromButton = false): Promise<void> => ipcRenderer.invoke("suggestMatters", fromButton),
     /** A matter's name, client or rate; the rate applies to time kept from now on. */
     updateProject: (id: string, change: { name?: string; client?: string; hourlyRate?: number }): Promise<boolean> => ipcRenderer.invoke("updateProject", id, change),
     mergeProjects: (fromID: string, intoID: string): Promise<boolean> => ipcRenderer.invoke("mergeProjects", fromID, intoID),

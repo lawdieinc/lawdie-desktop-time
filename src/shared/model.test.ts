@@ -3,7 +3,7 @@ import {
     closeActivity, deleteEntry, dismissActivities, emptyWorkspace, keepActivity, keepStretch, markSynced, migrateV1, observe, parseWorkspace, prune,
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
-import { applyMatters, inboxOf, knownMatters, matterRequest, toReview } from "./matters";
+import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
 import { SCREEN_TEXT_MAX, archiveProject, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
@@ -431,6 +431,42 @@ describe("matters", () => {
         expect(keepStretch(w, ["x1"], { description: "Typed by hand", projectID: null, billable: true }, at(2000)).drafted).toBeUndefined();
         w.activities[5].draft = { text: "", source: "sample" };
         expect(() => validate(w)).toThrow(WorkspaceError);
+    });
+
+    it("asks for a draft per row that lacks one, follows the person's wording, and applies answers to the row's open sittings only", () => {
+        const w = friday();
+        applyMatters(w, matterRequest(w)!.ids, { assignments: ["o1", "w1", "o2", "p1"].map((id) => ({ activity_id: id, matter: "Princess Pillow" })) });
+        w.entries.push(entry({ source: "desktop", description: "Reviewed rent roll", endedAt: iso(-100), startedAt: iso(-200) }), entry({ source: "desktop", description: "AI wrote this", drafted: "kiwi", endedAt: iso(-100), startedAt: iso(-150) }));
+        const req = draftRequest(w)!;
+        expect(req.rows.map((r) => r.matter)).toEqual(["Princess Pillow", null]); // the matter row, and Excel's stretch (Finder is a short hop)
+        expect(req.body.groups[0].activities.map((a) => a.document)).toEqual(["RE: Princess Pillow licence", "Princess Pillow licence v3.docx", "RE: Princess Pillow licence", null]);
+        expect(req.body.examples).toEqual([{ matter: null, description: "Reviewed rent roll" }]); // only what a person wrote
+        expect(applyDrafts(w, req.rows, { drafts: [{ id: req.rows[0].id, text: "  Revised trademark licence (v3)  " }, { id: "nope", text: "x" }] })).toBe(1);
+        expect(inboxOf(w.activities).groups[0].draft).toEqual({ text: "Revised trademark licence (v3)", source: "kiwi" });
+        // Drafted rows are not asked again; the one Kiwi skipped is, unless the session already tried it.
+        expect(draftRequest(w)!.rows.map((r) => r.id)).toEqual(["x1"]);
+        expect(draftRequest(w, new Set(["x1:1"]))).toBeNull();
+        expect(applyDrafts(w, req.rows, "garbage")).toBe(0);
+    });
+
+    it("asks for a matter's insight when its time changed and the last one is over an hour old, never over a sample", () => {
+        const w = friday();
+        const kept = keepStretch(w, ["o1", "w1"], { description: "Licence", projectID: null, matter: "Princess Pillow", billable: true }, at(2000));
+        const pp = w.projects[0];
+        const now = at(3000);
+        const req = insightRequest(w, now)!;
+        expect(req.matters).toHaveLength(1);
+        expect(req.matters[0]).toMatchObject({ id: pp.id, name: "Princess Pillow", entries: [{ description: "Licence", seconds: 240, billable: true }] });
+        expect(applyInsights(w, { insights: [{ id: pp.id, summary: "Licensing work.", points: ["4m kept.", 7] }, { id: "nope", summary: "x" }] }, now)).toBe(1);
+        expect(pp.insight).toMatchObject({ summary: "Licensing work.", points: ["4m kept."], source: "kiwi" });
+        expect(insightRequest(w, now + 2 * 3_600_000)).toBeNull(); // nothing changed since
+        w.entries.find((e) => e.id === kept.id)!.endedAt = new Date(now + 60_000).toISOString();
+        expect(insightRequest(w, now + 30 * 60_000)).toBeNull(); // changed, but within the hour
+        expect(insightRequest(w, now + 2 * 3_600_000)!.matters).toHaveLength(1);
+        pp.insight = { summary: "s", points: [], generatedAt: iso(0), source: "sample" };
+        expect(insightRequest(w, now + 2 * 3_600_000)).toBeNull();
+        expect(applyInsights(w, { insights: [{ id: pp.id, summary: "over a sample" }] }, now)).toBe(0);
+        expect(() => validate(w)).not.toThrow();
     });
 
     it("refuses a workspace with a malformed matter", () => {

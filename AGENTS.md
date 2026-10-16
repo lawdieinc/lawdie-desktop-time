@@ -76,7 +76,7 @@ the request from closed, pending, unnamed activity with a title or document (nev
 segment in progress, never kept or dismissed time), `applyMatters()` validates the
 answer, `inboxOf()` groups the inbox one row per matter per day across apps.
 `src/main/matters.ts` sends it to Kiwi (`POST /desktop-time/matters`, device token, every
-5 minutes, opt-in `suggestMatters`, only while connected to Kiwi). Kiwi holds the prompt
+30 minutes and on opening Activity if over 10 minutes since, opt-in `suggestMatters`, only while connected to Kiwi). Kiwi holds the prompt
 and asks its server-side model (`kiwi/backend/src/lib/desktopMatters.ts`, Gemini via
 Vertex), so no one enters a key and a device token buys only this question; it stores
 nothing. A person's name (`matterBy: "person"`) is never overwritten and is fed back as
@@ -88,6 +88,16 @@ matter makes or reuses the local project of that name, so it reaches Kiwi/the CR
 entry's `project_name`; mapping that name to a real matter (or logging it under the name
 when none matches) is the destinations' job and not built yet — Kiwi still matches from
 title + document (`kiwi/backend/src/lib/matterMatch.ts`).
+
+After naming, the same loop asks Kiwi for a billing description per review row
+(`draftRequest()`/`applyDrafts()`, `POST /desktop-time/drafts`; a row is drafted when a
+quarter of its time has no draft, the person's own descriptions are the style examples)
+and for an insight per matter whose time changed and whose last insight is over an hour
+old (`insightRequest()`/`applyInsights()`, `POST /desktop-time/insights`; the app sends
+the totals, so the model quotes figures rather than computing them). Prompts live in
+`kiwi/backend/src/lib/desktopDrafts.ts` and `desktopInsights.ts`. Drafts and insights
+record their source; "sample" ones come only from demo data and are never replaced.
+One switch, "AI suggestions" (`suggestMatters`), covers all three.
 
 ## Kiwi and Lawdie CRM
 
