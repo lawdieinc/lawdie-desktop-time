@@ -72,10 +72,17 @@ export type Activity = {
     title: string | null;
     /** Present only for Office apps with "Read Office document details" on. */
     document?: DocumentInfo | null;
+    /** Text the window showed, read through the OS accessibility system, with "Read on-screen text" on. */
+    screenText?: string | null;
     startedAt: string;
     endedAt: string;
     endedBy: string;
     disposition: "pending" | "kept" | "dismissed";
+    /** The matter this was work on: suggested by the model (src/shared/matters.ts) or set by
+     *  the person. Absent until asked; null when it is not work on any matter. */
+    matter?: string | null;
+    /** Who named the matter. A person's answer is never overwritten by a suggestion. */
+    matterBy?: "ai" | "person";
 };
 
 export type Preferences = {
@@ -83,6 +90,10 @@ export type Preferences = {
     captureTitles: boolean;
     /** Ask Word, Excel, PowerPoint and Outlook what is open: name, path, a text excerpt. */
     captureDocuments: boolean;
+    /** Read the text the window in front shows (accessibility), for apps other than Office and browsers. */
+    captureScreenText: boolean;
+    /** Send closed, pending activity (titles, document details) to Kiwi to name its matter. */
+    suggestMatters: boolean;
     idleMinutes: number;
     retentionDays: number;
     excludedOwnerIDs: string[];
@@ -132,7 +143,7 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export function defaultPreferences(): Preferences {
-    return { captureEnabled: false, captureTitles: false, captureDocuments: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
+    return { captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
 }
 
 export function emptyWorkspace(): Workspace {
@@ -160,14 +171,33 @@ export function project(w: Workspace, id: string | null): Project | undefined {
     return id ? w.projects.find((p) => p.id === id) : undefined;
 }
 
-/** Excluded apps are matched by exact id, or by executable basename on Windows/Linux. */
-export function isExcluded(prefs: Preferences, ownerID: string): boolean {
+/**
+ * Browsers belong to the Lawdie browser extension, which records the pages themselves;
+ * the desktop app leaves them alone so that time is never counted twice. Matched like an
+ * exclusion: bundle id on macOS, executable basename on Windows and Linux.
+ */
+export const BROWSER_OWNER_IDS = [
+    // macOS
+    "com.google.chrome", "com.google.chrome.beta", "com.google.chrome.dev", "com.google.chrome.canary", "org.chromium.chromium",
+    "com.apple.safari", "com.apple.safaritechnologypreview", "com.microsoft.edgemac", "com.microsoft.edgemac.beta", "com.microsoft.edgemac.dev",
+    "com.brave.browser", "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "company.thebrowser.browser", "com.operasoftware.opera",
+    "com.vivaldi.vivaldi", "app.zen-browser.zen",
+    // Windows and Linux
+    "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe",
+    "chrome", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "firefox", "brave", "brave-browser", "microsoft-edge", "opera", "vivaldi",
+];
+
+const matchesOwner = (list: readonly string[], ownerID: string): boolean => {
     const lower = ownerID.toLowerCase();
     const base = lower.split(/[\\/]/).pop() ?? lower;
-    return prefs.excludedOwnerIDs.some((x) => {
-        const xl = x.toLowerCase();
-        return xl === lower || xl === base;
-    });
+    return list.some((x) => { const xl = x.toLowerCase(); return xl === lower || xl === base; });
+};
+
+export const isBrowser = (ownerID: string): boolean => matchesOwner(BROWSER_OWNER_IDS, ownerID);
+
+/** Excluded apps are matched by exact id, or by executable basename on Windows/Linux. */
+export function isExcluded(prefs: Preferences, ownerID: string): boolean {
+    return matchesOwner(prefs.excludedOwnerIDs, ownerID);
 }
 
 export function overlaps(w: Workspace, start: number, end: number, excluding: string | null = null): boolean {
@@ -238,6 +268,8 @@ export type KeepInput = {
     description: string;
     projectID: string | null;
     billable: boolean;
+    /** The matter, by name, when projectID is null: the project of that name, made if there is none. */
+    matter?: string | null;
     /** The span the person settled on before keeping, when they changed it. */
     startedAt?: string;
     endedAt?: string;
@@ -279,14 +311,82 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     if (!(end > start)) throw new WorkspaceError("The end must be after the start.");
     const span = stretchSpan(merged, start, end);
     if (!span) throw new WorkspaceError("No captured time falls between those times.");
+    const matter = input.matter?.trim().slice(0, MATTER_MAX) || null;
+    const projectID = input.projectID ?? (matter ? projectNamed(w, matter).id : null);
     const entry: TimeEntry = {
-        id: uuid(), description: input.description.trim(), projectID: input.projectID, ...span,
-        billable: input.billable, hourlyRate: project(w, input.projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
+        id: uuid(), description: input.description.trim(), projectID, ...span,
+        billable: input.billable, hourlyRate: project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
         ...(ids.length > 1 ? { activityIDs: ids } : {}),
     };
     saveEntry(w, entry, now);
-    for (const a of picked as Activity[]) a.disposition = "kept";
+    for (const a of picked as Activity[]) {
+        a.disposition = "kept";
+        if (matter) { a.matter = matter; a.matterBy = "person"; }
+    }
     return entry;
+}
+
+export const MATTER_MAX = 120;
+
+/** The project a matter name stands for: an open one of that name (any case), else a new one. */
+export function projectNamed(w: Workspace, name: string): Project {
+    const key = name.trim().toLowerCase();
+    const found = w.projects.find((p) => !p.archived && p.name.trim().toLowerCase() === key);
+    if (found) return found;
+    const made: Project = { id: uuid(), name: name.trim(), client: "", color: "gold", hourlyRate: 0, archived: false };
+    w.projects.push(made);
+    return made;
+}
+
+/** Activity named after a matter follows it when the matter is renamed or merged. */
+function renameMatter(w: Workspace, from: string, to: string): void {
+    const key = from.trim().toLowerCase();
+    for (const a of w.activities) if (a.matter && a.matter.toLowerCase() === key) { a.matter = to; a.matterBy = "person"; }
+}
+
+/**
+ * Change a matter's name, client or rate. The rate applies to time kept from now on:
+ * entries keep the rate they were saved with. A new name must not be another open
+ * matter's (merge them instead); activity named after the old one follows.
+ */
+export function updateProject(w: Workspace, id: string, change: { name?: string; client?: string; hourlyRate?: number }): void {
+    const p = project(w, id);
+    if (!p) throw new WorkspaceError("That matter no longer exists.");
+    if (change.name !== undefined) {
+        const name = change.name.trim().slice(0, MATTER_MAX);
+        if (!name) throw new WorkspaceError("Give the matter a name.");
+        if (w.projects.some((x) => x.id !== id && !x.archived && x.name.trim().toLowerCase() === name.toLowerCase())) throw new WorkspaceError(`There is already a matter called “${name}”. Merge them instead.`);
+        if (name !== p.name) renameMatter(w, p.name, name);
+        p.name = name;
+    }
+    if (change.client !== undefined) p.client = change.client.trim().slice(0, 200);
+    if (change.hourlyRate !== undefined) {
+        if (!Number.isFinite(change.hourlyRate) || change.hourlyRate < 0) throw new WorkspaceError("Enter a valid hourly rate.");
+        p.hourlyRate = change.hourlyRate;
+    }
+}
+
+/** One matter becomes another: its entries move (times and rates untouched), its activity takes the other's name, and it is gone. */
+export function mergeProjects(w: Workspace, fromID: string, intoID: string): void {
+    const from = project(w, fromID), into = project(w, intoID);
+    if (!from || !into || fromID === intoID) throw new WorkspaceError("Choose two different matters to merge.");
+    for (const e of w.entries) if (e.projectID === fromID) e.projectID = intoID;
+    if (w.timer?.projectID === fromID) w.timer.projectID = intoID;
+    renameMatter(w, from.name, into.name);
+    w.projects = w.projects.filter((p) => p.id !== fromID);
+}
+
+export function archiveProject(w: Workspace, id: string, archived: boolean): void {
+    const p = project(w, id);
+    if (!p) throw new WorkspaceError("That matter no longer exists.");
+    if (!archived && w.projects.some((x) => x.id !== id && !x.archived && x.name.trim().toLowerCase() === p.name.trim().toLowerCase())) throw new WorkspaceError(`There is already an open matter called “${p.name}”. Merge them instead.`);
+    p.archived = archived;
+}
+
+/** The person names (or clears) the matter of pending activities. */
+export function setMatter(w: Workspace, ids: string[], matter: string | null): void {
+    const name = matter?.trim().slice(0, MATTER_MAX) || null;
+    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { a.matter = name; a.matterBy = "person"; }
 }
 
 export function keepActivity(w: Workspace, id: string, input: KeepInput, now: number): TimeEntry {
@@ -315,7 +415,66 @@ export function deleteEntry(w: Workspace, id: string): void {
 // Capture
 // ---------------------------------------------------------------------------
 
-export type Observation = { app: string; ownerID: string; title: string | null; document?: DocumentInfo | null; isSelf?: boolean } | null;
+export type Observation = { app: string; ownerID: string; title: string | null; document?: DocumentInfo | null; screenText?: string | null; isSelf?: boolean } | null;
+
+export const SCREEN_TEXT_MAX = 600;
+
+/** On-screen text as stored: personal details redacted, one line per piece, repeats and blank lines dropped, bounded. */
+export function cleanScreenText(raw: string | null | undefined): string | null {
+    const lines: string[] = [];
+    for (const line of (raw ?? "").replace(/\r\n?/g, "\n").split("\n")) {
+        const t = redact(line.replace(/\s+/g, " ").trim());
+        if (t && !lines.includes(t)) lines.push(t);
+    }
+    const text = lines.join("\n").slice(0, SCREEN_TEXT_MAX).trim();
+    return text || null;
+}
+
+/** What a screen-text reader printed (src/main/screenText.ts): TEXT=… over any number of lines, or UNTRUSTED when macOS has not granted Accessibility. */
+export function parseScreenText(output: string): { text: string | null; untrusted: boolean } {
+    const text = output.replace(/\r\n?/g, "\n");
+    if (/^UNTRUSTED\s*$/m.test(text)) return { text: null, untrusted: true };
+    const at = text.indexOf("TEXT=");
+    return { text: at < 0 ? null : cleanScreenText(text.slice(at + 5)), untrusted: false };
+}
+
+// ---------------------------------------------------------------------------
+// Redaction: personal details are removed on this computer, before anything is stored
+// ---------------------------------------------------------------------------
+
+const luhn = (digits: string): boolean => {
+    let sum = 0;
+    for (let i = 0; i < digits.length; i++) {
+        let d = Number(digits[digits.length - 1 - i]);
+        if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
+    }
+    return sum % 10 === 0;
+};
+
+/**
+ * Text read from a window or a document with personal details taken out: card numbers
+ * (Luhn-checked), anything labelled as a card code, password, PIN, token or account,
+ * social security numbers, phone numbers, long digit runs, and the person part of email
+ * addresses (the domain stays: it often names the client). Case numbers ("1:26-cv-01182"),
+ * matter numbers ("2026-144"), dates and amounts are kept, since they name the work.
+ */
+export function redact(text: string): string {
+    return text
+        // Labelled secrets; the label stays so a reader knows something was there. A card
+        // code needs its 3–4 digits, the rest a ":" or "=" ("pin the memo" is not a PIN).
+        .replace(/\b(cvc|cvv2?|cid|security code|card code)(\s*[:#=-]?\s*)\d{3,4}\b/gi, "$1$2[redacted]")
+        .replace(/\b(pin|passcode|password|passwd|pwd|api key|secret|token|account (?:number|no\.?|#)|acct(?: no\.?| #)?|routing(?: number| no\.?)?|iban|sort code)(\s*[:#=]\s*)\S+/gi, "$1$2[redacted]")
+        // Card numbers: 13–19 digits, spaced or dashed, that pass the Luhn check.
+        .replace(/\b\d(?:[ -]?\d){12,18}\b/g, (m) => (luhn(m.replace(/\D/g, "")) ? "[card]" : m))
+        .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[ssn]")
+        // Bare runs of eleven or more digits (account, policy, reference numbers); ten is a phone.
+        .replace(/\b\d{11,}\b/g, "[number]")
+        // Phone numbers: ten or more digits written as one ((555) 123-4567, +1 555 123 4567).
+        .replace(/(?<![\w:/-])\+?\(?\d[\d ().-]{8,}\d(?![\w-])/g, (m) => (m.replace(/\D/g, "").length >= 10 && !/^\d{4}-\d{2}-\d{2}/.test(m) ? "[phone]" : m))
+        .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[id]")
+        .replace(/\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi, "[email]@$1");
+}
 
 /** A document as stored: bounded, whitespace collapsed, empty fields null. */
 export function cleanDocument(raw: DocumentInfo | null | undefined): DocumentInfo | null {
@@ -323,7 +482,7 @@ export function cleanDocument(raw: DocumentInfo | null | undefined): DocumentInf
     const name = raw.name?.trim().slice(0, 300);
     if (!name) return null;
     const path = raw.path?.trim().slice(0, 1000) || null;
-    const excerpt = raw.excerpt?.replace(/\s+/g, " ").trim().slice(0, EXCERPT_MAX) || null;
+    const excerpt = raw.excerpt ? redact(raw.excerpt.replace(/\s+/g, " ").trim()).slice(0, EXCERPT_MAX) || null : null;
     return { name, path, excerpt };
 }
 
@@ -356,8 +515,14 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         closeActivity(w, now, "excluded");
         return;
     }
+    // Checked before anything about the window is used, as an exclusion is.
+    if (isBrowser(foreground.ownerID)) {
+        closeActivity(w, now, "browser");
+        return;
+    }
     const safeTitle = w.preferences.captureTitles ? foreground.title : null;
     const document = w.preferences.captureDocuments ? cleanDocument(foreground.document) : null;
+    const screenText = w.preferences.captureScreenText ? cleanScreenText(foreground.screenText) : null;
     const current = w.currentActivity;
     if (current) {
         const lastSeen = ms(current.endedAt);
@@ -369,10 +534,12 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         else if (document && current.document && !sameDocument(current.document, document)) closeActivity(w, now, "switched");
     }
     if (!w.currentActivity) {
-        w.currentActivity = { id: uuid(), app: foreground.app, ownerID: foreground.ownerID, title: safeTitle, document, startedAt: iso(now), endedAt: iso(now), endedBy: "switched", disposition: "pending" };
+        w.currentActivity = { id: uuid(), app: foreground.app, ownerID: foreground.ownerID, title: safeTitle, document, ...(screenText ? { screenText } : {}), startedAt: iso(now), endedAt: iso(now), endedBy: "switched", disposition: "pending" };
     } else {
         w.currentActivity.endedAt = iso(now);
         if (document) w.currentActivity.document = document;
+        // The first text read stands for the segment: scrolling is not other work.
+        if (screenText && !w.currentActivity.screenText) w.currentActivity.screenText = screenText;
     }
 }
 
@@ -557,7 +724,7 @@ export function validate(w: Workspace): Workspace {
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs))) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));
@@ -585,7 +752,7 @@ export function migrateV1(raw: Record<string, unknown>): Workspace {
         activities: arr(raw.activities).map(activity),
         timer: timer ? { description: String(timer.description ?? ""), projectID: (timer.projectID as string | undefined) ?? null, startedAt: fromReference(timer.startedAt), lastHeartbeat: fromReference(timer.lastHeartbeat), billable: timer.billable === true, hourlyRate: Number(timer.hourlyRate ?? 0) } : null,
         currentActivity: current ? activity(current) : null,
-        preferences: { captureEnabled: prefs.captureEnabled === true, captureTitles: prefs.captureTitles === true, captureDocuments: false, idleMinutes: Number(prefs.idleMinutes ?? 3), retentionDays: Number(prefs.retentionDays ?? 14), excludedOwnerIDs: Array.isArray(prefs.excludedBundleIDs) ? (prefs.excludedBundleIDs as string[]) : [...DEFAULT_EXCLUSIONS] },
+        preferences: { captureEnabled: prefs.captureEnabled === true, captureTitles: prefs.captureTitles === true, captureDocuments: false, captureScreenText: false, suggestMatters: false, idleMinutes: Number(prefs.idleMinutes ?? 3), retentionDays: Number(prefs.retentionDays ?? 14), excludedOwnerIDs: Array.isArray(prefs.excludedBundleIDs) ? (prefs.excludedBundleIDs as string[]) : [...DEFAULT_EXCLUSIONS] },
         sync: sync ? normalizeSync({ serverURL: sync.serverURL, deviceID: sync.deviceID, deviceName: sync.deviceName, accountEmail: sync.accountEmail ?? null, autoSync: sync.autoSync !== false, lastSyncedAt: sync.lastSyncedAt != null ? fromReference(sync.lastSyncedAt) : null, lastError: sync.lastError ?? null, deletedEntryIDs: sync.deletedEntryIDs }) : null,
     };
 }

@@ -1,12 +1,13 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hostname } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
-import { closeActivity, deleteEntry, dismissActivities, keepStretch, type KeepInput, type Preferences } from "@shared/model";
+import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
+import { Matters } from "./matters";
 import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
 import { acquireLock, WorkspaceFile } from "./workspace";
@@ -18,6 +19,13 @@ const argValue = (flag: string): string | null => {
     const index = process.argv.indexOf(flag);
     return index >= 0 && process.argv.length > index + 1 ? process.argv[index + 1] : null;
 };
+
+// A verification run captures a window that is usually behind others; without these,
+// Chromium stops painting an occluded window and the capture shows a stale frame.
+if (argValue("--screenshot")) {
+    app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+    app.commandLine.appendSwitch("disable-renderer-backgrounding");
+}
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -100,21 +108,42 @@ app.whenReady().then(() => {
     capture.office.onError = (officeApp, message) => {
         try { appendFileSync(join(userData, "office.log"), `${new Date().toISOString()} ${officeApp}: ${message}\n`); } catch { /* best effort */ }
     };
+    capture.screen.onError = (message) => {
+        try { appendFileSync(join(userData, "screen-text.log"), `${new Date().toISOString()} ${message}\n`); } catch { /* best effort */ }
+    };
     const deviceLabel = process.platform === "darwin" ? "Mac" : "PC";
-    const sync = new Sync(store, new TokenFile(join(userData, "kiwi-token.bin")), deviceLabel);
+    const tokens = new TokenFile(join(userData, "kiwi-token.bin"));
+    const sync = new Sync(store, tokens, deviceLabel);
+    const matters = new Matters(store, tokens);
 
     // IPC: the window asks, the store answers. Every mutation goes through store.change.
     ipcMain.handle("state", () => store.snapshot());
     ipcMain.handle("setCapture", (_e, on: boolean) => { const ok = store.change((w) => { w.preferences.captureEnabled = on; if (!on) closeActivity(w, Date.now(), "paused"); }); void capture.sample(); return ok; });
-    ipcMain.handle("setPreference", (_e, key: keyof Preferences, value: Preferences[keyof Preferences]) => store.change((w) => {
-        if (key === "captureTitles" && w.preferences.captureTitles !== value) closeActivity(w, Date.now(), "privacy-change");
-        if (key === "captureDocuments" && w.preferences.captureDocuments !== value) { closeActivity(w, Date.now(), "privacy-change"); capture.office.reset(); }
-        (w.preferences as Record<string, unknown>)[key] = value;
-        if (key === "excludedOwnerIDs" && w.currentActivity && Array.isArray(value) && value.includes(w.currentActivity.ownerID)) w.currentActivity = null;
-    }));
+    ipcMain.handle("setPreference", (_e, key: keyof Preferences, value: Preferences[keyof Preferences]) => {
+        const ok = store.change((w) => {
+            if (key === "captureTitles" && w.preferences.captureTitles !== value) closeActivity(w, Date.now(), "privacy-change");
+            if (key === "captureDocuments" && w.preferences.captureDocuments !== value) { closeActivity(w, Date.now(), "privacy-change"); capture.office.reset(); }
+            if (key === "captureScreenText" && w.preferences.captureScreenText !== value) { closeActivity(w, Date.now(), "privacy-change"); capture.screen.reset(); }
+            (w.preferences as Record<string, unknown>)[key] = value;
+            if (key === "excludedOwnerIDs" && w.currentActivity && Array.isArray(value) && value.includes(w.currentActivity.ownerID)) w.currentActivity = null;
+        });
+        if (ok && key === "suggestMatters" && value === true) void matters.suggest();
+        // macOS shows its Accessibility prompt (once) when on-screen text is switched on.
+        if (ok && key === "captureScreenText" && value === true && process.platform === "darwin") systemPreferences.isTrustedAccessibilityClient(true);
+        return ok;
+    });
     ipcMain.handle("keepActivity", (_e, ids: string | string[], input: KeepInput) => store.change((w) => { keepStretch(w, Array.isArray(ids) ? ids : [ids], input, Date.now()); }));
     ipcMain.handle("dismissActivity", (_e, ids: string | string[]) => store.change((w) => dismissActivities(w, Array.isArray(ids) ? ids : [ids])));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
+    ipcMain.handle("setMatter", (_e, ids: string[], matter: string | null) => store.change((w) => setMatter(w, Array.isArray(ids) ? ids : [], typeof matter === "string" ? matter : null)));
+    ipcMain.handle("suggestMatters", () => matters.suggest());
+    ipcMain.handle("updateProject", (_e, id: string, change: { name?: string; client?: string; hourlyRate?: number }) => store.change((w) => updateProject(w, String(id), {
+        ...(typeof change?.name === "string" ? { name: change.name } : {}),
+        ...(typeof change?.client === "string" ? { client: change.client } : {}),
+        ...(typeof change?.hourlyRate === "number" ? { hourlyRate: change.hourlyRate } : {}),
+    })));
+    ipcMain.handle("mergeProjects", (_e, fromID: string, intoID: string) => store.change((w) => mergeProjects(w, String(fromID), String(intoID))));
+    ipcMain.handle("archiveProject", (_e, id: string, archived: boolean) => store.change((w) => archiveProject(w, String(id), archived === true)));
     ipcMain.handle("clearActivity", () => { const ok = store.change((w) => { w.activities = []; w.currentActivity = null; w.preferences.captureEnabled = false; }); if (ok) store.say("Activity cleared and capture paused. Saved time entries are unchanged."); return ok; });
     ipcMain.handle("connectKiwi", (_e, destination: Destination, servers: Partial<Record<Product, string>>, token: string) => sync.connect(isDestination(destination) ? destination : "kiwi", servers ?? {}, token));
     ipcMain.handle("disconnectKiwi", () => sync.disconnect());
@@ -127,6 +156,12 @@ app.whenReady().then(() => {
     ipcMain.handle("openExternal", (_e, url: string) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); });
     ipcMain.handle("deviceName", () => hostname());
     ipcMain.handle("officeStatus", () => ({ supported: capture.office.supported, errors: Object.fromEntries(capture.office.lastError) }));
+    ipcMain.handle("screenTextStatus", () => ({
+        supported: capture.screen.supported,
+        trusted: process.platform === "darwin" ? systemPreferences.isTrustedAccessibilityClient(false) : true,
+        error: capture.screen.lastError,
+    }));
+    ipcMain.handle("openAccessibilitySettings", () => { if (process.platform === "darwin") void shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"); });
 
     store.subscribe((state) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("state", state); });
 
@@ -142,13 +177,16 @@ app.whenReady().then(() => {
         // `--click <css selector>` presses one control first, so a folded part of a screen can be captured open.
         const click = argValue("--click");
         mainWindow.webContents.once("did-finish-load", () => {
-            if (click) setTimeout(() => void mainWindow?.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(click)})?.click()`), 1500);
-            setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 2500);
+            if (click) setTimeout(() => void mainWindow?.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(click)}); console.log("--click", el ? el.textContent.slice(0, 60) : "matched nothing"); el?.click(); })()`), 2500);
+            setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 3500);
         });
     }
     buildTray(store, capture);
+    // On-screen text left on from before, without the permission yet: macOS asks now rather than reads failing quietly.
+    if (process.platform === "darwin" && store.workspace.preferences.captureScreenText && !systemPreferences.isTrustedAccessibilityClient(false)) systemPreferences.isTrustedAccessibilityClient(true);
     capture.start();
     sync.start();
+    matters.start();
 
     // `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>]
     // [--crm-server <url>]` pairs on launch without a person typing the token: provisioning
@@ -167,7 +205,7 @@ app.whenReady().then(() => {
 
     app.on("second-instance", () => showWindow(store));
     app.on("activate", () => showWindow(store));
-    app.on("before-quit", () => { quitting = true; sync.stop(); capture.shutdown(); releaseLock?.(); });
+    app.on("before-quit", () => { quitting = true; sync.stop(); matters.stop(); capture.shutdown(); releaseLock?.(); });
 });
 
 // Closing the last window keeps the process (and capture) alive on every platform; Quit is explicit.

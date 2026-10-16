@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, stretchesOf, type Activity, type Interval, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { inboxOf, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 import kiwiMark from "../../../resources/brand/kiwi.png";
 
-/* The window. Three screens for now — Today, Activity, Settings — and the Kiwi
+/* The window. Four screens — Time, Activity, Matters, Settings — and the Kiwi
    connection. Everything it shows is the main process's AppState; everything it does
    goes back over window.lawdie. */
 
-type Route = "today" | "activity" | "settings";
+type Route = "today" | "activity" | "matters" | "settings";
 const ROUTES: { key: Route; label: string; icon: string }[] = [
     { key: "today", label: "Time", icon: "▦" },
     { key: "activity", label: "Activity", icon: "∿" },
+    { key: "matters", label: "Matters", icon: "§" },
     { key: "settings", label: "Settings", icon: "⚙" },
 ];
 
@@ -33,7 +35,7 @@ export function App(): ReactNode {
     if (!state) return <div className="loading">Opening your workspace…</div>;
     const w = state.workspace;
     const connected = w.sync !== null;
-    const pending = stretchesOf(w.activities).stretches.length; // no hook: this sits after the early return above
+    const pending = toReview(w.activities); // no hook: this sits after the early return above
 
     return (
         <div className="shell">
@@ -77,7 +79,7 @@ export function App(): ReactNode {
                     {state.notice && <Banner onClose={() => void window.lawdie.dismissMessage()}>{state.notice}</Banner>}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={now} /> : route === "activity" ? <ActivityView w={w} state={state} /> : <Settings state={state} now={now} />}
+                    ) : route === "today" ? <Today w={w} now={now} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} />}
                 </div>
             </main>
         </div>
@@ -123,7 +125,7 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
     const entries = w.entries.filter((e) => Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
     const tracked = entries.reduce((s, e) => s + secondsWithin(e, start, end), 0);
     const billable = entries.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0);
-    const pending = stretchesOf(w.activities).stretches.length;
+    const pending = toReview(w.activities);
     // Grouped by day, newest first; a day's figure is only what fell inside the range.
     const days = new Map<string, TimeEntry[]>();
     for (const e of entries) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
@@ -148,7 +150,7 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
             <div className="metrics">
                 <Metric label={range === "today" ? "Tracked today" : "Tracked"} value={duration(tracked)} detail={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`} />
                 <Metric label="Billable time" value={duration(billable)} detail={tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "Ready for your next invoice"} />
-                <Metric label="To review" value={String(pending)} detail="Stretches of desktop work" />
+                <Metric label="To review" value={String(pending)} detail="Matters and stretches of desktop work" />
             </div>
             {projects.length > 1 && (
                 <Panel>
@@ -185,7 +187,7 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
             <span className="bar" />
             <div className="grow">
                 <div className="small strong">{entry.description}</div>
-                <div className="muted tiny">{p?.name ?? "No project"} · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : ""}</div>
+                <div className="muted tiny"><MatterLabel name={p?.name} /> · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : ""}</div>
             </div>
             <span className="mono">{duration(entrySeconds(entry))}</span>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete entry" onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
@@ -197,17 +199,17 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
 
 function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNode {
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
-    const [reviewing, setReviewing] = useState<Stretch | null>(null);
+    const [reviewing, setReviewing] = useState<{ stretch: Stretch; matter: string | null; description: string } | null>(null);
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
-    const { stretches, short } = useMemo(() => stretchesOf(w.activities), [w.activities]);
+    const { groups, stretches, short } = useMemo(() => inboxOf(w.activities), [w.activities]);
     const kept = useMemo(() => w.entries.filter((e) => e.activityID).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.entries]);
     const raw = useMemo(() => w.activities.filter((a) => filter === "all" || a.disposition === filter).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.activities, filter]);
     const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
     const current = w.currentActivity;
     const shortSeconds = short.reduce((n, st) => n + st.seconds, 0);
     const gapMinutes = Math.round(STRETCH_GAP_MS / 60_000);
-    const count = filter === "pending" ? `${stretches.length} stretches` : filter === "kept" ? `${kept.length} entries` : `${raw.length} sittings`;
+    const count = filter === "pending" ? [groups.length ? `${groups.length} ${groups.length === 1 ? "matter" : "matters"}` : "", stretches.length || !groups.length ? `${stretches.length} ${stretches.length === 1 ? "stretch" : "stretches"}` : ""].filter(Boolean).join(" · ") : filter === "kept" ? `${kept.length} entries` : `${raw.length} sittings`;
     return (
         <>
             <div className="row between">
@@ -219,10 +221,17 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     <span className="big-icon">{w.preferences.captureEnabled ? "∿" : "‖"}</span>
                     <div className="grow">
                         <strong>{w.preferences.captureEnabled ? "Desktop capture is active" : "Capture is paused"}</strong>
-                        <p className="muted small">{current ? `Currently in ${current.app} · ${duration((Date.now() - Date.parse(current.startedAt)) / 1000)}` : "App names and durations only by default. No screenshots, keystrokes, or page contents."}</p>
+                        <p className="muted small">{current ? `Currently in ${current.app} · ${duration((Date.now() - Date.parse(current.startedAt)) / 1000)}` : w.preferences.captureScreenText ? "App names and durations, and some on-screen text from the apps you work in. No screenshots or keystrokes; browsers are left to the browser extension." : "App names and durations only by default. No screenshots, keystrokes, or page contents."}</p>
                     </div>
                 </div>
             </Panel>
+            {w.preferences.suggestMatters && (
+                <div className="row gap small matter-status">
+                    <span className={"dot" + (state.matters.error ? " bad" : state.matters.running ? " on" : "")} />
+                    <span className={"grow" + (state.matters.error ? " danger" : " muted")}>{state.matters.running ? "Naming the matters in your activity…" : state.matters.error ?? "Each stretch of work is named by its matter, across apps. Correct the name when you keep the time and later suggestions follow it."}</span>
+                    <button type="button" className="quiet" disabled={state.matters.running} onClick={() => void window.lawdie.suggestMatters()}>Suggest now</button>
+                </div>
+            )}
             <div className="row between">
                 <div className="segmented" role="tablist">
                     {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All" }[f]}</button>)}
@@ -232,9 +241,13 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
             <Panel>
                 {filter === "pending" ? (
                     <>
-                        {stretches.length === 0 && short.length === 0 && (
+                        {groups.length === 0 && stretches.length === 0 && short.length === 0 && (
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, go idle, or pause capture." />
                         )}
+                        {groups.map((g) => (
+                            <MatterRow key={g.id} group={g} open={!!open[g.id]} onToggle={() => toggle(g.id)}
+                                onKeep={() => setReviewing({ stretch: matterStretch(g), matter: g.matter, description: g.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
+                        ))}
                         {stretches.map((st) => (
                             <div key={st.id}>
                                 <div className="activity">
@@ -242,13 +255,13 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                     <div className="grow">
                                         <div className="small strong">{st.name}</div>
                                         <div className="muted tiny meta">
-                                            <span>{st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)}` : ` · ${endedLabel(st.endedBy)}`}{st.document?.path ? ` · ${st.document.path}` : ""}</span>
-                                            {st.sittings > 1 && <SittingsToggle count={st.sittings} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
+                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)}` : ` · ${endedLabel(st.endedBy)}`}{st.document?.path ? ` · ${st.document.path}` : ""}</span>
+                                            {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
                                         </div>
                                     </div>
                                     <span className="mono">{duration(st.seconds)}</span>
                                     <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
-                                    <button type="button" className="primary" onClick={() => setReviewing(st)}>Keep time</button>
+                                    <button type="button" className="primary" onClick={() => setReviewing({ stretch: st, matter: null, description: st.document?.name ?? st.name })}>Keep time</button>
                                 </div>
                                 {open[st.id] && st.sittings > 1 && (
                                     <Sittings items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
@@ -280,8 +293,8 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                     <div className="grow">
                                         <div className="small strong">{e.description}</div>
                                         <div className="muted tiny meta">
-                                            <span>{first ? `${first.app} · ` : ""}{dayLabel(e.startedAt)} {clock(e.startedAt)}–{clock(e.endedAt)}{e.billable ? " · billable" : " · not billable"}</span>
-                                            {spans.length > 1 && <SittingsToggle count={spans.length} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
+                                            <span><MatterLabel name={w.projects.find((x) => x.id === e.projectID)?.name} /> · {first ? `${first.app} · ` : ""}{dayLabel(e.startedAt)} {clock(e.startedAt)}–{clock(e.endedAt)}{e.billable ? " · billable" : " · not billable"}</span>
+                                            {spans.length > 1 && <SittingsToggle label={`${spans.length} sittings`} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
                                         </div>
                                     </div>
                                     <span className="mono">{duration(entrySeconds(e))}</span>
@@ -299,14 +312,15 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                         <span className="app-icon">▭</span>
                         <div className="grow">
                             <div className="small strong">{a.document?.name || a.title || a.app}</div>
-                            <div className="muted tiny">{a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {endedLabel(a.endedBy)}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
+                            <div className="muted tiny"><MatterLabel name={a.matter} /> · {a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {endedLabel(a.endedBy)}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
+                            {(a.screenText || a.document?.excerpt) && <div className="tiny screen-text" title="What was read from the window">{(a.screenText ?? a.document?.excerpt ?? "").replace(/\n/g, " · ").slice(0, 220)}</div>}
                         </div>
                         <span className="mono">{duration((Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000)}</span>
                         <span className={"muted small status " + a.disposition}>{a.disposition === "kept" ? "Kept" : a.disposition === "dismissed" ? "Dismissed" : "To review"}</span>
                     </div>
                 ))}
             </Panel>
-            {reviewing && <KeepSheet stretch={reviewing} sittings={reviewing.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onClose={() => setReviewing(null)} />}
+            {reviewing && <KeepSheet key={reviewing.stretch.id} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onClose={() => setReviewing(null)} />}
         </>
     );
 }
@@ -314,15 +328,58 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
 /** How a sitting ended, in words. */
 const ENDED_BY: Record<string, string> = {
     switched: "switched apps", idle: "went idle", suspended: "the computer slept", gap: "lost track", paused: "paused capture",
-    quit: "quit the app", excluded: "opened a private app", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down",
+    quit: "quit the app", excluded: "opened a private app", browser: "went to the browser", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down",
 };
 const endedLabel = (by: string | undefined): string => (by ? ENDED_BY[by] ?? by : "");
 
+/** The matter something is on, in small type; "No matter" when it is on none. */
+function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
+    return name ? <span className="matter-label">{name}</span> : <span className="matter-label none">No matter</span>;
+}
+
+/** A matter's day as a stretch, for the keep sheet: its sittings in every app, as one entry. */
+const matterStretch = (g: MatterGroup): Stretch => ({ id: g.id, app: g.apps.join(", "), ownerID: "", name: g.matter, document: null, activityIDs: g.activityIDs, startedAt: g.startedAt, endedAt: g.endedAt, seconds: g.seconds, sittings: g.sittings, endedBy: "" });
+
+/** One matter's day: every app and document it was in, as one row to keep. */
+function MatterRow({ group: g, open, onToggle, onKeep }: { group: MatterGroup; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+    return (
+        <div>
+            <div className="activity">
+                <span className="app-icon matter-icon" aria-hidden="true">§</span>
+                <div className="grow">
+                    <div className="small strong">{g.matter}</div>
+                    <div className="muted tiny meta">
+                        <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {clock(g.startedAt)}–{clock(g.endedAt)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</span>
+                        <SittingsToggle label={`${g.documents.length} ${g.documents.length === 1 ? "item" : "items"}`} open={open} onClick={onToggle} />
+                    </div>
+                </div>
+                <span className="mono">{duration(g.seconds)}</span>
+                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(g.activityIDs)}>Dismiss</button>
+                <button type="button" className="primary" onClick={onKeep}>Keep time</button>
+            </div>
+            {open && (
+                <div className="sittings">
+                    {g.documents.map((d) => (
+                        <div className="sitting" key={`${d.app}\n${d.name}`}>
+                            <span className="sitting-dot" aria-hidden="true" />
+                            <span className="small">{d.name}</span>
+                            <span className="tiny muted">{d.app}{d.activityIDs.length > 1 ? ` · ${d.activityIDs.length} sittings` : ""}</span>
+                            <span className="grow" />
+                            <span className="mono small">{duration(d.seconds)}</span>
+                            <button type="button" className="link sitting-dismiss" title="Take this out of the matter; it goes back to review on its own" onClick={() => void window.lawdie.setMatter(d.activityIDs, null)}>Not this matter</button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 /** "6 sittings ▾" — the count is the control that opens them. */
-function SittingsToggle({ count, open, onClick }: { count: number; open: boolean; onClick: () => void }): ReactNode {
+function SittingsToggle({ label, open, onClick }: { label: string; open: boolean; onClick: () => void }): ReactNode {
     return (
         <button type="button" className={"sittings-toggle" + (open ? " open" : "")} aria-expanded={open} onClick={onClick}>
-            {count} sittings
+            {label}
             <svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M0.6 1.2h7.8L4.5 5.2z" fill="currentColor" /></svg>
         </button>
     );
@@ -364,8 +421,9 @@ const onDay = (dayIso: string, hhmm: string, notBefore: number | null = null): n
     return d.getTime();
 };
 
-function KeepSheet({ stretch, sittings, onClose }: { stretch: Stretch; sittings: Activity[]; onClose: () => void }): ReactNode {
-    const [description, setDescription] = useState(stretch.document?.name ?? stretch.name);
+function KeepSheet({ stretch, matter: suggested, initialDescription, projects, sittings, onClose }: { stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; onClose: () => void }): ReactNode {
+    const [description, setDescription] = useState(initialDescription);
+    const [matter, setMatter] = useState(suggested ?? "");
     const [billable, setBillable] = useState(true);
     const [startText, setStartText] = useState(timeValue(stretch.startedAt));
     const [endText, setEndText] = useState(timeValue(stretch.endedAt));
@@ -379,14 +437,16 @@ function KeepSheet({ stretch, sittings, onClose }: { stretch: Stretch; sittings:
     const save = async (): Promise<void> => {
         if (!description.trim()) { setProblem("Add a description."); return; }
         if (!preview) { setProblem("No captured time falls between those times."); return; }
-        const input = { description, projectID: null, billable, ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}) };
+        const input = { description, projectID: null, matter: matter.trim() || null, billable, ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}) };
         if (await window.lawdie.keepActivity(stretch.activityIDs, input)) onClose();
         else setProblem("That could not be saved. It may overlap time you already kept.");
     };
     return (
         <div className="scrim" onClick={onClose}>
             <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
-                <Heading eyebrow="From desktop activity" title="Keep time" subtitle={stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
+                <Heading eyebrow="From desktop activity" title="Keep time" subtitle={suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}, kept as one entry.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
+                <label className="field"><span className="eyebrow">Matter{suggested ? " · suggested" : ""}</span><input list="matter-names" value={matter} placeholder="Which matter is this? Leave empty for none." onChange={(e) => setMatter(e.target.value)} /></label>
+                <datalist id="matter-names">{projects.map((p) => <option key={p} value={p} />)}</datalist>
                 <label className="field"><span className="eyebrow">Description</span><input autoFocus value={description} onChange={(e) => setDescription(e.target.value)} /></label>
                 <div className="row gap">
                     <label className="field"><span className="eyebrow">Start · {dayLabel(stretch.startedAt)}</span><input type="time" value={startText} onChange={(e) => setStartText(e.target.value)} /></label>
@@ -407,6 +467,164 @@ function KeepSheet({ stretch, sittings, onClose }: { stretch: Stretch; sittings:
 
 // ---------------------------------------------------------------------------
 
+const money = (n: number): string => n.toLocaleString([], { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+type MatterStats = { tracked: number; billable: number; value: number; entries: TimeEntry[] };
+/** What a matter's kept time came to inside [start, end): every entry at the rate it was saved with. */
+function statsFor(w: Workspace, projectID: string | null, start: number, end: number): MatterStats {
+    const entries = w.entries.filter((e) => e.projectID === projectID && Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+    let tracked = 0, billable = 0, value = 0;
+    for (const e of entries) {
+        const secs = secondsWithin(e, start, end);
+        tracked += secs;
+        if (e.billable) { billable += secs; value += (secs / 3600) * e.hourlyRate; }
+    }
+    return { tracked, billable, value, entries };
+}
+const MATTER_RANGES = RANGES.filter((r) => r.key !== "custom");
+
+function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview: () => void }): ReactNode {
+    const [range, setRange] = useState<RangeKey>("week");
+    const [selected, setSelected] = useState<string | null>(null);
+    const [showArchived, setShowArchived] = useState(false);
+    const { start, end, label } = rangeBounds(range, now, "", "");
+    const { groups } = useMemo(() => inboxOf(w.activities), [w.activities]);
+    const waiting = (name: string): MatterGroup[] => groups.filter((g) => g.matter.toLowerCase() === name.trim().toLowerCase());
+    const rows = w.projects.map((p) => ({ p, stats: statsFor(w, p.id, start, end), waiting: waiting(p.name) }));
+    const open = rows.filter((r) => !r.p.archived).sort((a, b) => b.stats.tracked - a.stats.tracked || a.p.name.localeCompare(b.p.name));
+    const archived = rows.filter((r) => r.p.archived).sort((a, b) => a.p.name.localeCompare(b.p.name));
+    const none = statsFor(w, null, start, end);
+    const total = open.reduce((n, r) => n + r.stats.value, 0);
+    const billable = open.reduce((n, r) => n + r.stats.billable, 0);
+    const chosen = selected === "none" ? null : w.projects.find((p) => p.id === selected);
+    const rangeTabs = (
+        <div className="segmented" role="tablist" aria-label="Range">
+            {MATTER_RANGES.map((r) => <button key={r.key} type="button" role="tab" aria-selected={range === r.key} className={range === r.key ? "active" : ""} onClick={() => setRange(r.key)}>{r.label}</button>)}
+        </div>
+    );
+    if (selected && (chosen || selected === "none")) {
+        return <MatterDetail key={selected} w={w} project={chosen ?? null} stats={chosen ? statsFor(w, chosen.id, start, end) : none} waiting={chosen ? waiting(chosen.name) : []} label={label} rangeTabs={rangeTabs} now={now} onBack={() => setSelected(null)} onReview={onReview} />;
+    }
+    const row = ({ p, stats, waiting: list }: (typeof rows)[number]) => (
+        <button type="button" key={p.id} className={"matter-row" + (p.archived ? " archived" : "")} onClick={() => setSelected(p.id)}>
+            <span className="app-icon matter-icon" aria-hidden="true">§</span>
+            <span className="matter-name">
+                <span className="small strong">{p.name}</span>
+                <span className="muted tiny">{p.client || "No client"} · {p.hourlyRate ? `${money(p.hourlyRate)}/h` : "No rate set"}</span>
+            </span>
+            <span className="mono small">{duration(stats.tracked)}</span>
+            <span className="mono small">{duration(stats.billable)}</span>
+            <span className="mono small">{money(stats.value)}</span>
+            <span className="tiny">{list.length ? <span className="waiting">{list.length} to review</span> : <span className="muted">—</span>}</span>
+        </button>
+    );
+    return (
+        <>
+            <Heading eyebrow={label} title="Your matters." subtitle="Every matter your time is kept under — what it came to, at what rate, and what still waits for review." />
+            <div className="row between wrap">{rangeTabs}</div>
+            <div className="metrics">
+                <Metric label="Billable value" value={money(total)} detail={`${duration(billable)} billable across ${open.filter((r) => r.stats.tracked > 0).length} matters`} />
+                <Metric label="Open matters" value={String(open.length)} detail={archived.length ? `${archived.length} archived` : "Made when you keep time on a matter"} />
+                <Metric label="No matter" value={duration(none.tracked)} detail={none.entries.length ? `${none.entries.length} ${none.entries.length === 1 ? "entry" : "entries"} kept without one` : "Everything kept is on a matter"} />
+            </div>
+            <Panel>
+                <div className="matter-row head eyebrow" aria-hidden="true"><span /><span>Matter</span><span>Tracked</span><span>Billable</span><span>Value</span><span>Review</span></div>
+                {open.length === 0 && <Empty title="No matters yet." detail="Keep time from the Activity inbox with a matter named, and the matter appears here with its time and rate." />}
+                {open.map(row)}
+                {none.entries.length > 0 && (
+                    <button type="button" className="matter-row" onClick={() => setSelected("none")}>
+                        <span className="app-icon muted" aria-hidden="true">·</span>
+                        <span className="matter-name"><span className="small strong muted">No matter</span><span className="muted tiny">Kept without a matter</span></span>
+                        <span className="mono small">{duration(none.tracked)}</span>
+                        <span className="mono small">{duration(none.billable)}</span>
+                        <span className="mono small">{money(none.value)}</span>
+                        <span className="muted tiny">—</span>
+                    </button>
+                )}
+                {archived.length > 0 && <button type="button" className="link" onClick={() => setShowArchived(!showArchived)}>{showArchived ? "▾" : "▸"} {archived.length} archived</button>}
+                {showArchived && archived.map(row)}
+            </Panel>
+        </>
+    );
+}
+
+function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, onBack, onReview }: { w: Workspace; project: Project | null; stats: MatterStats; waiting: MatterGroup[]; label: string; rangeTabs: ReactNode; now: number; onBack: () => void; onReview: () => void }): ReactNode {
+    const [name, setName] = useState(p?.name ?? "");
+    const [client, setClient] = useState(p?.client ?? "");
+    const [rate, setRate] = useState(p ? String(p.hourlyRate) : "");
+    const [into, setInto] = useState("");
+    const changed = !!p && (name !== p.name || client !== p.client || Number(rate) !== p.hourlyRate);
+    const others = w.projects.filter((x) => p && x.id !== p.id && !x.archived).sort((a, b) => a.name.localeCompare(b.name));
+    const days = new Map<string, TimeEntry[]>();
+    for (const e of stats.entries) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
+    const save = (): void => { if (p) void window.lawdie.updateProject(p.id, { name, client, hourlyRate: Number(rate) }); };
+    return (
+        <>
+            <button type="button" className="link back" onClick={onBack}>‹ All matters</button>
+            <Heading eyebrow={p ? `${p.client || "No client"}${p.archived ? " · archived" : ""}` : "Kept without a matter"} title={p?.name ?? "No matter"} subtitle={p ? "Its kept time, what it came to, and what still waits for review." : "Kept time not on any matter. Keep it again from Activity with a matter named to put it on one."} />
+            <div className="row between wrap">{rangeTabs}<span className="eyebrow">{label}</span></div>
+            <div className="metrics">
+                <Metric label="Tracked" value={duration(stats.tracked)} detail={`${stats.entries.length} ${stats.entries.length === 1 ? "entry" : "entries"}`} />
+                <Metric label="Billable" value={duration(stats.billable)} detail={stats.tracked ? `${Math.round((stats.billable / stats.tracked) * 100)}% of tracked` : "Nothing kept in this range"} />
+                <Metric label="Value" value={money(stats.value)} detail="At the rate each entry was kept at" />
+            </div>
+            {p && (
+                <Panel>
+                    <strong>Details</strong>
+                    <form className="row gap wrap matter-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+                        <label className="field grow"><span className="eyebrow">Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
+                        <label className="field grow"><span className="eyebrow">Client</span><input value={client} placeholder="Who it is billed to" onChange={(e) => setClient(e.target.value)} /></label>
+                        <label className="field rate"><span className="eyebrow">Hourly rate</span><input type="number" min="0" step="5" value={rate} onChange={(e) => setRate(e.target.value)} /></label>
+                        <button type="submit" className="primary" disabled={!changed || !name.trim() || !(Number(rate) >= 0)}>Save</button>
+                    </form>
+                    <p className="muted tiny">A new rate applies to time you keep from now on; entries already kept keep the rate they were saved with. Renaming carries activity named after this matter along with it.</p>
+                    <div className="row gap wrap">
+                        {others.length > 0 && (
+                            <>
+                                <select value={into} onChange={(e) => setInto(e.target.value)} aria-label="Merge into">
+                                    <option value="">Merge into another matter…</option>
+                                    {others.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                </select>
+                                <button type="button" className="quiet" disabled={!into} onClick={() => { const target = others.find((x) => x.id === into); if (target && confirm(`Merge “${p.name}” into “${target.name}”? Its entries move there and “${p.name}” is removed. Times and rates are not changed.`)) void window.lawdie.mergeProjects(p.id, target.id).then((ok) => { if (ok) onBack(); }); }}>Merge</button>
+                            </>
+                        )}
+                        <span className="grow" />
+                        <button type="button" className="quiet" onClick={() => void window.lawdie.archiveProject(p.id, !p.archived)}>{p.archived ? "Restore matter" : "Archive matter"}</button>
+                    </div>
+                </Panel>
+            )}
+            {waiting.length > 0 && (
+                <Panel>
+                    <div className="row between"><strong>Waiting in review</strong><button type="button" className="quiet" onClick={onReview}>Review in Activity</button></div>
+                    {waiting.map((g) => (
+                        <div className="entry" key={g.id}>
+                            <span className="bar pending" />
+                            <div className="grow">
+                                <div className="small strong">{g.documents.slice(0, 3).map((d) => d.name).join("; ")}</div>
+                                <div className="muted tiny">{g.apps.join(", ")} · {dayLabel(g.startedAt, new Date(now))} {clock(g.startedAt)}–{clock(g.endedAt)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</div>
+                            </div>
+                            <span className="mono">{duration(g.seconds)}</span>
+                        </div>
+                    ))}
+                </Panel>
+            )}
+            <Panel>
+                <div className="row between"><strong>Kept time</strong><span className="eyebrow">{label}</span></div>
+                {stats.entries.length === 0 ? <Empty title="Nothing kept in this range." detail="Pick a longer range above, or keep this matter's time from the Activity inbox." /> : [...days.entries()].map(([k, list]) => (
+                    <div key={k}>
+                        <div className="row between day-head">
+                            <span className="eyebrow">{dayLabel(list[0].startedAt, new Date(now))}</span>
+                            <span className="muted tiny mono">{duration(list.reduce((n, e) => n + entrySeconds(e), 0))}</span>
+                        </div>
+                        {list.map((e) => <EntryRow key={e.id} entry={e} w={w} />)}
+                    </div>
+                ))}
+            </Panel>
+        </>
+    );
+}
+
+// ---------------------------------------------------------------------------
+
 function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
     const w = state.workspace, p = w.preferences;
     const [excluded, setExcluded] = useState("");
@@ -418,6 +636,14 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
         const t = setInterval(ask, 10_000);
         return () => clearInterval(t);
     }, [p.captureDocuments]);
+    const [screen, setScreen] = useState<{ supported: boolean; trusted: boolean; error: string | null } | null>(null);
+    useEffect(() => {
+        if (!p.captureScreenText) return undefined;
+        const ask = () => void window.lawdie.screenTextStatus().then(setScreen);
+        ask();
+        const t = setInterval(ask, 5_000);
+        return () => clearInterval(t);
+    }, [p.captureScreenText]);
     const [atLogin, setAtLogin] = useState(false);
     useEffect(() => { void window.lawdie.openAtLogin().then(setAtLogin); }, []);
     const [destination, setDestination] = useState<Destination>("kiwi");
@@ -433,7 +659,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
             <Heading eyebrow="On your terms" title="Your time. Your boundaries." subtitle="Control what Time Capture sees, what it keeps, and what leaves your machine." />
             <Panel>
                 <strong>Desktop capture</strong>
-                <Setting title="Capture app activity" detail="Records the foreground app and duration across your desktop. Start and stop at any time.">
+                <Setting title="Capture app activity" detail="Records the foreground app and duration across your desktop. Start and stop at any time. Browsers are left to the Lawdie browser extension, so web time is never counted twice.">
                     <Toggle on={p.captureEnabled} onChange={(v) => void window.lawdie.setCapture(v)} label="Capture app activity" />
                 </Setting>
                 <Setting title="Start at login" detail={`Opens Time Capture in the ${isMac ? "menu bar" : "tray"} when you sign in to this ${label}, so capture carries on without you opening the app. If you paused capture, it stays paused.`}>
@@ -446,9 +672,21 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <Toggle on={p.captureDocuments} onChange={(v) => set("captureDocuments", v)} label="Read Office document details" />
                 </Setting>
                 {p.captureDocuments && office && !office.supported && <p className="muted tiny">Not available on this platform.</p>}
+                <Setting title="Read on-screen text" detail={`For apps other than Office and browsers — Acrobat, Teams, your practice software: some of the text the window in front shows, read through ${isMac ? "macOS Accessibility" : "Windows UI Automation"}, the channel screen readers use. No screenshots. Password fields are never read, at most ${SCREEN_TEXT_MAX} characters are kept per stretch on this ${label}, and they reach Kiwi only to name the matter when matter suggestions are on. ${isMac ? "macOS asks once for Accessibility permission." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
+                    <Toggle on={p.captureScreenText} onChange={(v) => set("captureScreenText", v)} label="Read on-screen text" />
+                </Setting>
+                {p.captureScreenText && screen && !screen.supported && <p className="muted tiny">Not available on this platform.</p>}
+                {p.captureScreenText && screen?.supported && !screen.trusted && (
+                    <p className="danger tiny">macOS has not allowed Lawdie Time Capture to use Accessibility yet. <button type="button" className="link" onClick={() => void window.lawdie.openAccessibilitySettings()}>Open Privacy &amp; Security → Accessibility</button> and switch it on, then quit and reopen the app.</p>
+                )}
+                {p.captureScreenText && screen?.error && <p className="danger tiny">The last read failed: {screen.error}</p>}
                 {p.captureDocuments && office && Object.entries(office.errors).map(([app, message]) => (
                     <p key={app} className="danger tiny">{{ word: "Word", excel: "Excel", powerpoint: "PowerPoint", outlook: "Outlook" }[app] ?? app} did not answer: {message}</p>
                 ))}
+                <Setting title="Suggest matters" detail="Sends the titles and Office document details of finished, unreviewed activity to Kiwi, whose AI names the matter each was work on, so the inbox shows a matter's day across every app as one entry. The activity in progress, kept and dismissed time are never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
+                    <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="Suggest matters" />
+                </Setting>
+                {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to suggest matters.</p>}
                 <Setting title="Idle timeout" detail="Stops capture and your timer at the last input after this much inactivity.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>
@@ -467,7 +705,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
             </Panel>
             <Panel>
                 <strong>Your data belongs here</strong>
-                <p className="muted small">No telemetry, screenshots, keystroke recording, or local network service. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
+                <p className="muted small">No telemetry, screenshots, keystroke recording, or local network service. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
                 <p className="mono tiny muted">{state.workspacePath}</p>
                 <div className="row gap">
                     <button type="button" className="quiet" onClick={() => void window.lawdie.showDataFolder()}>Show data folder</button>

@@ -7,3 +7,4 @@ dist/
 artifacts/
 legacy/swift/.build/
 *.tsbuildinfo
+resources/bin/

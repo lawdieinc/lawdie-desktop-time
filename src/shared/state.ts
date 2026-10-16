@@ -7,6 +7,8 @@ export type AppState = {
     loadFailed: boolean;
     error: string | null;
     notice: string | null;
+    /** Matter suggestions: asking Kiwi now, and the last failure. */
+    matters: { running: boolean; error: string | null };
     platform: NodeJS.Platform;
     appVersion: string;
     workspacePath: string;

@@ -1,7 +1,7 @@
 {
   "name": "lawdie-time-capture",
   "productName": "Lawdie Time Capture",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Local-first desktop time capture for Lawdie, with optional sync to Kiwi.",
   "private": true,
   "main": "./out/main/index.js",
@@ -9,15 +9,15 @@
   "author": "Lawdie",
   "license": "UNLICENSED",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "node scripts/build-screen-text.mjs && electron-vite dev",
+    "build": "node scripts/build-screen-text.mjs && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "package": "electron-vite build && electron-builder --config electron-builder.yml --publish never",
-    "package:mac": "electron-vite build && electron-builder --config electron-builder.yml --publish never --mac",
-    "package:win": "electron-vite build && electron-builder --config electron-builder.yml --publish never --win",
-    "package:linux": "electron-vite build && electron-builder --config electron-builder.yml --publish never --linux"
+    "package": "npm run build && electron-builder --config electron-builder.yml --publish never",
+    "package:mac": "npm run build && electron-builder --config electron-builder.yml --publish never --mac",
+    "package:win": "npm run build && electron-builder --config electron-builder.yml --publish never --win",
+    "package:linux": "npm run build && electron-builder --config electron-builder.yml --publish never --linux"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

@@ -4,6 +4,7 @@
    the caller (main/sync.ts keeps it encrypted with safeStorage); it is never part of the
    workspace. */
 
+import type { MattersBody } from "./matters";
 import type { SyncRequest } from "./model";
 
 /** The two products kept time can go to. */
@@ -93,6 +94,11 @@ export class KiwiClient {
 
     sync(request: SyncRequest): Promise<SyncResponse> {
         return this.send<SyncResponse>("POST", "desktop-time/sync", request);
+    }
+
+    /** The matter of each activity, named by Kiwi's model (src/shared/matters.ts). */
+    matters(body: MattersBody): Promise<{ assignments: { activity_id: string; matter: string | null }[] }> {
+        return this.send("POST", "desktop-time/matters", body);
     }
 
     private async send<T>(method: string, path: string, body?: unknown): Promise<T> {

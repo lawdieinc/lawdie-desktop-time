@@ -14,6 +14,8 @@ files:
 asarUnpack:
   # get-windows ships native helper binaries that must live on disk.
   - node_modules/get-windows/**
+  # The macOS screen-text reader (native/screen-text) is run as a program.
+  - resources/bin/**
 # Version-free artifact names, so <release>/latest/download/<name> is a stable link a
 # website button can point at. The version is on the release itself.
 mac:
@@ -27,7 +29,12 @@ mac:
   icon: build/icon.icns
   hardenedRuntime: false
   gatekeeperAssess: false
-  identity: null
+  # "-" signs ad hoc: no certificate, but a valid signature under the app's own id.
+  # Without one the bundle keeps Electron's stock signature, which packaging breaks, and
+  # macOS then cannot attach a permission to it (Accessibility for on-screen text never
+  # took effect). An ad hoc signature changes with every build, so a permission granted
+  # to one build must be granted again after an update; a Developer ID ends that.
+  identity: "-"
   extendInfo:
     NSAppTransportSecurity:
       NSAllowsLocalNetworking: true

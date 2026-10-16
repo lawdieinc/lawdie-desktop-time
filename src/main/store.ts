@@ -14,6 +14,7 @@ export class Store {
     loadFailed = false;
     error: string | null = null;
     notice: string | null = null;
+    matters: AppState["matters"] = { running: false, error: null };
     private listeners = new Set<(state: AppState) => void>();
 
     constructor(readonly file: WorkspaceFile, readonly appVersion: string, readonly platform: NodeJS.Platform = process.platform) {
@@ -30,7 +31,7 @@ export class Store {
     }
 
     snapshot(): AppState {
-        return { workspace: this.workspace, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
+        return { workspace: this.workspace, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
     }
 
     subscribe(listener: (state: AppState) => void): () => void {
@@ -68,6 +69,11 @@ export class Store {
 
     setSyncing(on: boolean): void {
         this.syncing = on;
+        this.publish();
+    }
+
+    setMatterStatus(running: boolean, error: string | null): void {
+        this.matters = { running, error };
         this.publish();
     }
 

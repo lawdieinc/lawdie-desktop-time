@@ -4,13 +4,14 @@
    Everything it learns goes through observe() in the shared model; nothing is decided here. */
 
 import { powerMonitor } from "electron";
-import { closeActivity, observe, prune, stopTimer, type Observation } from "@shared/model";
-import { OfficeProbe } from "./office";
+import { closeActivity, isBrowser, isExcluded, observe, prune, stopTimer, type Observation } from "@shared/model";
+import { OfficeProbe, officeApp } from "./office";
+import { ScreenTextReader } from "./screenText";
 import type { Store } from "./store";
 
 export const SAMPLE_MS = 5_000;
 
-type ForegroundWindow = { title: string; owner: { name: string; processId: number; bundleId?: string; path: string } };
+type ForegroundWindow = { id: number; title: string; owner: { name: string; processId: number; bundleId?: string; path: string } };
 type ActiveWindow = (options?: { screenRecordingPermission?: boolean; accessibilityPermission?: boolean }) => Promise<ForegroundWindow | undefined>;
 
 let activeWindow: ActiveWindow | null = null;
@@ -25,10 +26,14 @@ export class Capture {
     private timer: NodeJS.Timeout | null = null;
     private ticks = 0;
     private sampling = false;
+    /** macOS refused Screen Recording (window titles need it): capture goes on without titles until it is allowed. */
+    titlesRefused = false;
+    private refusedAt = 0;
     /** Last observation, for the window's "Currently in …" line and for tests. */
     lastForeground: Observation = null;
 
     readonly office = new OfficeProbe();
+    readonly screen = new ScreenTextReader();
 
     constructor(private readonly store: Store) {}
 
@@ -61,15 +66,20 @@ export class Capture {
                 try {
                     // Exclusions are checked in observe() BEFORE any title is used; the title is
                     // only asked for at all when titles are on (macOS needs Screen Recording for it).
-                    const win = await (await loadActiveWindow())({ screenRecordingPermission: prefs.captureTitles, accessibilityPermission: false });
+                    const win = await this.foreground(prefs.captureTitles);
                     if (win) {
                         const ownerID = process.platform === "darwin" ? win.owner.bundleId || win.owner.path : win.owner.path;
                         foreground = { app: win.owner.name || ownerID, ownerID, title: prefs.captureTitles && win.title ? win.title.slice(0, 300) : null, isSelf: win.owner.processId === process.pid };
                         // Office document details are asked for only when switched on, only for
                         // the app in front, and never for an excluded app (observe() checks
                         // exclusions before using anything, but the ask itself is avoided too).
-                        if (prefs.captureDocuments && !prefs.excludedOwnerIDs.some((x) => x.toLowerCase() === ownerID.toLowerCase())) {
+                        // Nothing inside an excluded app, a browser (the extension's) or this app is read.
+                        const readable = !isExcluded(prefs, ownerID) && !isBrowser(ownerID) && !foreground.isSelf;
+                        if (prefs.captureDocuments && readable && officeApp(ownerID)) {
                             foreground.document = await this.office.probe(ownerID);
+                        } else if (prefs.captureScreenText && readable) {
+                            // Office with document details on is asked directly above; everything else is read off the screen.
+                            foreground.screenText = await this.screen.read(ownerID, win.title ?? "", { pid: win.owner.processId, hwnd: win.id });
                         }
                     }
                 } catch (err) {
@@ -85,6 +95,30 @@ export class Capture {
         } finally {
             this.sampling = false;
         }
+    }
+
+    /**
+     * The window in front. With titles on, macOS needs Screen Recording, and without it the
+     * lookup fails outright; that must cost the titles, never the capture. An update can
+     * lose the permission (a new ad hoc signature is a new app to macOS), so this is not rare.
+     */
+    private async foreground(titles: boolean): Promise<ForegroundWindow | undefined> {
+        const ask = await loadActiveWindow();
+        if (!titles || process.platform !== "darwin") return ask({ screenRecordingPermission: titles, accessibilityPermission: false });
+        // Once refused, titles are tried again a minute later, not on every sample.
+        if (!this.titlesRefused || Date.now() - this.refusedAt > 60_000) {
+            try {
+                const win = await ask({ screenRecordingPermission: true, accessibilityPermission: false });
+                this.titlesRefused = false;
+                return win;
+            } catch {
+                this.refusedAt = Date.now();
+            }
+        }
+        const win = await ask({ screenRecordingPermission: false, accessibilityPermission: false });
+        if (!this.titlesRefused) this.store.say("macOS has not allowed Screen Recording, which window titles need, so capture is going on without titles. Allow Lawdie Time Capture in System Settings → Privacy & Security → Screen Recording to get them back.");
+        this.titlesRefused = true;
+        return win ? { ...win, title: "" } : win;
     }
 
     suspend(): void {

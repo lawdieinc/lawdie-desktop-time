@@ -3,6 +3,8 @@ import {
     closeActivity, deleteEntry, dismissActivities, emptyWorkspace, keepActivity, keepStretch, markSynced, migrateV1, observe, parseWorkspace, prune,
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
+import { applyMatters, inboxOf, knownMatters, matterRequest, toReview } from "./matters";
+import { SCREEN_TEXT_MAX, archiveProject, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
 // The Swift app's 20 core checks, carried over as the contract this engine keeps.
@@ -33,6 +35,54 @@ describe("capture", () => {
         observe(w, { ...WORD, title: "Document" }, at(10), 0);
         expect(w.currentActivity?.title).toBe("Document");
         expect(w.activities[0].title).toBeNull();
+    });
+
+    it("leaves browsers to the browser extension: a switch to one ends the segment and records nothing, titles or not", () => {
+        const w = capturing();
+        w.preferences.captureTitles = true;
+        observe(w, WORD, at(0), 0); observe(w, WORD, at(5), 0);
+        observe(w, { app: "Google Chrome", ownerID: "com.google.Chrome", title: "PACER – Whitfield v. Acme" }, at(10), 0);
+        observe(w, { app: "Google Chrome", ownerID: "com.google.Chrome", title: "PACER – Whitfield v. Acme" }, at(15), 0);
+        observe(w, { app: "msedge", ownerID: "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", title: "Portal" }, at(20), 0);
+        expect(w.currentActivity).toBeNull();
+        expect(w.activities.map((a) => [a.app, a.endedBy])).toEqual([["Microsoft Word", "browser"]]);
+        expect(JSON.stringify(w)).not.toContain("PACER");
+    });
+
+    it("reads on-screen text only when switched on, keeps the first read for the segment, and never splits on it", () => {
+        const w = capturing();
+        const ACROBAT = { app: "Acrobat", ownerID: "com.adobe.Acrobat.Pro", title: null };
+        observe(w, { ...ACROBAT, screenText: "Exhibit A – design marks" }, at(0), 0);
+        expect(w.currentActivity?.screenText).toBeUndefined();
+        w.preferences.captureScreenText = true;
+        observe(w, { ...PREVIEW, screenText: null }, at(5), 0);
+        observe(w, { ...PREVIEW, screenText: "PRINCESS PILLOW LLC\nTrademark licence\n\nTrademark licence" }, at(10), 0);
+        observe(w, { ...PREVIEW, screenText: "page 2 after scrolling" }, at(15), 0);
+        expect(w.currentActivity?.screenText).toBe("PRINCESS PILLOW LLC\nTrademark licence");
+        observe(w, WORD, at(20), 0);
+        expect(w.activities.at(-1)).toMatchObject({ app: "Preview", screenText: "PRINCESS PILLOW LLC\nTrademark licence" });
+    });
+
+    it("takes personal details out of what was read, on this computer, and keeps what names the work", () => {
+        // The shape of a real note the first live read picked up (made-up numbers; 4111… passes Luhn).
+        const note = "Card details:\nNumber: 4111 1111 1111 1111\nExpiration date: 06/29\nCVC: 154\nCVV 987";
+        expect(cleanScreenText(note)).toBe("Card details:\nNumber: [card]\nExpiration date: 06/29\nCVC: [redacted]\nCVV [redacted]");
+        expect(redact("SSN 123-45-6789 · call (555) 123-4567 or +1 555 987 6543 · acct #: 00123456789 · Password: hunter2 · routing number: 021000021"))
+            .toBe("SSN [ssn] · call [phone] or [phone] · acct #: [redacted] · Password: [redacted] · routing number: [redacted]");
+        expect(redact("From dana.ortiz@princesspillow.com re invoice 9921")).toBe("From [email]@princesspillow.com re invoice 9921");
+        expect(redact("Hardware UUID: 253C6F20-724C-5310-9720-D18F4624485D · ref 55209400296610")).toBe("Hardware UUID: [id] · ref [number]");
+        // What names the work survives: case and matter numbers, dates, amounts, ordinary words.
+        const work = "Whitfield v. Acme, 1:26-cv-01182 · matter 2026-144 · filed 2026-10-16 · $12,500.00 · pin the memo · password reset email";
+        expect(redact(work)).toBe(work);
+        expect(cleanDocument({ name: "Pay.docx", path: null, excerpt: "Wire to account number: 123456789 by Friday" })?.excerpt).toBe("Wire to account number: [redacted] by Friday");
+    });
+
+    it("bounds what a reader printed and tells an Accessibility refusal apart", () => {
+        expect(parseScreenText("TEXT=Whitfield v. Acme\r\n  Docket   1:26-cv-01182 \n\nWhitfield v. Acme\n")).toEqual({ text: "Whitfield v. Acme\nDocket 1:26-cv-01182", untrusted: false });
+        expect(parseScreenText("UNTRUSTED\n")).toEqual({ text: null, untrusted: true });
+        expect(parseScreenText("TEXT=\n")).toEqual({ text: null, untrusted: false });
+        expect(parseScreenText("garbage")).toEqual({ text: null, untrusted: false });
+        expect(cleanScreenText("x".repeat(5000))).toHaveLength(SCREEN_TEXT_MAX);
     });
 
     it("a switch produces a bounded neutral segment", () => {
@@ -252,6 +302,129 @@ describe("stretches", () => {
         dismissActivities(w, ["a", "c"]);
         expect(w.activities.map((a) => a.disposition)).toEqual(["dismissed", "pending", "dismissed"]); // b was deleted back to pending above
         expect(() => keepStretch(w, ["a", "c"], { description: "x", projectID: null, billable: true }, at(3000))).toThrow(WorkspaceError);
+    });
+});
+
+describe("matters", () => {
+    const doc = (name: string) => ({ name, path: null, excerpt: null });
+    // Adam's Friday: Princess Pillow in Outlook, Word and Acrobat, bounced away from and back to.
+    const friday = (): Workspace => {
+        const w = emptyWorkspace();
+        w.activities = [
+            activity({ id: "o1", app: "Microsoft Outlook", document: doc("RE: Princess Pillow licence"), startedAt: iso(0), endedAt: iso(60) }),
+            activity({ id: "w1", app: "Microsoft Word", document: doc("Princess Pillow licence v3.docx"), startedAt: iso(60), endedAt: iso(240) }),
+            activity({ id: "x1", app: "Microsoft Excel", document: doc("Harbor rent roll.xlsx"), startedAt: iso(240), endedAt: iso(900) }),
+            activity({ id: "o2", app: "Microsoft Outlook", document: doc("RE: Princess Pillow licence"), startedAt: iso(900), endedAt: iso(904) }),
+            activity({ id: "p1", app: "Acrobat", title: "Pillow exhibit A.pdf", startedAt: iso(904), endedAt: iso(934) }),
+            activity({ id: "f1", app: "Finder", title: null, startedAt: iso(934), endedAt: iso(940) }),
+        ];
+        return w;
+    };
+
+    it("asks only about finished, unreviewed, unnamed activity with something to read, and teaches with the person's names", () => {
+        const w = friday();
+        w.currentActivity = activity({ id: "now", document: doc("Live.docx") });
+        w.activities.push(activity({ id: "k", disposition: "kept", document: doc("Kept.docx") }), activity({ id: "d", disposition: "dismissed", document: doc("Gone.docx") }));
+        w.activities.push(activity({ id: "taught", disposition: "kept", document: doc("Harbor lease.docx"), matter: "Harbor Lease Renewal", matterBy: "person" }));
+        const request = matterRequest(w)!;
+        expect(request.ids).toEqual(["o1", "w1", "x1", "o2", "p1"]); // not the segment in progress, not reviewed, not Finder with nothing to read
+        const body = request.body;
+        expect(body.known_matters).toEqual(["Harbor Lease Renewal"]);
+        expect(body.examples).toEqual([expect.objectContaining({ document: "Harbor lease.docx", matter: "Harbor Lease Renewal" })]);
+        expect(JSON.stringify(body)).not.toContain("Live.docx");
+        expect(matterRequest(w, 2)!.ids).toEqual(["o1", "w1"]);
+        // On-screen text alone is something to read, and it is sent.
+        w.activities.push(activity({ id: "t1", app: "Microsoft Teams", screenText: "Princess Pillow – licence call" }));
+        expect(matterRequest(w)!.body.activities.find((a) => a.id === "t1")?.screen_text).toBe("Princess Pillow – licence call");
+    });
+
+    it("applies the answer only to what was asked and is still open, never over a person, and asks nothing twice", () => {
+        const w = friday();
+        w.projects.push({ id: "p", name: "Harbor Lease Renewal", client: "", color: "gold", hourlyRate: 0, archived: false });
+        const ids = matterRequest(w)!.ids;
+        setMatter(w, ["o2"], "Princess Pillow"); // the person answered while Kiwi was asking
+        const named = applyMatters(w, ids, { assignments: [
+            { activity_id: "o1", matter: " Princess   Pillow " },
+            { activity_id: "w1", matter: "Princess Pillow" },
+            { activity_id: "x1", matter: "harbor lease renewal" },
+            { activity_id: "o2", matter: "Something else" },
+            { activity_id: "f1", matter: "Not asked" },
+            { activity_id: 7, matter: "junk" },
+        ] });
+        expect(named).toBe(3);
+        const by = (id: string) => w.activities.find((a) => a.id === id)!;
+        expect([by("o1").matter, by("w1").matter, by("x1").matter]).toEqual(["Princess Pillow", "Princess Pillow", "Harbor Lease Renewal"]);
+        expect([by("o2").matter, by("o2").matterBy]).toEqual(["Princess Pillow", "person"]);
+        expect([by("p1").matter, by("p1").matterBy]).toEqual([null, "ai"]); // skipped: answered as none, not asked again
+        expect(by("f1").matter).toBeUndefined();
+        expect(matterRequest(w)).toBeNull();
+        // An answer that is not an answer changes nothing; those are asked again.
+        const fresh = friday();
+        expect(applyMatters(fresh, ["o1"], { nope: true })).toBe(0);
+        expect(fresh.activities[0].matter).toBeUndefined();
+        expect(knownMatters(w)).toEqual(["Harbor Lease Renewal", "Princess Pillow"]);
+    });
+
+    it("shows a matter's day as one row across apps, short hops included, and the rest as stretches", () => {
+        const w = friday();
+        applyMatters(w, matterRequest(w)!.ids, { assignments: ["o1", "w1", "o2", "p1"].map((id) => ({ activity_id: id, matter: "Princess Pillow" })).concat([{ activity_id: "x1", matter: null as unknown as string }]) });
+        const inbox = inboxOf(w.activities);
+        expect(inbox.groups).toHaveLength(1);
+        const g = inbox.groups[0];
+        expect([g.matter, g.seconds, g.sittings, g.apps]).toEqual(["Princess Pillow", 60 + 180 + 4 + 30, 4, ["Microsoft Outlook", "Microsoft Word", "Acrobat"]]);
+        expect(g.documents.map((d) => [d.name, d.activityIDs.length])).toEqual([["Princess Pillow licence v3.docx", 1], ["RE: Princess Pillow licence", 2], ["Pillow exhibit A.pdf", 1]]);
+        expect(inbox.stretches.map((st) => st.activityIDs)).toEqual([["x1"]]);
+        expect(inbox.short.map((st) => st.activityIDs)).toEqual([["f1"]]);
+        expect(toReview(w.activities)).toBe(2);
+        // "Not this matter" sends a document back to review on its own.
+        setMatter(w, ["p1"], null);
+        expect(inboxOf(w.activities).groups[0].sittings).toBe(3);
+        expect(inboxOf(w.activities).short.flatMap((st) => st.activityIDs)).toContain("p1");
+    });
+
+    it("keeps a matter's day as one entry on the project of that name, made once and reused in any case", () => {
+        const w = friday();
+        const first = keepStretch(w, ["o1", "w1", "o2", "p1"], { description: "Licence", projectID: null, matter: "Princess Pillow", billable: true }, at(2000));
+        expect(seconds(first)).toBe(60 + 180 + 4 + 30);
+        expect(w.projects.map((p) => p.name)).toEqual(["Princess Pillow"]);
+        expect(first.projectID).toBe(w.projects[0].id);
+        expect(w.activities.find((a) => a.id === "w1")).toMatchObject({ disposition: "kept", matter: "Princess Pillow", matterBy: "person" });
+        const second = keepStretch(w, ["x1"], { description: "More", projectID: null, matter: "princess pillow", billable: true }, at(2000));
+        expect(second.projectID).toBe(first.projectID);
+        expect(w.projects).toHaveLength(1);
+        expect(syncRequest(w, "test").entries[0].project_name).toBe("Princess Pillow");
+        const none = keepStretch(w, ["f1"], { description: "Nothing", projectID: null, matter: "  ", billable: false }, at(2000));
+        expect(none.projectID).toBeNull();
+    });
+
+    it("renames, re-rates, merges and archives a matter without touching kept times or the rates they were kept at", () => {
+        const w = friday();
+        applyMatters(w, matterRequest(w)!.ids, { assignments: [{ activity_id: "o2", matter: "Princess Pillow" }, { activity_id: "x1", matter: "Princess Pillow Licence" }] });
+        const kept = keepStretch(w, ["o1", "w1"], { description: "Licence", projectID: null, matter: "Princess Pillow", billable: true }, at(2000));
+        const pp = w.projects[0];
+        updateProject(w, pp.id, { hourlyRate: 450, client: " Princess Pillow LLC " });
+        expect([w.entries[0].hourlyRate, pp.client]).toEqual([0, "Princess Pillow LLC"]); // rates freeze at save
+        expect(keepStretch(w, ["p1"], { description: "Exhibit", projectID: null, matter: "princess pillow", billable: true }, at(2000)).hourlyRate).toBe(450);
+        updateProject(w, pp.id, { name: "Princess Pillow – Licensing" });
+        expect(w.activities.find((a) => a.id === "o2")).toMatchObject({ matter: "Princess Pillow – Licensing", matterBy: "person" }); // pending follows the rename
+        const dup = keepStretch(w, ["x1"], { description: "Dup", projectID: null, matter: "Princess Pillow Licence", billable: true }, at(2000));
+        expect(() => updateProject(w, dup.projectID!, { name: "princess pillow – licensing" })).toThrow(/Merge them instead/);
+        expect(() => updateProject(w, pp.id, { hourlyRate: -1 })).toThrow(WorkspaceError);
+        mergeProjects(w, dup.projectID!, pp.id);
+        expect(w.projects.map((p) => p.name)).toEqual(["Princess Pillow – Licensing"]);
+        expect(w.entries.every((e) => e.projectID === pp.id)).toBe(true);
+        expect(w.entries.find((e) => e.id === kept.id)).toMatchObject({ startedAt: kept.startedAt, endedAt: kept.endedAt, hourlyRate: 0 });
+        expect(w.activities.find((a) => a.id === "x1")!.matter).toBe("Princess Pillow – Licensing");
+        archiveProject(w, pp.id, true);
+        expect(keepStretch(w, ["f1"], { description: "New", projectID: null, matter: "Princess Pillow – Licensing", billable: false }, at(2000)).projectID).not.toBe(pp.id); // an archived matter is not reused
+        expect(() => archiveProject(w, pp.id, false)).toThrow(/Merge them instead/);
+        expect(() => validate(w)).not.toThrow();
+    });
+
+    it("refuses a workspace with a malformed matter", () => {
+        const w = friday();
+        w.activities[0].matterBy = "robot" as never;
+        expect(() => validate(w)).toThrow(WorkspaceError);
     });
 });
 
