@@ -94,7 +94,8 @@ input, select { padding: 9px 11px; border: 1px solid var(--line); border-radius:
 .sitting-dot { position: absolute; left: 0; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
 .sitting-gap { position: relative; display: flex; align-items: center; padding: 2px 0 2px 22px; }
 .sitting-gap .sitting-rail { position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: repeating-linear-gradient(to bottom, var(--line) 0 3px, transparent 3px 6px); }
-.sitting-dismiss { font-size: 11px; opacity: 0; transition: opacity 0.12s ease; }
+/* Always there (a hidden control is a missing one), quieter until the row is pointed at. */
+.sitting-dismiss { font-size: 11px; opacity: 0.6; transition: opacity 0.12s ease; }
 .sitting:hover .sitting-dismiss, .sitting-dismiss:focus-visible { opacity: 1; }
 .sheet .sittings { margin-left: 0; border-bottom: 0; max-height: 180px; overflow: auto; }
 /* Time screen: ranges and day groups */
@@ -117,3 +118,10 @@ input[type="date"] { font: inherit; font-size: 12px; padding: 6px 8px; border: 1
 .bar.pending { background: rgba(139, 92, 42, 0.35); }
 /* What was read from a window, under the capture it came from. */
 .screen-text { margin-top: 4px; padding: 6px 9px; border-left: 2px solid rgba(139, 92, 42, 0.35); background: var(--raised); border-radius: 0 6px 6px 0; color: var(--text); font-family: var(--mono); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+/* A matter's AI insight: a short reading of its work, then what to do about it. */
+.insight-title { color: var(--accent); } .insight-title span { margin-right: 4px; }
+.insight-summary { margin: 4px 0 0; font-size: 14px; line-height: 1.55; }
+.insight-points { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; } .insight-points li { font-size: 13px; line-height: 1.5; }
+/* AI-drafted billing descriptions: the draft under a row, and the tag on a kept one. */
+.draft-line { margin: 3px 0 1px; font-size: 12px; color: var(--text); font-style: italic; } .draft-line span { color: var(--accent); font-style: normal; margin-right: 2px; }
+.ai-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: rgba(139, 92, 42, 0.1); color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }

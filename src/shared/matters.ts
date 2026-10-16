@@ -10,7 +10,7 @@
    that has something to read (a title or a document) is ever sent; never the segment in
    progress, never kept or dismissed time. A person's answer is never overwritten. */
 
-import { MATTER_MAX, stretchesOf, type Activity, type Stretch, type Workspace } from "./model";
+import { MATTER_MAX, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
 
 /** Activities per request (Kiwi's limit); the rest wait for the next round. */
 export const MATTER_BATCH = 150;
@@ -115,6 +115,8 @@ export type MatterGroup = {
     apps: string[];
     /** What was open, most time first. */
     documents: MatterDocument[];
+    /** The first AI draft among its sittings. */
+    draft: Draft | null;
 };
 
 /**
@@ -131,13 +133,14 @@ export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[
         const key = `${localDayOf(a.startedAt)}\n${a.matter.toLowerCase()}`;
         let g = byKey.get(key);
         if (!g) {
-            g = { id: `${a.id}:matter`, matter: a.matter, activityIDs: [], startedAt: a.startedAt, endedAt: a.endedAt, seconds: 0, sittings: 0, apps: [], documents: [] };
+            g = { id: `${a.id}:matter`, matter: a.matter, activityIDs: [], startedAt: a.startedAt, endedAt: a.endedAt, seconds: 0, sittings: 0, apps: [], documents: [], draft: null };
             byKey.set(key, g);
         }
         g.activityIDs.push(a.id);
         g.endedAt = a.endedAt;
         g.seconds += spanSeconds(a);
         g.sittings += 1;
+        g.draft ??= a.draft ?? null;
         if (!g.apps.includes(a.app)) g.apps.push(a.app);
         const name = a.document?.name ?? a.title ?? a.app;
         let doc = g.documents.find((d) => d.name === name && d.app === a.app);

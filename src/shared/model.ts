@@ -22,7 +22,17 @@ export type Project = {
     color: string;
     hourlyRate: number;
     archived: boolean;
+    /** What a model made of the matter's work, shown on its page. Nothing writes one yet but
+     *  sample data ("sample"); Kiwi is meant to ("kiwi"). */
+    insight?: MatterInsight | null;
 };
+
+export type MatterInsight = { summary: string; points: string[]; generatedAt: string; source: "kiwi" | "sample" };
+export const INSIGHT_MAX = 2000;
+
+const insightValid = (i: MatterInsight | null | undefined): boolean =>
+    i == null || (typeof i.summary === "string" && i.summary.length <= INSIGHT_MAX && Array.isArray(i.points) && i.points.length <= 12
+        && i.points.every((x) => typeof x === "string" && x.length <= 500) && validIso(i.generatedAt) && (i.source === "kiwi" || i.source === "sample"));
 
 export type TimeEntry = {
     id: string;
@@ -39,9 +49,17 @@ export type TimeEntry = {
     sittings?: Interval[];
     /** Every activity a stretch entry was kept from (activityID is the first). */
     activityIDs?: string[];
+    /** The description is an AI draft, kept as written. */
+    drafted?: DraftSource;
 };
 
 export type Interval = { startedAt: string; endedAt: string };
+
+/** Where an AI draft came from: Kiwi, or sample data (nothing drafts yet). */
+export type DraftSource = "kiwi" | "sample";
+export type Draft = { text: string; source: DraftSource };
+export const DRAFT_MAX = 500;
+const draftValid = (d: Draft | null | undefined): boolean => d == null || (typeof d.text === "string" && d.text.length > 0 && d.text.length <= DRAFT_MAX && (d.source === "kiwi" || d.source === "sample"));
 
 export type RunningTimer = {
     description: string;
@@ -83,6 +101,8 @@ export type Activity = {
     matter?: string | null;
     /** Who named the matter. A person's answer is never overwritten by a suggestion. */
     matterBy?: "ai" | "person";
+    /** A billing description drafted by a model for the work this is part of; a person keeps or edits it. */
+    draft?: Draft | null;
 };
 
 export type Preferences = {
@@ -270,6 +290,8 @@ export type KeepInput = {
     billable: boolean;
     /** The matter, by name, when projectID is null: the project of that name, made if there is none. */
     matter?: string | null;
+    /** The description is the AI draft as offered, unedited. */
+    drafted?: DraftSource;
     /** The span the person settled on before keeping, when they changed it. */
     startedAt?: string;
     endedAt?: string;
@@ -317,6 +339,7 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
         id: uuid(), description: input.description.trim(), projectID, ...span,
         billable: input.billable, hourlyRate: project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
         ...(ids.length > 1 ? { activityIDs: ids } : {}),
+        ...(input.drafted ? { drafted: input.drafted } : {}),
     };
     saveEntry(w, entry, now);
     for (const a of picked as Activity[]) {
@@ -593,6 +616,8 @@ export type Stretch = {
     seconds: number;
     sittings: number;
     endedBy: string;
+    /** The first AI draft among its sittings. */
+    draft: Draft | null;
 };
 
 const stretchKey = (a: Activity): string => `${a.ownerID}\n${a.document?.name ?? a.title ?? ""}`;
@@ -617,9 +642,10 @@ export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP
             last.seconds += spanSeconds(a);
             last.sittings += 1;
             last.endedBy = a.endedBy;
+            last.draft ??= a.draft ?? null;
             continue;
         }
-        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: a.document?.name ?? a.title ?? a.app, document: a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy };
+        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: a.document?.name ?? a.title ?? a.app, document: a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy, draft: a.draft ?? null };
         open.set(key, fresh);
         all.push(fresh);
     }
@@ -722,9 +748,9 @@ export function validate(w: Workspace): Workspace {
         new Set(w.entries.map((e) => e.id)).size === w.entries.length &&
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
-        w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0) &&
-        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs))) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
+        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample")) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));

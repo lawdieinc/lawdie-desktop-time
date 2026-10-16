@@ -25,10 +25,10 @@ describe("parseProbeOutput", () => {
     });
 
     it("reads Windows line endings and an email with no path", () => {
-        expect(parseProbeOutput("NAME=Re: settlement\r\nPATH=\r\nTEXT=Adam Brookman — Re: settlement — Hi,\r\n")).toEqual({
+        expect(parseProbeOutput("NAME=Re: settlement\r\nPATH=\r\nTEXT=Adam Brookman · Re: settlement · Hi,\r\n")).toEqual({
             name: "Re: settlement",
             path: null,
-            excerpt: "Adam Brookman — Re: settlement — Hi,",
+            excerpt: "Adam Brookman · Re: settlement · Hi,",
         });
     });
 

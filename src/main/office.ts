@@ -123,7 +123,7 @@ tell application "Microsoft Outlook"
     set theContent to plain text content of theItem
   end try
 end tell
-set theContent to theSender & " — " & theName & " — " & theContent
+set theContent to theSender & " · " & theName & " · " & theContent
 ${MAC_FINISH}`,
 };
 
@@ -155,7 +155,7 @@ $b = ''
 try { $b = $i.Body.Substring(0, [Math]::Min(${EXCERPT_MAX}, $i.Body.Length)) } catch {}
 $f = ''
 try { $f = $i.SenderName } catch {}
-Write-Output ("NAME=" + $i.Subject); Write-Output ("PATH="); Write-Output ("TEXT=" + $f + " — " + $i.Subject + " — " + $b)`,
+Write-Output ("NAME=" + $i.Subject); Write-Output ("PATH="); Write-Output ("TEXT=" + $f + " · " + $i.Subject + " · " + $b)`,
 };
 
 /** The NAME/PATH/TEXT protocol the scripts print, as a DocumentInfo (or null for nothing open). */

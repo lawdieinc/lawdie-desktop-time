@@ -421,10 +421,27 @@ describe("matters", () => {
         expect(() => validate(w)).not.toThrow();
     });
 
+    it("carries an AI draft to the row that shows it and marks an entry kept with the draft as written", () => {
+        const w = friday();
+        const draft = { text: "Revised trademark licence; correspondence re royalty schedule", source: "sample" as const };
+        for (const a of w.activities) if (["o1", "w1"].includes(a.id)) { a.matter = "Princess Pillow"; a.draft = draft; }
+        expect(inboxOf(w.activities).groups[0].draft).toEqual(draft);
+        const kept = keepStretch(w, ["o1", "w1"], { description: draft.text, projectID: null, matter: "Princess Pillow", billable: true, drafted: "sample" }, at(2000));
+        expect(kept.drafted).toBe("sample");
+        expect(keepStretch(w, ["x1"], { description: "Typed by hand", projectID: null, billable: true }, at(2000)).drafted).toBeUndefined();
+        w.activities[5].draft = { text: "", source: "sample" };
+        expect(() => validate(w)).toThrow(WorkspaceError);
+    });
+
     it("refuses a workspace with a malformed matter", () => {
         const w = friday();
         w.activities[0].matterBy = "robot" as never;
         expect(() => validate(w)).toThrow(WorkspaceError);
+        const v = friday();
+        v.projects.push({ id: "p", name: "Harbor", client: "", color: "gold", hourlyRate: 0, archived: false, insight: { summary: "s", points: ["a"], generatedAt: iso(0), source: "sample" } });
+        expect(() => validate(v)).not.toThrow();
+        v.projects[0].insight = { summary: "s", points: "a" as never, generatedAt: iso(0), source: "sample" };
+        expect(() => validate(v)).toThrow(WorkspaceError);
     });
 });
 
