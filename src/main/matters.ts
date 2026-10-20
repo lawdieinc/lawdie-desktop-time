@@ -70,10 +70,12 @@ export class Matters {
             }
             this.store.setMatterStatus(false, null);
         } catch (err) {
-            const message = err instanceof KiwiFailure && err.code === "http"
-                ? "Kiwi's AI could not answer just now; it will try again in a few minutes."
-                : err instanceof Error ? err.message : String(err);
-            this.store.setMatterStatus(false, message);
+            // A slow or failed answer only means suggestions come later (the next round is
+            // at most 30 minutes away), so it is not the person's problem: logged, not shown.
+            // Only a disconnected computer is theirs to fix.
+            console.warn("[matters]", err instanceof Error ? err.message : err);
+            const theirs = err instanceof KiwiFailure && (err.code === "device_revoked" || err.code === "invalid_token");
+            this.store.setMatterStatus(false, theirs ? err.message : null);
         } finally {
             this.running = false;
         }
