@@ -36,6 +36,10 @@ jobs:
             target: linux
             assets: release/*.AppImage
     runs-on: ${{ matrix.os }}
+    env:
+      # From scripts/mac-signing-cert.sh. Without them macOS builds stay ad hoc signed.
+      MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+      MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
     steps:
       # A dispatched run builds the branch it was started from (main), not the tag's
       # commit, so a workflow fix can rebuild an existing release.
@@ -45,7 +49,29 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run package:${{ matrix.target }}
+      # One certificate for every release, so macOS keeps Screen Recording and Accessibility
+      # across updates. electron-builder only uses a certificate macOS trusts for code
+      # signing, so the self-signed one is trusted on the runner first.
+      - name: Load the macOS signing certificate
+        if: matrix.target == 'mac' && env.MAC_CERT_P12 != ''
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          echo "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$KC"
+          security set-keychain-settings "$KC"
+          security unlock-keychain -p ci "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-certificate -c "Lawdie Time Capture Signing" -p "$KC" > "$RUNNER_TEMP/cert.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/cert.pem"
+          security find-identity -v -p codesigning "$KC" | grep "Lawdie Time Capture Signing"
+          echo "MAC_IDENTITY=Lawdie Time Capture Signing" >> "$GITHUB_ENV"
+      - run: npm run package:${{ matrix.target }} ${MAC_IDENTITY:+-- "-c.mac.identity=$MAC_IDENTITY"}
+        shell: bash
+      - name: Check the macOS signature
+        if: matrix.target == 'mac' && env.MAC_IDENTITY != ''
+        run: codesign -d -r- "release/mac-arm64/Lawdie Time Capture.app" 2>&1 | grep "certificate"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}

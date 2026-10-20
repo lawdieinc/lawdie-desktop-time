@@ -127,3 +127,8 @@ then "Both" with one token registered on both sides at pairing.
 one entry with `sittings`), after "too many entries a user needs to manually accept".
 Servers honour the entry's `seconds`. Version 0.6.0.
 2026-10-15: Kiwi names matters; the inbox shows one row per matter per day (see Matters).
+2026-10-19: macOS releases are signed with one self-signed certificate
+(`scripts/mac-signing-cert.sh` → `MAC_CERT_P12`/`MAC_CERT_PASSWORD`, loaded in
+`release.yml`), because ad hoc builds lost Screen Recording and Accessibility on every
+update while System Settings still showed them on. Screen Recording is asked once a run
+(`screenRecordingAttempt()`), never every minute. Version 0.7.1.

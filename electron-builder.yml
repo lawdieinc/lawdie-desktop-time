@@ -33,7 +33,10 @@ mac:
   # Without one the bundle keeps Electron's stock signature, which packaging breaks, and
   # macOS then cannot attach a permission to it (Accessibility for on-screen text never
   # took effect). An ad hoc signature changes with every build, so a permission granted
-  # to one build must be granted again after an update; a Developer ID ends that.
+  # to one build must be granted again after an update. Releases are signed instead with
+  # the one self-signed certificate (scripts/mac-signing-cert.sh, loaded by release.yml,
+  # which overrides this), so permissions survive updates; a Developer ID would also end
+  # the "Open Anyway" step. Local builds stay ad hoc.
   identity: "-"
   extendInfo:
     NSAppTransportSecurity:
