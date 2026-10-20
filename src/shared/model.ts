@@ -795,3 +795,13 @@ export function parseWorkspace(text: string): Workspace {
     w.currentActivity ??= null;
     return validate(w);
 }
+
+/**
+ * Whether to run the window lookup that needs Screen Recording on macOS. Its check raises
+ * macOS's prompt whenever it fails, so it runs when the permission is granted, and
+ * otherwise once a run (macOS reports only granted or denied, never "not asked yet", so
+ * the first attempt is what raises the prompt and puts the app in System Settings).
+ */
+export function screenRecordingAttempt(status: string, askedThisRun: boolean): boolean {
+    return status === "granted" || !askedThisRun;
+}

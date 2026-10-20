@@ -3,8 +3,8 @@
    Windows and Linux (X11); Electron's powerMonitor answers the rest everywhere.
    Everything it learns goes through observe() in the shared model; nothing is decided here. */
 
-import { powerMonitor } from "electron";
-import { closeActivity, isBrowser, isExcluded, observe, prune, stopTimer, type Observation } from "@shared/model";
+import { powerMonitor, systemPreferences } from "electron";
+import { closeActivity, isBrowser, isExcluded, observe, prune, screenRecordingAttempt, stopTimer, type Observation } from "@shared/model";
 import { OfficeProbe, officeApp } from "./office";
 import { ScreenTextReader } from "./screenText";
 import type { Store } from "./store";
@@ -28,7 +28,8 @@ export class Capture {
     private sampling = false;
     /** macOS refused Screen Recording (window titles need it): capture goes on without titles until it is allowed. */
     titlesRefused = false;
-    private refusedAt = 0;
+    /** macOS's own prompt is raised at most once a run: get-windows' check raises it every time it fails. */
+    private asked = false;
     /** Last observation, for the window's "Currently in …" line and for tests. */
     lastForeground: Observation = null;
 
@@ -100,23 +101,25 @@ export class Capture {
     /**
      * The window in front. With titles on, macOS needs Screen Recording, and without it the
      * lookup fails outright; that must cost the titles, never the capture. An update can
-     * lose the permission (a new ad hoc signature is a new app to macOS), so this is not rare.
+     * lose the permission (an ad hoc signature is a new app to macOS, though System Settings
+     * still shows the old grant switched on), so this is not rare.
      */
     private async foreground(titles: boolean): Promise<ForegroundWindow | undefined> {
         const ask = await loadActiveWindow();
         if (!titles || process.platform !== "darwin") return ask({ screenRecordingPermission: titles, accessibilityPermission: false });
-        // Once refused, titles are tried again a minute later, not on every sample.
-        if (!this.titlesRefused || Date.now() - this.refusedAt > 60_000) {
+        // macOS answers for a run: a grant takes effect when the app is reopened.
+        if (screenRecordingAttempt(systemPreferences.getMediaAccessStatus("screen"), this.asked)) {
+            this.asked = true;
             try {
                 const win = await ask({ screenRecordingPermission: true, accessibilityPermission: false });
                 this.titlesRefused = false;
                 return win;
-            } catch {
-                this.refusedAt = Date.now();
+            } catch (err) {
+                console.warn("[capture] titles unavailable", err instanceof Error ? err.message : err);
             }
         }
         const win = await ask({ screenRecordingPermission: false, accessibilityPermission: false });
-        if (!this.titlesRefused) this.store.say("macOS has not allowed Screen Recording, which window titles need, so capture is going on without titles. Allow Lawdie Time Capture in System Settings → Privacy & Security → Screen Recording to get them back.");
+        if (!this.titlesRefused) this.store.say("macOS has not allowed Screen Recording for this version of Lawdie Time Capture, so capture is going on without window titles. In System Settings → Privacy & Security → Screen Recording, select Lawdie Time Capture and remove it with −, even if it is switched on (that is an earlier version), then reopen this app and allow it.");
         this.titlesRefused = true;
         return win ? { ...win, title: "" } : win;
     }

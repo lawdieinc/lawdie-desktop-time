@@ -4,7 +4,7 @@ import {
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
-import { SCREEN_TEXT_MAX, archiveProject, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
 // The Swift app's 20 core checks, carried over as the contract this engine keeps.
@@ -603,5 +603,16 @@ describe("files", () => {
         const { sync: _s, timer: _t, currentActivity: _c, ...older } = emptyWorkspace();
         expect(parseWorkspace(JSON.stringify(older))).toEqual(emptyWorkspace());
         expect(migrateV1({}).preferences.excludedOwnerIDs.length).toBeGreaterThan(0);
+    });
+});
+
+describe("screenRecordingAttempt", () => {
+    it("asks macOS once a run when not granted, so the prompt is raised once and never again", () => {
+        expect(screenRecordingAttempt("denied", false)).toBe(true);
+        expect(screenRecordingAttempt("denied", true)).toBe(false);
+        expect(screenRecordingAttempt("not-determined", true)).toBe(false);
+    });
+    it("always looks titles up once granted", () => {
+        expect(screenRecordingAttempt("granted", true)).toBe(true);
     });
 });
