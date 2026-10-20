@@ -197,16 +197,33 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
 
 // ---------------------------------------------------------------------------
 
+const SORTS = { newest: "Newest first", oldest: "Oldest first", longest: "Longest first", name: "Name A–Z" } as const;
+type SortBy = keyof typeof SORTS;
+
+/** A list in the order picked: by when it was last worked on, by time, or by name. */
+function sortBy<T>(items: readonly T[], by: SortBy, key: (item: T) => { at: string; seconds: number; name: string }): T[] {
+    return [...items].sort((x, y) => {
+        const a = key(x), b = key(y);
+        if (by === "longest") return b.seconds - a.seconds;
+        if (by === "name") return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+        return by === "oldest" ? Date.parse(a.at) - Date.parse(b.at) : Date.parse(b.at) - Date.parse(a.at);
+    });
+}
+
 function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNode {
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
+    const [sort, setSort] = useState<SortBy>("newest");
     const [reviewing, setReviewing] = useState<{ stretch: Stretch; matter: string | null; description: string } | null>(null);
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
     const { groups, stretches, short } = useMemo(() => inboxOf(w.activities), [w.activities]);
     // Opening the inbox freshens it; the main process skips this when it ran in the last ten minutes.
     useEffect(() => { if (w.preferences.suggestMatters) void window.lawdie.suggestMatters(); }, [w.preferences.suggestMatters]);
-    const kept = useMemo(() => w.entries.filter((e) => e.activityID).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.entries]);
-    const raw = useMemo(() => w.activities.filter((a) => filter === "all" || a.disposition === filter).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)), [w.activities, filter]);
+    // Matters and stretches are one list, so the newest work is on top whether or not it has a matter yet.
+    const pendingRows = useMemo(() => sortBy([...groups.map((g) => ({ group: g })), ...stretches.map((st) => ({ stretch: st }))], sort,
+        (r) => "group" in r ? { at: r.group.endedAt, seconds: r.group.seconds, name: r.group.matter } : { at: r.stretch.endedAt, seconds: r.stretch.seconds, name: r.stretch.name }), [groups, stretches, sort]);
+    const kept = useMemo(() => sortBy(w.entries.filter((e) => e.activityID), sort, (e) => ({ at: e.endedAt, seconds: entrySeconds(e), name: e.description })), [w.entries, sort]);
+    const raw = useMemo(() => sortBy(w.activities.filter((a) => filter === "all" || a.disposition === filter), sort, (a) => ({ at: a.endedAt, seconds: (Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000, name: a.document?.name || a.title || a.app })), [w.activities, filter, sort]);
     const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
     const current = w.currentActivity;
     const shortSeconds = short.reduce((n, st) => n + st.seconds, 0);
@@ -238,7 +255,10 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                 <div className="segmented" role="tablist">
                     {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All" }[f]}</button>)}
                 </div>
-                <span className="muted small">{count} · retained {w.preferences.retentionDays} days</span>
+                <div className="row gap">
+                    <span className="muted small">{count} · retained {w.preferences.retentionDays} days</span>
+                    <select value={sort} onChange={(e) => setSort(e.target.value as SortBy)} aria-label="Sort">{(Object.keys(SORTS) as SortBy[]).map((k) => <option key={k} value={k}>{SORTS[k]}</option>)}</select>
+                </div>
             </div>
             <Panel>
                 {filter === "pending" ? (
@@ -246,11 +266,10 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                         {groups.length === 0 && stretches.length === 0 && short.length === 0 && (
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, go idle, or pause capture." />
                         )}
-                        {groups.map((g) => (
-                            <MatterRow key={g.id} group={g} open={!!open[g.id]} onToggle={() => toggle(g.id)}
-                                onKeep={() => setReviewing({ stretch: matterStretch(g), matter: g.matter, description: g.draft?.text ?? g.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
-                        ))}
-                        {stretches.map((st) => (
+                        {pendingRows.map((r) => "group" in r ? (
+                            <MatterRow key={r.group.id} group={r.group} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
+                                onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: r.group.draft?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
+                        ) : ((st) => (
                             <div key={st.id}>
                                 <div className="activity">
                                     <span className="app-icon">▭</span>
@@ -270,7 +289,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                     <Sittings items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
                                 )}
                             </div>
-                        ))}
+                        ))(r.stretch))}
                         {short.length > 0 && (
                             <div className="activity">
                                 <span className="app-icon muted">·</span>
