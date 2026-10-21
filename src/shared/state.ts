@@ -9,6 +9,8 @@ export type AppState = {
     notice: string | null;
     /** Matter suggestions: asking Kiwi now, and the last failure. */
     matters: { running: boolean; error: string | null };
+    /** A newer version downloaded and waiting for a restart, or null. */
+    updateReady: string | null;
     platform: NodeJS.Platform;
     appVersion: string;
     workspacePath: string;

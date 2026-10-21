@@ -11,6 +11,13 @@ files:
   - out/**
   - resources/**
   - package.json
+# Where the app looks for updates (src/main/updater.ts): this repo's GitHub Releases.
+# electron-builder writes latest-mac.yml / latest.yml / latest-linux.yml beside the
+# installers, and release.yml attaches them with the .zip the Mac updater installs.
+publish:
+  provider: github
+  owner: lawdieinc
+  repo: lawdie-desktop-time
 asarUnpack:
   # get-windows ships native helper binaries that must live on disk.
   - node_modules/get-windows/**

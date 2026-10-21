@@ -132,3 +132,9 @@ Servers honour the entry's `seconds`. Version 0.6.0.
 `release.yml`), because ad hoc builds lost Screen Recording and Accessibility on every
 update while System Settings still showed them on. Screen Recording is asked once a run
 (`screenRecordingAttempt()`), never every minute. Version 0.7.1.
+2026-10-21: the app updates itself (`src/main/updater.ts`, electron-updater against this
+repo's GitHub Releases: checked 30 s after launch and every 4 hours, downloaded in the
+background, installed on restart; failures are logged, never shown). `release.yml`
+attaches the `.zip`s, `latest*.yml` and block maps it reads. The Mac updater installs only
+an update signed like the running app, so it depends on the one certificate above. The
+main bundle is an ES module: import electron-updater by its default export. Version 0.8.0.

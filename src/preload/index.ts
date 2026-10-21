@@ -34,6 +34,8 @@ export const api = {
     connectKiwi: (destination: Destination, servers: Partial<Record<Product, string>>, token: string): Promise<boolean> => ipcRenderer.invoke("connectKiwi", destination, servers, token),
     disconnectKiwi: (): Promise<void> => ipcRenderer.invoke("disconnectKiwi"),
     syncNow: (): Promise<void> => ipcRenderer.invoke("syncNow"),
+    /** Restart into the version already downloaded. */
+    installUpdate: (): Promise<void> => ipcRenderer.invoke("installUpdate"),
     setAutoSync: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setAutoSync", on),
     openAtLogin: (): Promise<boolean> => ipcRenderer.invoke("openAtLogin"),
     /** Resolves to what the OS now reports, which may differ if it refused. */

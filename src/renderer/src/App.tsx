@@ -22,6 +22,7 @@ const ROUTES: { key: Route; label: string; icon: string }[] = [
 export function App(): ReactNode {
     const [state, setState] = useState<AppState | null>(null);
     const [route, setRoute] = useState<Route>("today");
+    const [updateLater, setUpdateLater] = useState(false);
     const [now, setNow] = useState(Date.now());
 
     useEffect(() => {
@@ -77,6 +78,11 @@ export function App(): ReactNode {
                 <div className="page">
                     {state.error && <Banner tone="danger" onClose={() => void window.lawdie.dismissMessage()}>{state.error}</Banner>}
                     {state.notice && <Banner onClose={() => void window.lawdie.dismissMessage()}>{state.notice}</Banner>}
+                    {state.updateReady && !updateLater && (
+                        <Banner onClose={() => setUpdateLater(true)}>
+                            <span className="row gap">Version {state.updateReady} is ready; it installs the next time the app restarts.<span className="grow" /><button type="button" className="primary" onClick={() => void window.lawdie.installUpdate()}>Restart now</button></span>
+                        </Banner>
+                    )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
                     ) : route === "today" ? <Today w={w} now={now} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} />}

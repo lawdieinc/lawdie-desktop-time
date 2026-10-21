@@ -26,15 +26,23 @@ jobs:
         include:
           - os: macos-14
             target: mac
+            # The .zip, latest-mac.yml and block maps are what the app's updater reads.
             assets: |
               release/*.dmg
-              release/*-mac.zip
+              release/*.zip
+              release/latest-mac.yml
+              release/*.blockmap
           - os: windows-latest
             target: win
-            assets: release/*.exe
+            assets: |
+              release/*.exe
+              release/latest.yml
+              release/*.blockmap
           - os: ubuntu-latest
             target: linux
-            assets: release/*.AppImage
+            assets: |
+              release/*.AppImage
+              release/latest-linux.yml
     runs-on: ${{ matrix.os }}
     env:
       # From scripts/mac-signing-cert.sh. Without them macOS builds stay ad hoc signed.

@@ -10,6 +10,7 @@ import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
 import { Matters, SUGGEST_ON_OPEN_MS } from "./matters";
 import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
+import { Updater } from "./updater";
 import { acquireLock, WorkspaceFile } from "./workspace";
 
 /* Lawdie Time Capture, main process. One window, one tray item, one workspace file.
@@ -115,6 +116,7 @@ app.whenReady().then(() => {
     const tokens = new TokenFile(join(userData, "kiwi-token.bin"));
     const sync = new Sync(store, tokens, deviceLabel);
     const matters = new Matters(store, tokens);
+    const updater = new Updater(store);
 
     // IPC: the window asks, the store answers. Every mutation goes through store.change.
     ipcMain.handle("state", () => store.snapshot());
@@ -148,6 +150,7 @@ app.whenReady().then(() => {
     ipcMain.handle("connectKiwi", (_e, destination: Destination, servers: Partial<Record<Product, string>>, token: string) => sync.connect(isDestination(destination) ? destination : "kiwi", servers ?? {}, token));
     ipcMain.handle("disconnectKiwi", () => sync.disconnect());
     ipcMain.handle("syncNow", () => sync.syncNow());
+    ipcMain.handle("installUpdate", () => updater.install());
     ipcMain.handle("setAutoSync", (_e, on: boolean) => store.change((w) => { if (w.sync) w.sync.autoSync = on; }));
     ipcMain.handle("openAtLogin", () => openAtLogin());
     ipcMain.handle("setOpenAtLogin", (_e, on: boolean) => { setOpenAtLogin(on === true); return openAtLogin(); });
@@ -187,6 +190,7 @@ app.whenReady().then(() => {
     capture.start();
     sync.start();
     matters.start();
+    updater.start();
 
     // `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>]
     // [--crm-server <url>]` pairs on launch without a person typing the token: provisioning
@@ -205,7 +209,7 @@ app.whenReady().then(() => {
 
     app.on("second-instance", () => showWindow(store));
     app.on("activate", () => showWindow(store));
-    app.on("before-quit", () => { quitting = true; sync.stop(); matters.stop(); capture.shutdown(); releaseLock?.(); });
+    app.on("before-quit", () => { quitting = true; sync.stop(); matters.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); });
 });
 
 // Closing the last window keeps the process (and capture) alive on every platform; Quit is explicit.
