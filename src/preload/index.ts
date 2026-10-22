@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppState } from "@shared/state";
-import type { KeepInput, Preferences } from "@shared/model";
+import type { EntryChange, KeepInput, KeepLine, Preferences } from "@shared/model";
 import type { Destination, Product } from "@shared/kiwi";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
@@ -20,6 +20,10 @@ export const api = {
     setPreference: <K extends keyof Preferences>(key: K, value: Preferences[K]): Promise<boolean> => ipcRenderer.invoke("setPreference", key, value),
     /** One activity, or every sitting of a stretch, as one entry. */
     keepActivity: (ids: string | string[], input: KeepInput): Promise<boolean> => ipcRenderer.invoke("keepActivity", ids, input),
+    /** A matter's day split into one entry per task, all or nothing. */
+    keepLines: (lines: KeepLine[]): Promise<boolean> => ipcRenderer.invoke("keepLines", lines),
+    /** A kept entry's description, hours, codes, billable flag or rate: a client rule's fix, or a person's edit. */
+    editEntry: (id: string, change: EntryChange): Promise<boolean> => ipcRenderer.invoke("editEntry", id, change),
     dismissActivity: (ids: string | string[]): Promise<boolean> => ipcRenderer.invoke("dismissActivity", ids),
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
     /** The person names (or, with null, clears) the matter of pending activities. */

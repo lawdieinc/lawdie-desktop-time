@@ -4,10 +4,12 @@ import { hostname } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
-import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
+import { archiveProject, closeActivity, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type KeepInput, type KeepLine, type Preferences } from "@shared/model";
+import { demoNow } from "@shared/demo";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
 import { Matters, SUGGEST_ON_OPEN_MS } from "./matters";
+import { RulesFeed } from "./rulesFeed";
 import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
 import { Updater } from "./updater";
@@ -27,6 +29,9 @@ if (argValue("--screenshot")) {
     app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
     app.commandLine.appendSwitch("disable-renderer-backgrounding");
 }
+
+// A demo or a verification run keeps its own app data, so it never locks or touches the person's real workspace.
+if (process.env.LAWDIE_USER_DATA) app.setPath("userData", process.env.LAWDIE_USER_DATA);
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -117,6 +122,15 @@ app.whenReady().then(() => {
     const sync = new Sync(store, tokens, deviceLabel);
     const matters = new Matters(store, tokens);
     const updater = new Updater(store);
+    // `--rules-feed <url|file>`: client billing rules from the billing system; `--demo <seed.json>`: a demo workspace the feed's console drives.
+    let rulesFeed: RulesFeed | null = null;
+    try {
+        rulesFeed = new RulesFeed(store, argValue("--rules-feed") ?? process.env.LAWDIE_RULES_FEED ?? null, argValue("--demo") ?? process.env.LAWDIE_DEMO_SEED ?? null, join(workspacePath, ".."));
+    } catch (err) {
+        dialog.showErrorBox("Lawdie Time Capture", `The demo seed could not be read. ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // A demo runs on its seeded day's clock, so time kept on that day is never "in the future".
+    const clock = (): number => demoNow(store.workspace, Date.now());
 
     // IPC: the window asks, the store answers. Every mutation goes through store.change.
     ipcMain.handle("state", () => store.snapshot());
@@ -134,7 +148,9 @@ app.whenReady().then(() => {
         if (ok && key === "captureScreenText" && value === true && process.platform === "darwin") systemPreferences.isTrustedAccessibilityClient(true);
         return ok;
     });
-    ipcMain.handle("keepActivity", (_e, ids: string | string[], input: KeepInput) => store.change((w) => { keepStretch(w, Array.isArray(ids) ? ids : [ids], input, Date.now()); }));
+    ipcMain.handle("keepActivity", (_e, ids: string | string[], input: KeepInput) => store.change((w) => { keepStretch(w, Array.isArray(ids) ? ids : [ids], input, clock()); }));
+    ipcMain.handle("keepLines", (_e, lines: KeepLine[]) => store.change((w) => { keepLines(w, Array.isArray(lines) ? lines : [], clock()); }));
+    ipcMain.handle("editEntry", (_e, id: string, change: EntryChange) => store.change((w) => { editEntry(w, String(id), change ?? {}, clock()); }));
     ipcMain.handle("dismissActivity", (_e, ids: string | string[]) => store.change((w) => dismissActivities(w, Array.isArray(ids) ? ids : [ids])));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
     ipcMain.handle("setMatter", (_e, ids: string[], matter: string | null) => store.change((w) => setMatter(w, Array.isArray(ids) ? ids : [], typeof matter === "string" ? matter : null)));
@@ -179,9 +195,21 @@ app.whenReady().then(() => {
         mainWindow.webContents.on("console-message", (event) => console.log(`[renderer:${event.level}] ${event.message}`));
         // `--click <css selector>` presses one control first, so a folded part of a screen can be captured open.
         const click = argValue("--click");
+        // `--steps "btn:Keep time||type:input[autofocus]=Review draft||click:.fix"` walks a flow first, one step a second:
+        // btn: presses the first visible button whose text starts with it, click: a CSS selector, type: sets an input's value.
+        const steps = (argValue("--steps") ?? "").split("||").filter(Boolean);
+        const run = (step: string): string => `(() => {
+            const s = ${JSON.stringify(step)}; const [kind, ...rest] = s.split(":"); const arg = rest.join(":");
+            const visible = (e) => e.offsetParent !== null;
+            if (kind === "btn") { const el = [...document.querySelectorAll("button")].filter(visible).find((b) => b.textContent.trim().startsWith(arg)); console.log("--steps", s, el ? "ok" : "matched nothing"); el?.click(); return; }
+            if (kind === "type") { const [sel, ...t] = arg.split("="); const el = [...document.querySelectorAll(sel)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); if (!el) return;
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, t.join("=")); el.dispatchEvent(new Event("input", { bubbles: true })); return; }
+            const el = [...document.querySelectorAll(arg)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); el?.click();
+        })()`;
         mainWindow.webContents.once("did-finish-load", () => {
             if (click) setTimeout(() => void mainWindow?.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(click)}); console.log("--click", el ? el.textContent.slice(0, 60) : "matched nothing"); el?.click(); })()`), 2500);
-            setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 3500);
+            steps.forEach((step, n) => setTimeout(() => void mainWindow?.webContents.executeJavaScript(run(step)), 3000 + n * 1200));
+            setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 4000 + steps.length * 1200);
         });
     }
     buildTray(store, capture);
@@ -191,6 +219,7 @@ app.whenReady().then(() => {
     sync.start();
     matters.start();
     updater.start();
+    rulesFeed?.start();
 
     // `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>]
     // [--crm-server <url>]` pairs on launch without a person typing the token: provisioning
@@ -209,7 +238,7 @@ app.whenReady().then(() => {
 
     app.on("second-instance", () => showWindow(store));
     app.on("activate", () => showWindow(store));
-    app.on("before-quit", () => { quitting = true; sync.stop(); matters.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); });
+    app.on("before-quit", () => { quitting = true; sync.stop(); matters.stop(); rulesFeed?.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); });
 });
 
 // Closing the last window keeps the process (and capture) alive on every platform; Quit is explicit.

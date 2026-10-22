@@ -61,7 +61,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--muted); font
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid rgba(139, 92, 42, 0.45); outline-offset: 2px; }
 input, select { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; user-select: text; } input { flex: 1; min-width: 0; }
 .field { display: flex; flex-direction: column; gap: 9px; flex: 1; }
-.check { font-size: 12px; } .check input { flex: 0; }
+.check { font-size: 12px; } .check input { flex: 0 0 auto; }
 .toggle { width: 38px; height: 22px; border-radius: 11px; border: 0; background: #d8d1c7; position: relative; padding: 0; flex-shrink: 0; } .toggle span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left 0.15s; } .toggle.on { background: var(--accent); } .toggle.on span { left: 18px; }
 .setting { display: flex; align-items: center; gap: 30px; padding: 12px 0; border-top: 1px solid var(--line); } .setting:first-of-type { border-top: 0; }
 .segmented { display: inline-flex; background: var(--raised); border-radius: 8px; padding: 2px; } .segmented button { border: 0; background: transparent; padding: 6px 14px; border-radius: 6px; font-size: 12px; color: var(--muted); } .segmented button.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
@@ -124,4 +124,23 @@ input[type="date"] { font: inherit; font-size: 12px; padding: 6px 8px; border: 1
 .insight-points { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; } .insight-points li { font-size: 13px; line-height: 1.5; }
 /* AI-drafted billing descriptions: the draft under a row, and the tag on a kept one. */
 .draft-line { margin: 3px 0 1px; font-size: 12px; color: var(--text); font-style: italic; } .draft-line span { color: var(--accent); font-style: normal; margin-right: 2px; }
+/* Client billing rules at entry time (Rules.tsx): a finding cites its clause and offers its fix. */
+.sheet.wide { width: 920px; max-height: calc(100vh - 60px); overflow: auto; }
+.rules.ok { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 9px; background: rgba(94, 139, 90, 0.08); color: var(--ok); }
+.rules.ok .muted { margin-left: auto; }
+.rules-mark { font-weight: 700; }
+.findings { display: flex; flex-direction: column; gap: 8px; }
+.finding { display: flex; flex-direction: column; gap: 5px; padding: 11px 13px; border-radius: 9px; border: 1px solid rgba(139, 92, 42, 0.25); border-left: 3px solid var(--accent); background: rgba(139, 92, 42, 0.05); }
+.finding.from-client { border-left-color: var(--danger); background: rgba(176, 65, 62, 0.05); border-color: rgba(176, 65, 62, 0.25); }
+.finding .cite { font-family: var(--label); letter-spacing: 0.04em; color: var(--muted); }
+.finding.from-client .cite { color: var(--danger); }
+.new-tag { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--danger); color: #fff; }
+button.fix { background: #fff; border: 1px solid var(--accent); color: var(--accent); border-radius: 7px; padding: 6px 11px; font-size: 12px; font-weight: 600; }
+button.fix:hover { background: var(--accent); color: #fff; }
+.wrap { flex-wrap: wrap; }
+.split-lines { display: flex; flex-direction: column; gap: 12px; }
+.split-line { display: flex; flex-direction: column; gap: 7px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.split-line input.hours { flex: 0 0 70px; } .split-line input.code { flex: 0 0 66px; }
+.entry-rules { display: flex; gap: 10px; align-items: center; margin-top: 3px; color: var(--muted); }
+.rule-ok { color: var(--ok); font-weight: 600; } .rule-flag { color: var(--danger); font-weight: 600; }
 .ai-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: rgba(139, 92, 42, 0.1); color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }

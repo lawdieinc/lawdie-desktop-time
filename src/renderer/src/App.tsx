@@ -4,6 +4,9 @@ import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as e
 import { inboxOf, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
+import { viewNow } from "@shared/demo";
+import { applyFix, roundUpToTenth, splitPlan, type EntryDraft, type Fix, type PlanLine } from "@shared/rules";
+import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesContext, sameDayOf } from "./Rules";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 import kiwiMark from "../../../resources/brand/kiwi.png";
 
@@ -63,8 +66,8 @@ export function App(): ReactNode {
                     </button>
                 </div>
                 <div className="account">
-                    <span className="avatar">L</span>
-                    <div><strong className="small">Personal workspace</strong><p className="muted tiny">{w.sync?.targets[0]?.accountEmail ?? (connected ? `Synced to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}` : "Local • No account needed")}</p></div>
+                    <span className="avatar">{w.profile ? w.profile.name[0] : "L"}</span>
+                    <div><strong className="small">{w.profile ? `${w.profile.name} · ${w.profile.timekeeper}` : "Personal workspace"}</strong><p className="muted tiny">{w.sync?.targets[0]?.accountEmail ?? (connected ? `Synced to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}` : "Local • No account needed")}</p></div>
                 </div>
             </aside>
             <main className="content">
@@ -73,7 +76,7 @@ export function App(): ReactNode {
                     <span className="grow" />
                     <span className={"muted" + (w.sync?.targets.some((t) => t.lastError) ? " danger" : "")}>{statusLine(state, now)}</span>
                     <span className="divider" />
-                    <span className="muted">{new Date(now).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
+                    <span className="muted">{new Date(viewNow(w, now)).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span>
                 </header>
                 <div className="page">
                     {state.error && <Banner tone="danger" onClose={() => void window.lawdie.dismissMessage()}>{state.error}</Banner>}
@@ -85,7 +88,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={now} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} />}
                 </div>
             </main>
         </div>
@@ -188,15 +191,19 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
 
 function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
     const p = w.projects.find((x) => x.id === entry.projectID);
+    const [editing, setEditing] = useState(false);
     return (
         <div className="entry">
             <span className="bar" />
             <div className="grow">
                 <div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>
                 <div className="muted tiny"><MatterLabel name={p?.name} /> · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : ""}</div>
+                <EntryRules w={w} entry={entry} />
             </div>
             <span className="mono">{duration(entrySeconds(entry))}</span>
-            <button type="button" className="icon" aria-label="Delete entry" title="Delete entry" onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
+            <button type="button" className="quiet" title="Change this entry's narrative, hours, codes or rate." onClick={() => setEditing(true)}>Edit</button>
+            <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
+            {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
         </div>
     );
 }
@@ -348,7 +355,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     </div>
                 ))}
             </Panel>
-            {reviewing && <KeepSheet key={reviewing.stretch.id} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onClose={() => setReviewing(null)} />}
+            {reviewing && <KeepSheet key={reviewing.stretch.id} w={w} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onClose={() => setReviewing(null)} />}
         </>
     );
 }
@@ -362,11 +369,12 @@ const endedLabel = (by: string | undefined): string => (by ? ENDED_BY[by] ?? by 
 
 /** An AI-drafted billing description, under the row it was drafted for. */
 function DraftLine({ draft }: { draft: Draft }): ReactNode {
-    return <div className="draft-line" title={draft.source === "sample" ? "Sample draft, not generated from your data" : "Drafted by AI from what was captured"}><span aria-hidden="true">✦</span> {draft.text}</div>;
+    return <div className="draft-line" title={draft.source === "sample" ? "Sample draft, not generated from your data" : draft.source === "capture" ? "Written from the captured apps, documents and people." : "Drafted by AI from what was captured"}><span aria-hidden="true">✦</span> {draft.text}</div>;
 }
 
 /** "✦ AI" after a description that is an AI draft kept as written. */
 function AiTag({ source }: { source: DraftSource | undefined }): ReactNode {
+    if (source === "capture") return <span className="ai-tag" title="Written from the captured activity, kept as written.">✦ From capture</span>;
     return source ? <span className="ai-tag" title={source === "sample" ? "Sample draft, not generated from your data" : "Drafted by AI, kept as written"}>✦ AI{source === "sample" ? " · sample" : ""}</span> : null;
 }
 
@@ -461,13 +469,24 @@ const onDay = (dayIso: string, hhmm: string, notBefore: number | null = null): n
     return d.getTime();
 };
 
-function KeepSheet({ stretch, matter: suggested, initialDescription, projects, sittings, onClose }: { stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; onClose: () => void }): ReactNode {
-    const [description, setDescription] = useState(initialDescription);
+function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects, sittings, onClose }: { w: Workspace; stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; onClose: () => void }): ReactNode {
     const [matter, setMatter] = useState(suggested ?? "");
-    const asDrafted = !!stretch.draft && description.trim() === stretch.draft.text;
+    const project = projectByName(w, matter);
+    const rc = rulesContext(w, project);
+    const day = new Date(stretch.startedAt).toLocaleDateString("en-CA");
+    // The client's rules want one task per entry: the captured tasks of this stretch, each with its narrative, hours and codes.
+    const plan = useMemo(() => (rc.ctx ? splitPlan(sittings, rc.ctx, rc.profile, { billable: true, hourlyRate: project?.hourlyRate ?? 0, day }) : []), [sittings, rc.ctx, rc.profile, project?.hourlyRate, day]);
+    const single = plan.length === 1 ? plan[0].draft : null;
+    const [description, setDescription] = useState(single?.description ?? initialDescription);
+    const asDrafted = (!!stretch.draft && description.trim() === stretch.draft.text) || (!!single && description.trim() === single.description);
     const [billable, setBillable] = useState(true);
     const [startText, setStartText] = useState(timeValue(stretch.startedAt));
     const [endText, setEndText] = useState(timeValue(stretch.endedAt));
+    const [hoursSet, setHoursSet] = useState<number | null>(null);
+    const [codes, setCodes] = useState<{ taskCode?: string; activityCode?: string }>(single ? { taskCode: single.taskCode, activityCode: single.activityCode } : {});
+    const [rate, setRate] = useState<number | null>(null);
+    const [lines, setLines] = useState<PlanLine[] | null>(null);
+    const [foldTarget, setFoldTarget] = useState<string | null>(null);
     const [problem, setProblem] = useState<string | null>(null);
     const start = onDay(stretch.startedAt, startText);
     const end = onDay(stretch.startedAt, endText, start);
@@ -475,32 +494,69 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
     const preview = stretchSpan(spans, start, end);
     const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
     const changed = startText !== timeValue(stretch.startedAt) || endText !== timeValue(stretch.endedAt);
+    const hours = hoursSet ?? Math.max(0.1, roundUpToTenth(previewSeconds / 3600));
+    const hourlyRate = rate ?? project?.hourlyRate ?? 0;
+    const draft: EntryDraft = { description, hours, ...codes, billable, hourlyRate, day };
+    const sameDay = sameDayOf(w, project?.id ?? null, day);
+    const check = { ...rc, sameDay, splitCount: plan.length, suggestion: single?.description ?? null };
+    const onFix = (fix: Fix): void => {
+        if (fix.split) { setLines(plan); return; }
+        if (fix.foldInto) setFoldTarget(fix.foldInto);
+        const next = applyFix(draft, fix);
+        setDescription(next.description); setHoursSet(next.hours); setCodes({ taskCode: next.taskCode, activityCode: next.activityCode }); setBillable(next.billable); setRate(next.hourlyRate);
+    };
+    const drafted = (text: string, from: string | undefined): { drafted?: DraftSource } => (from && text.trim() === from ? { drafted: "capture" } : {});
     const save = async (): Promise<void> => {
+        if (lines) {
+            if (lines.some((l) => !l.draft.description.trim())) { setProblem("Add a narrative to every line."); return; }
+            const ok = await window.lawdie.keepLines(lines.map((l, n) => ({ activityIDs: l.activityIDs, input: { description: l.draft.description, projectID: null, matter: matter.trim() || null, billable: l.draft.billable, hours: l.draft.hours, taskCode: l.draft.taskCode, activityCode: l.draft.activityCode, hourlyRate: l.draft.hourlyRate, ...drafted(l.draft.description, plan[n]?.draft.description) }, foldInto: l.foldInto ?? null })));
+            if (ok) onClose(); else setProblem("Those entries could not be saved. They may overlap time you already kept.");
+            return;
+        }
         if (!description.trim()) { setProblem("Add a description."); return; }
         if (!preview) { setProblem("No captured time falls between those times."); return; }
-        const input = { description, projectID: null, matter: matter.trim() || null, billable, ...(asDrafted ? { drafted: stretch.draft!.source } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}) };
-        if (await window.lawdie.keepActivity(stretch.activityIDs, input)) onClose();
+        const input = { description, projectID: null, matter: matter.trim() || null, billable, ...(asDrafted ? { drafted: (stretch.draft?.source ?? "capture") as DraftSource } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}), ...(rc.book ? { hours, ...codes, hourlyRate } : {}) };
+        // Folded into the day's email entry: the sittings join that entry, which takes the summed hours.
+        const ok = foldTarget ? await window.lawdie.keepLines([{ activityIDs: stretch.activityIDs, input, foldInto: foldTarget }]) : await window.lawdie.keepActivity(stretch.activityIDs, input);
+        if (ok) onClose();
         else setProblem("That could not be saved. It may overlap time you already kept.");
     };
     return (
         <div className="scrim" onClick={onClose}>
-            <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
-                <Heading eyebrow="From desktop activity" title="Keep time" subtitle={suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}, kept as one entry.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
-                <label className="field"><span className="eyebrow">Matter{suggested ? " · suggested" : ""}</span><input list="matter-names" value={matter} placeholder="Which matter is this? Leave empty for none." onChange={(e) => setMatter(e.target.value)} /></label>
-                <datalist id="matter-names">{projects.map((p) => <option key={p} value={p} />)}</datalist>
-                <label className="field"><span className="eyebrow">Description{asDrafted ? ` · drafted by AI${stretch.draft!.source === "sample" ? " (sample)" : ""}` : ""}</span><input autoFocus value={description} onChange={(e) => setDescription(e.target.value)} /></label>
-                <div className="row gap">
-                    <label className="field"><span className="eyebrow">Start · {dayLabel(stretch.startedAt)}</span><input type="time" value={startText} onChange={(e) => setStartText(e.target.value)} /></label>
-                    <label className="field"><span className="eyebrow">End</span><input type="time" value={endText} onChange={(e) => setEndText(e.target.value)} /></label>
-                    <label className="row gap check"><input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
-                </div>
-                {stretch.sittings > 1 && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
-                <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>
-                {problem && <p className="danger small">{problem}</p>}
-                <div className="row between">
-                    <span className="mono accent big">{duration(previewSeconds)}</span>
-                    <span className="row gap"><button type="button" className="quiet" onClick={onClose}>Cancel</button><button type="submit" className="primary">Keep time</button></span>
-                </div>
+            <form className={"sheet" + (lines || rc.book ? " wide" : "")} onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
+                <Heading eyebrow="From desktop activity" title={lines ? `Keep ${lines.length} entries` : "Keep time"} subtitle={lines ? `${matter}: one entry per task, each with its captured time.` : suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
+                {lines ? (
+                    <>
+                        <SplitLines lines={lines} setLines={setLines} c={{ ...rc, sameDay }} sameDay={sameDay} />
+                        {problem && <p className="danger small">{problem}</p>}
+                        <div className="row between">
+                            <span className="mono accent big">{lines.reduce((n, l) => n + l.draft.hours, 0).toFixed(1)} h</span>
+                            <span className="row gap"><button type="button" className="quiet" title="Go back to one entry for the whole stretch." onClick={() => setLines(null)}>Back</button><button type="submit" className="primary" title="Save each line as its own time entry.">Keep {lines.length} entries</button></span>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <label className="field"><span className="eyebrow">Matter{suggested ? " · suggested" : ""}</span><input list="matter-names" value={matter} placeholder="Which matter is this? Leave empty for none." title="The matter this time is billed to." onChange={(e) => setMatter(e.target.value)} /></label>
+                        <datalist id="matter-names">{projects.map((p) => <option key={p} value={p} />)}</datalist>
+                        <label className="field"><span className="eyebrow">Description{asDrafted ? (stretch.draft?.source === "capture" || single ? " · drafted from capture" : ` · drafted by AI${stretch.draft!.source === "sample" ? " (sample)" : ""}`) : ""}</span><input autoFocus value={description} title="The narrative the client sees; the rules check it as you type." onChange={(e) => setDescription(e.target.value)} /></label>
+                        <div className="row gap">
+                            <label className="field"><span className="eyebrow">Start · {dayLabel(stretch.startedAt)}</span><input type="time" value={startText} title="When the work started." onChange={(e) => setStartText(e.target.value)} /></label>
+                            <label className="field"><span className="eyebrow">End</span><input type="time" value={endText} title="When the work ended." onChange={(e) => setEndText(e.target.value)} /></label>
+                            {rc.book && <label className="field"><span className="eyebrow">Hours</span><input type="number" step="0.05" min="0" value={hours} title="Billed hours; captured time rounded up to the tenth." onChange={(e) => setHoursSet(Number(e.target.value))} /></label>}
+                            {rc.book && <label className="field"><span className="eyebrow">Task</span><input value={codes.taskCode ?? ""} placeholder="P500" title="UTBMS task code for this entry." onChange={(e) => setCodes({ ...codes, taskCode: e.target.value.toUpperCase() })} /></label>}
+                            {rc.book && <label className="field"><span className="eyebrow">Activity</span><input value={codes.activityCode ?? ""} placeholder="A103" title="UTBMS activity code for this entry." onChange={(e) => setCodes({ ...codes, activityCode: e.target.value.toUpperCase() })} /></label>}
+                            <label className="row gap check" title="Bill this time to the client."><input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
+                        </div>
+                        <RulesCheck draft={draft} c={check} onFix={onFix} />
+                        {stretch.sittings > 1 && !rc.book && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
+                        {!rc.book && <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>}
+                        {problem && <p className="danger small">{problem}</p>}
+                        <div className="row between">
+                            <span className="mono accent big">{rc.book ? `${hours.toFixed(1)} h` : duration(previewSeconds)}</span>
+                            <span className="row gap"><button type="button" className="quiet" title="Close without keeping any time." onClick={onClose}>Cancel</button><button type="submit" className="primary" title="Save this as one time entry.">Keep time</button></span>
+                        </div>
+                    </>
+                )}
             </form>
         </div>
     );

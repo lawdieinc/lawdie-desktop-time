@@ -1,4 +1,5 @@
 import { isProduct, type Product } from "./kiwi";
+import type { MatterContext, Profile, RuleSet } from "./rules";
 /* The workspace and the rules that change it. Pure: no Electron, no filesystem, no
    clock of its own — every function takes `now` in milliseconds — so the whole thing
    runs under vitest and inside the main process unchanged.
@@ -25,6 +26,9 @@ export type Project = {
     /** What a model made of the matter's work, shown on its page. Nothing writes one yet but
      *  sample data ("sample"); Kiwi is meant to ("kiwi"). */
     insight?: MatterInsight | null;
+    /** The matter's number, client and people, and what its documents are called: what the
+     *  local drafter (src/shared/narrative.ts) and the billing rules need to read capture. */
+    context?: MatterContext | null;
 };
 
 export type MatterInsight = { summary: string; points: string[]; generatedAt: string; source: "kiwi" | "sample" };
@@ -51,15 +55,21 @@ export type TimeEntry = {
     activityIDs?: string[];
     /** The description is an AI draft, kept as written. */
     drafted?: DraftSource;
+    /** Hours billed, in the client's increment; absent means the captured time. */
+    hours?: number;
+    /** UTBMS task and activity codes (P500 / A103), when the client asks for them. */
+    taskCode?: string;
+    activityCode?: string;
 };
 
 export type Interval = { startedAt: string; endedAt: string };
 
-/** Where an AI draft came from: Kiwi, or sample data (nothing drafts yet). */
-export type DraftSource = "kiwi" | "sample";
+/** Where a draft came from: Kiwi, sample data, or the local drafter that reads capture (src/shared/narrative.ts). */
+export type DraftSource = "kiwi" | "sample" | "capture";
+const DRAFT_SOURCES = new Set<unknown>(["kiwi", "sample", "capture"]);
 export type Draft = { text: string; source: DraftSource };
 export const DRAFT_MAX = 500;
-const draftValid = (d: Draft | null | undefined): boolean => d == null || (typeof d.text === "string" && d.text.length > 0 && d.text.length <= DRAFT_MAX && (d.source === "kiwi" || d.source === "sample"));
+const draftValid = (d: Draft | null | undefined): boolean => d == null || (typeof d.text === "string" && d.text.length > 0 && d.text.length <= DRAFT_MAX && DRAFT_SOURCES.has(d.source));
 
 export type RunningTimer = {
     description: string;
@@ -147,6 +157,12 @@ export type Workspace = {
     currentActivity: Activity | null;
     preferences: Preferences;
     sync: SyncState | null;
+    /** Each client's billing rules, as the billing system last sent them (src/main/rulesFeed.ts). */
+    rulebooks?: RuleSet[];
+    /** Who keeps time here: the timekeeper the rules check entries for. */
+    profile?: Profile | null;
+    /** A demo workspace made from a seed file: which reset and which stage it is at. Never set on a real workspace. */
+    demo?: { seed: string; epoch: number; stage: string; day: string } | null;
 };
 
 export const DEFAULT_EXCLUSIONS = [
@@ -295,6 +311,12 @@ export type KeepInput = {
     /** The span the person settled on before keeping, when they changed it. */
     startedAt?: string;
     endedAt?: string;
+    /** Billing details the client's rules ask for (see TimeEntry). */
+    hours?: number;
+    taskCode?: string;
+    activityCode?: string;
+    /** A rate other than the matter's, when a client rule caps it; frozen at save like any rate. */
+    hourlyRate?: number;
 };
 
 /** The parts of the sittings inside [start, end]. */
@@ -337,9 +359,10 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     const projectID = input.projectID ?? (matter ? projectNamed(w, matter).id : null);
     const entry: TimeEntry = {
         id: uuid(), description: input.description.trim(), projectID, ...span,
-        billable: input.billable, hourlyRate: project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
+        billable: input.billable, hourlyRate: input.hourlyRate ?? project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
         ...(ids.length > 1 ? { activityIDs: ids } : {}),
         ...(input.drafted ? { drafted: input.drafted } : {}),
+        ...billingFields(input),
     };
     saveEntry(w, entry, now);
     for (const a of picked as Activity[]) {
@@ -347,6 +370,76 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
         if (matter) { a.matter = matter; a.matterBy = "person"; }
     }
     return entry;
+}
+
+/** The billing details of a keep or an edit, checked: hours in hundredths, codes trimmed and upper case. */
+function billingFields(input: { hours?: number; taskCode?: string; activityCode?: string }): Pick<TimeEntry, "hours" | "taskCode" | "activityCode"> {
+    const out: Pick<TimeEntry, "hours" | "taskCode" | "activityCode"> = {};
+    if (input.hours !== undefined) {
+        if (!Number.isFinite(input.hours) || input.hours < 0 || input.hours > 24) throw new WorkspaceError("Enter hours between 0 and 24.");
+        out.hours = Math.round(input.hours * 100) / 100;
+    }
+    const code = (v: string | undefined) => v?.trim().toUpperCase().slice(0, 8) || undefined;
+    if (code(input.taskCode)) out.taskCode = code(input.taskCode);
+    if (code(input.activityCode)) out.activityCode = code(input.activityCode);
+    return out;
+}
+
+export type KeepLine = { activityIDs: string[]; input: KeepInput; foldInto?: string | null };
+
+/**
+ * Keep several lines at once, all or nothing (the store saves only a mutation that did not
+ * throw): a matter's day split into one entry per task (src/shared/rules.ts splitPlan),
+ * each line from its own sittings. A line with `foldInto` adds its sittings to an entry
+ * already kept (one email entry for the day) instead of making a new one.
+ */
+export function keepLines(w: Workspace, lines: KeepLine[], now: number): TimeEntry[] {
+    if (!lines.length) throw new WorkspaceError("Nothing to keep.");
+    const seen = new Set<string>();
+    for (const l of lines) for (const id of l.activityIDs) { if (seen.has(id)) throw new WorkspaceError("A sitting can be kept in one entry only."); seen.add(id); }
+    return lines.map((l) => (l.foldInto ? foldInto(w, l.foldInto, l.activityIDs, l.input, now) : keepStretch(w, l.activityIDs, l.input, now)));
+}
+
+/** Pending sittings join an entry already kept: its span widens to hold them and only the sittings count. */
+export function foldInto(w: Workspace, entryID: string, activityIDs: string[], input: Partial<KeepInput>, now: number): TimeEntry {
+    const target = w.entries.find((e) => e.id === entryID);
+    if (!target) throw new WorkspaceError("That entry no longer exists.");
+    const picked = activityIDs.map((id) => w.activities.find((a) => a.id === id));
+    if (!activityIDs.length || picked.some((a) => !a || a.disposition !== "pending")) throw new WorkspaceError("This activity has already been reviewed.");
+    const spans = mergeAdjacent([...intervals(target), ...(picked as Activity[]).map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt }))]);
+    const next: TimeEntry = {
+        ...target,
+        startedAt: spans[0].startedAt, endedAt: spans[spans.length - 1].endedAt,
+        sittings: spans,
+        activityIDs: [...new Set([target.activityID, ...(target.activityIDs ?? []), ...activityIDs].filter((x): x is string => !!x))],
+        ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+        ...billingFields(input),
+    };
+    if (spans.length <= 1) delete next.sittings;
+    if (next.description !== target.description) delete next.drafted;
+    saveEntry(w, next, now);
+    for (const a of picked as Activity[]) a.disposition = "kept";
+    return next;
+}
+
+export type EntryChange = { description?: string; hours?: number; taskCode?: string; activityCode?: string; billable?: boolean; hourlyRate?: number };
+
+/** Change a kept entry's description, billing details, billable flag or rate (a client rule's fix). Its times stay. */
+export function editEntry(w: Workspace, id: string, change: EntryChange, now: number): TimeEntry {
+    const e = w.entries.find((x) => x.id === id);
+    if (!e) throw new WorkspaceError("That entry no longer exists.");
+    const next: TimeEntry = { ...e, ...billingFields(change) };
+    // An emptied code field takes the code off the entry.
+    if (change.taskCode !== undefined && !change.taskCode.trim()) delete next.taskCode;
+    if (change.activityCode !== undefined && !change.activityCode.trim()) delete next.activityCode;
+    if (change.description !== undefined) {
+        next.description = change.description.trim();
+        if (next.description !== e.description) delete next.drafted;
+    }
+    if (change.billable !== undefined) next.billable = change.billable === true;
+    if (change.hourlyRate !== undefined) next.hourlyRate = change.hourlyRate;
+    saveEntry(w, next, now);
+    return next;
 }
 
 export const MATTER_MAX = 120;
@@ -749,7 +842,8 @@ export function validate(w: Workspace): Workspace {
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
-        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample")) &&
+        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || DRAFT_SOURCES.has(e.drafted)) && (e.hours == null || (Number.isFinite(e.hours) && e.hours >= 0 && e.hours <= 24))) &&
+        (w.rulebooks == null || (Array.isArray(w.rulebooks) && w.rulebooks.every((r) => r && typeof r.clientId === "string" && Array.isArray(r.rules)))) &&
         w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
