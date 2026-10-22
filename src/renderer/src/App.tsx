@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
 import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
-import { inboxOf, toReview, type MatterGroup } from "@shared/matters";
+import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
@@ -270,7 +270,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                 {filter === "pending" ? (
                     <>
                         {groups.length === 0 && stretches.length === 0 && short.length === 0 && (
-                            <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, go idle, or pause capture." />
+                            <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
                             <MatterRow key={r.group.id} group={r.group} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
@@ -300,8 +300,8 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <div className="activity">
                                 <span className="app-icon muted">·</span>
                                 <div className="grow">
-                                    <div className="small strong">{short.length} short {short.length === 1 ? "switch" : "switches"}</div>
-                                    <div className="muted tiny">Under {NOISE_SECONDS} seconds each: app hops, not work. Sittings on one document within {gapMinutes} minutes are already grouped above.</div>
+                                    <div className="small strong">{short.length} brief {short.length === 1 ? "touch" : "touches"}</div>
+                                    <div className="muted tiny">Under {NOISE_SECONDS} seconds each, on a matter or not: app hops and glances, not billable time. Sittings on one document within {gapMinutes} minutes are already grouped above.</div>
                                 </div>
                                 <span className="mono">{duration(shortSeconds)}</span>
                                 <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(short.flatMap((st) => st.activityIDs))}>Dismiss all</button>
@@ -374,9 +374,6 @@ function AiTag({ source }: { source: DraftSource | undefined }): ReactNode {
 function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
     return name ? <span className="matter-label">{name}</span> : <span className="matter-label none">No matter</span>;
 }
-
-/** A matter's day as a stretch, for the keep sheet: its sittings in every app, as one entry. */
-const matterStretch = (g: MatterGroup): Stretch => ({ id: g.id, app: g.apps.join(", "), ownerID: "", name: g.matter, document: null, activityIDs: g.activityIDs, startedAt: g.startedAt, endedAt: g.endedAt, seconds: g.seconds, sittings: g.sittings, endedBy: "", draft: g.draft });
 
 /** One matter's day: every app and document it was in, as one row to keep. */
 function MatterRow({ group: g, open, onToggle, onKeep }: { group: MatterGroup; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
@@ -738,7 +735,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" />
                 </Setting>
                 {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to get AI suggestions.</p>}
-                <Setting title="Idle timeout" detail="Stops capture and your timer at the last input after this much inactivity.">
+                <Setting title="Timer idle timeout" detail="Stops a running timer at your last input after this much inactivity. Capture counts the app in front for as long as it is in front, and a call even behind other windows.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>
                 <Setting title="Activity retention" detail="Older raw activity is removed automatically. Saved time entries are kept.">

@@ -23,7 +23,10 @@ the wire contract land in all three repos together.
 
 Capture is opt-in; titles are a separate opt-in; exclusions are checked before a title is
 read; a segment is bounded by wall-clock observations and never spans an unobserved gap
-(`GAP_SECONDS`); idle trims to the last input; raw activity is evidence until a person
+(`GAP_SECONDS`); only the window in front counts, for as long as it is in front, input or
+not (sleep and the lock screen end it), and the one exception is a call — a call app
+recording from the microphone (`src/shared/calls.ts`) gets the time wherever the focus is;
+idle stops only a running timer, at the last input; raw activity is evidence until a person
 keeps it; kept time never overlaps; rates freeze at save; the token never enters the
 workspace; Kiwi never receives the in-progress
 segment or a running timer; a suggestion never overwrites a person's matter; browsers are
@@ -40,9 +43,8 @@ npm run dev | npm test | npm run typecheck | npm run package:mac|win|linux
 Verification flags: `--workspace <path>`, `--route activity|matters|settings|today`, `--click <selector>`,
 `--screenshot <file.png>` (also echoes the renderer console to stdout). **Look at the
 screenshot** after a renderer change: a blank cream window is a silent failure (a wrong
-preload path or CSP did exactly that on 2026-09-26). The engine treats a machine with no
-input for longer than the idle timeout as idle; a scripted run captures nothing with the
-default 3 minutes — seed `idleMinutes: 60`.
+preload path or CSP did exactly that on 2026-09-26). Idleness (no input for longer than
+`idleMinutes`) stops only a running timer; capture goes on while a window is in front.
 
 npm 11 blocks install scripts by default; `package.json` `allowScripts` approves the ones
 this app needs (electron, get-windows, esbuild). If Electron's binary is missing, run
@@ -138,3 +140,13 @@ background, installed on restart; failures are logged, never shown). `release.ym
 attaches the `.zip`s, `latest*.yml` and block maps it reads. The Mac updater installs only
 an update signed like the running app, so it depends on the one certificate above. The
 main bundle is an ES module: import electron-updater by its default export. Version 0.8.0.
+2026-10-22: after the beta user's hour-long Teams call came out as seconds and reading in
+Word as minutes, capture stopped ending at idle (the window in front counts while it is in
+front) and a call counts in the background: `native/mic-users` (Core Audio's process list,
+macOS 14.2+, built beside screen-text) and the Windows microphone registry say who is
+recording; `src/main/calls.ts` asks every sample, and while a call app records, capture.ts
+observes the call instead of the window in front, so the minutes are never counted twice.
+The same day: unnamed mail (`MAIL_OWNER_IDS`) is one stretch per app rather than one per
+message, which had sent an hour of Outlook into the short hops; and a matter whose whole
+day is under `NOISE_SECONDS` joins the short hops ("brief touches") instead of a row.
+Version 0.9.0.

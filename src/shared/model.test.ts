@@ -5,6 +5,7 @@ import {
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
 import { SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
 // The Swift app's 20 core checks, carried over as the contract this engine keeps.
@@ -108,18 +109,20 @@ describe("capture", () => {
         expect(w.currentActivity).toBeNull();
     });
 
-    it("idle trims the segment and the timer to the last input, and does not restart billing", () => {
+    it("idle stops the timer at the last input and does not restart billing; capture goes on while the window is in front", () => {
         const w = capturing();
         w.preferences.idleMinutes = 1;
         startTimer(w, { description: "Draft", projectID: null, billable: true }, at(0));
         for (let s = 0; s <= 85; s += 5) observe(w, WORD, at(s), Math.max(0, s - 30));
         observe(w, WORD, at(90), 60);
-        expect(w.timer).toBeNull(); expect(w.currentActivity).toBeNull();
-        expect(w.entries[0].endedAt).toBe(iso(30));
-        expect(w.activities[0].endedAt).toBe(iso(30));
-        observe(w, WORD, at(95), 0);
         expect(w.timer).toBeNull();
-        expect(w.currentActivity).not.toBeNull();
+        expect(w.entries[0].endedAt).toBe(iso(30));
+        // An hour reading, no input: one segment, all of it.
+        for (let s = 95; s <= 3600; s += 5) observe(w, WORD, at(s), s);
+        expect(w.activities).toHaveLength(0);
+        expect(w.currentActivity!.startedAt).toBe(iso(0));
+        expect(w.currentActivity!.endedAt).toBe(iso(3600));
+        expect(w.timer).toBeNull();
     });
 
     it("sleep stops the timer and capture", () => {
@@ -262,6 +265,14 @@ describe("stretches", () => {
         expect(short.map((st) => [st.name, st.seconds])).toEqual([["Slack", 30]]);
     });
 
+    it("reviews unnamed mail as one stretch per app, not one per message, so an hour of email is not a pile of short hops", () => {
+        const mail = (id: string, start: number, end: number, subject: string) => seg(id, start, end, subject, "Microsoft Outlook", { ownerID: "com.microsoft.Outlook", document: null, title: subject });
+        const acts = [mail("m1", 0, 40, "RE: Latitude SPA"), mail("m2", 40, 70, "Lunch?"), mail("m3", 70, 120, "FW: Board pack"), seg("w", 120, 400, "Latitude SPA.docx"), mail("m4", 400, 430, "RE: Latitude SPA")];
+        const { stretches, short } = stretchesOf(acts);
+        expect(stretches.map((st) => [st.name, st.sittings, st.seconds, st.document])).toEqual([["Latitude SPA.docx", 1, 280, { name: "Latitude SPA.docx", path: null, excerpt: null }], ["Microsoft Outlook", 4, 150, null]]);
+        expect(short).toEqual([]);
+    });
+
     it("keeps a stretch as one entry whose sittings alone count and alone block overlap, and reopens all of them on delete", () => {
         const w = emptyWorkspace();
         w.activities = [seg("a", 0, 600, "Hollis letter.docx"), seg("b", 600, 900, "Brantley schedule.xlsx", "Microsoft Excel"), seg("c", 900, 1500, "Hollis letter.docx")];
@@ -380,6 +391,14 @@ describe("matters", () => {
         setMatter(w, ["p1"], null);
         expect(inboxOf(w.activities).groups[0].sittings).toBe(3);
         expect(inboxOf(w.activities).short.flatMap((st) => st.activityIDs)).toContain("p1");
+    });
+
+    it("puts a matter whose whole day is under a minute with the brief touches, not in its own row", () => {
+        const w = friday();
+        applyMatters(w, matterRequest(w)!.ids, { assignments: [{ activity_id: "o2", matter: "Brookman" }, { activity_id: "o1", matter: "Princess Pillow" }] });
+        const inbox = inboxOf(w.activities);
+        expect(inbox.groups.map((g) => g.matter)).toEqual(["Princess Pillow"]);
+        expect(inbox.short.find((st) => st.name === "Brookman")?.activityIDs).toEqual(["o2"]);
     });
 
     it("keeps a matter's day as one entry on the project of that name, made once and reused in any case", () => {
@@ -614,5 +633,46 @@ describe("screenRecordingAttempt", () => {
     });
     it("always looks titles up once granted", () => {
         expect(screenRecordingAttempt("granted", true)).toBe(true);
+    });
+});
+
+describe("calls", () => {
+    it("knows call apps by bundle prefix (helpers included) and by executable", () => {
+        expect(callApp("com.microsoft.teams2")?.key).toBe("teams");
+        expect(callApp("com.microsoft.teams2.helper.renderer")?.key).toBe("teams");
+        expect(callApp("us.zoom.xos")?.key).toBe("zoom");
+        expect(callApp("C:\\Users\\adam\\AppData\\Roaming\\Zoom\\bin\\Zoom.exe")?.key).toBe("zoom");
+        expect(callApp("ms-teams.exe")?.key).toBe("teams");
+        expect(callApp("com.microsoft.Word")).toBeNull();
+        expect(callApp("com.apple.VoiceMemos")).toBeNull(); // recording is not a call
+    });
+    it("a call is a call app recording; anything else recording is not", () => {
+        expect(activeCall(["com.apple.VoiceMemos"])).toBeNull();
+        expect(activeCall(["com.apple.VoiceMemos", "com.microsoft.teams2"])).toEqual({ app: { key: "teams", name: "Microsoft Teams" }, ownerID: "com.microsoft.teams2" });
+        expect(activeCall([])).toBeNull();
+    });
+    it("reads the macOS helper", () => {
+        expect(parseMacRecording("com.microsoft.teams2\nus.zoom.xos\n")).toEqual(["com.microsoft.teams2", "us.zoom.xos"]);
+        expect(parseMacRecording("UNSUPPORTED\n")).toEqual([]);
+    });
+    it("reads the Windows registry: started and not stopped is now", () => {
+        const base = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone";
+        const out = [
+            "", base, "    Value    REG_SZ    Allow", "",
+            `${base}\\MSTeams_8wekyb3d8bbwe`, "    Value    REG_SZ    Allow", "    LastUsedTimeStart    REG_QWORD    0x1db2a4c5e6f7a8b", "    LastUsedTimeStop    REG_QWORD    0x0", "",
+            `${base}\\NonPackaged`, "    Value    REG_SZ    Allow", "",
+            `${base}\\NonPackaged\\C:#Users#adam#AppData#Roaming#Zoom#bin#Zoom.exe`, "    LastUsedTimeStart    REG_QWORD    0x1db2a4c5e6f7a8b", "    LastUsedTimeStop    REG_QWORD    0x1db2a4c5e6f7a9c", "",
+            `${base}\\NonPackaged\\C:#Program Files#Slack#slack.exe`, "    LastUsedTimeStart    REG_QWORD    0x1db2a4c5e6f7a8b", "    LastUsedTimeStop    REG_QWORD    0x0", "",
+            `${base}\\NonPackaged\\C:#Tools#never.exe`, "    LastUsedTimeStart    REG_QWORD    0x0", "    LastUsedTimeStop    REG_QWORD    0x0", "",
+        ].join("\r\n");
+        expect(parseWindowsRecording(out)).toEqual(["ms-teams.exe", "C:\\Program Files\\Slack\\slack.exe"]);
+    });
+    it("a call in the background is observed as the call: one segment while the focus moves", () => {
+        const w = capturing();
+        const TEAMS = { app: "Microsoft Teams", ownerID: "com.microsoft.teams2", title: "Latitude weekly | Microsoft Teams" };
+        for (let s = 0; s <= 600; s += 5) observe(w, TEAMS, at(s), s); // capture.ts sends the call, whatever is in front
+        expect(w.currentActivity!.ownerID).toBe("com.microsoft.teams2");
+        expect(w.currentActivity!.endedAt).toBe(iso(600));
+        expect(w.activities).toHaveLength(0);
     });
 });

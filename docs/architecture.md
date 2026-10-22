@@ -28,8 +28,11 @@ Three processes, one file, one pure module.
    title); `powerMonitor.getSystemIdleTime()` reports seconds since the last input.
 2. `observe()` checks the explicit capture preference, the app's own pid, and exclusions
    (exact id, or executable basename on Windows/Linux) before using a title.
-3. Segments are bounded by app or title changes, idle (trimmed to the last input),
-   suspend/lock, pause, quit, or an unobserved gap over 45 s. The in-progress segment's
+   While a call app is recording from the microphone (`src/main/calls.ts`: Core Audio
+   through `native/mic-users` on macOS 14.2+, the microphone registry on Windows), the
+   call is observed instead of the window in front.
+3. Segments are bounded by app or title changes (not by idleness, which stops only a
+   running timer), suspend/lock, pause, quit, or an unobserved gap over 45 s. The in-progress segment's
    `endedAt` is the last observation, so a crash recovers to it and never across downtime.
 4. Keeping requires a description and rejects overlap with any saved entry or the running
    timer. The source activity is marked kept in the same write.

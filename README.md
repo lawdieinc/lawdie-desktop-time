@@ -57,8 +57,11 @@ and attaches the installers to the GitHub Release. Locally, `npm run package:mac
   OS's own automation — Apple Events on macOS, COM on Windows — so nothing is installed
   inside Office. macOS asks once per app whether Time Capture may control it. Kiwi uses
   these, with the title, to match the stretch to a matter. Not available on Linux.
-- Idle cutoff, sleep, and screen-lock handling: a segment and a running timer end at the
-  last input; returning does not silently restart billing. Crash recovery ends at the last
+- The app in front counts for as long as it is in front, typing or not (reading and calls
+  are work); background apps never count, except a call: while Teams, Zoom, Webex, Slack,
+  FaceTime and the like are using the microphone, the call gets the time even behind other
+  windows. Sleep and the lock screen end a segment. A running timer stops at the last input
+  after the idle timeout; returning does not silently restart billing. Crash recovery ends at the last
   persisted observation, never across the downtime.
 - Activity inbox: review **stretches**, not switches. A segment ends every time focus
   changes (that is what keeps the minutes honest), but the inbox groups the sittings on one
@@ -153,9 +156,8 @@ npm run package:mac  # or package:win / package:linux → release/
 Flags for verification: `--workspace <path>` uses another workspace file, `--route
 activity|settings|today` opens on that screen, `--screenshot <file.png>` writes the window
 as rendered (and echoes the renderer console) so a change can be looked at without a
-person at the screen. The engine treats a machine with no keyboard or mouse input for
-longer than the idle timeout as idle, so a scripted run with the default 3 minutes
-captures nothing; seed a workspace with `idleMinutes: 60` for that.
+person at the screen. Idleness stops only a running timer, so a scripted
+run captures whatever is in front.
 
 Kiwi's `RUN_LIVE_DESKTOP_TIME=1` test runs `src/shared/kiwi.live.test.ts` here against
 its real routes, which is how the wire contract is proven end to end.

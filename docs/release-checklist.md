@@ -10,7 +10,8 @@ Manual checks before distributing:
 - Enable capture, switch between native apps and a browser, verify app names/durations.
 - Enable titles, grant Accessibility, and verify title availability in supported apps.
 - Excluded apps do not create segments; pausing capture stops recording.
-- Leave the machine idle past the configured timeout; only actual active time remains.
+- Leave Word in front, untouched, past the idle timeout: the segment keeps going; a running timer stops at the last input.
+- Join a Teams or Zoom call, switch to Word: the call keeps the time (one segment); end the call and Word takes over. Repeat muted.
 - Lock/unlock, sleep/wake, and switch user sessions; neither timer nor capture bridges gaps.
 - Force-quit during a timer, relaunch, confirm recovery ends at last persisted heartbeat.
 - Keep an activity once; overlapping or repeated review never duplicates time.

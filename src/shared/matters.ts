@@ -11,7 +11,7 @@
    progress, never kept or dismissed time. A person's answer is never overwritten. */
 
 import { duration } from "./format";
-import { DRAFT_MAX, INSIGHT_MAX, MATTER_MAX, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
+import { DRAFT_MAX, INSIGHT_MAX, MATTER_MAX, NOISE_SECONDS, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
 
 /** Activities per request (Kiwi's limit); the rest wait for the next round. */
 export const MATTER_BATCH = 150;
@@ -120,10 +120,15 @@ export type MatterGroup = {
     draft: Draft | null;
 };
 
+/** A matter's day as a stretch: for the keep sheet, and for a day too short to be its own row. */
+export const matterStretch = (g: MatterGroup): Stretch => ({ id: g.id, app: g.apps.join(", "), ownerID: "", name: g.matter, document: null, activityIDs: g.activityIDs, startedAt: g.startedAt, endedAt: g.endedAt, seconds: g.seconds, sittings: g.sittings, endedBy: "", draft: g.draft });
+
 /**
  * Pending activity as the inbox shows it: one group per matter per day (newest first),
  * however short its sittings, since four seconds on the right matter is still that
- * matter's time; everything without a matter as stretches, as before.
+ * matter's time; everything without a matter as stretches, as before. A matter whose
+ * whole day is under NOISE_SECONDS is a brief touch, not billable time, and goes with the
+ * short hops (2026-10-22: "sub-minute entries are not useful for billing").
  */
 export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[]; stretches: Stretch[]; short: Stretch[] } {
     const pending = activities.filter((a) => a.disposition === "pending").sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
@@ -149,9 +154,11 @@ export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[
         doc.activityIDs.push(a.id);
         doc.seconds += spanSeconds(a);
     }
-    const groups = [...byKey.values()].sort((x, y) => ms(y.startedAt) - ms(x.startedAt));
-    for (const g of groups) g.documents.sort((x, y) => y.seconds - x.seconds);
-    return { groups, ...stretchesOf(rest) };
+    const all = [...byKey.values()].sort((x, y) => ms(y.startedAt) - ms(x.startedAt));
+    for (const g of all) g.documents.sort((x, y) => y.seconds - x.seconds);
+    const { stretches, short } = stretchesOf(rest);
+    const brief = all.filter((g) => g.seconds < NOISE_SECONDS).map(matterStretch);
+    return { groups: all.filter((g) => g.seconds >= NOISE_SECONDS), stretches, short: [...brief, ...short].sort((x, y) => ms(y.startedAt) - ms(x.startedAt)) };
 }
 
 /** What the inbox asks a person to review: matter groups and the stretches outside them. */

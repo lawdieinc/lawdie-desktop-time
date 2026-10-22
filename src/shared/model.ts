@@ -215,6 +215,14 @@ const matchesOwner = (list: readonly string[], ownerID: string): boolean => {
 
 export const isBrowser = (ownerID: string): boolean => matchesOwner(BROWSER_OWNER_IDS, ownerID);
 
+/**
+ * Mail apps: every message is its own window title (and document), so an hour of email is
+ * dozens of half-minute sittings. Without a matter they are reviewed as one stretch per app,
+ * not one per message, or they would all fall under the short hops (2026-10-22).
+ */
+export const MAIL_OWNER_IDS = ["com.microsoft.outlook", "outlook.exe", "olk.exe", "com.apple.mail", "org.mozilla.thunderbird", "thunderbird.exe", "thunderbird"];
+export const isMail = (ownerID: string): boolean => matchesOwner(MAIL_OWNER_IDS, ownerID);
+
 /** Excluded apps are matched by exact id, or by executable basename on Windows/Linux. */
 export function isExcluded(prefs: Preferences, ownerID: string): boolean {
     return matchesOwner(prefs.excludedOwnerIDs, ownerID);
@@ -514,13 +522,16 @@ const sameDocument = (a: DocumentInfo | null | undefined, b: DocumentInfo | null
 
 /** One sample of the foreground. Bounds are wall-clock timestamps; no interval spans an unobserved gap. */
 export function observe(w: Workspace, foreground: Observation, now: number, idleSeconds: number, suspended = false): void {
-    const idle = idleSeconds >= w.preferences.idleMinutes * 60;
-    if (suspended || idle) {
-        const cutoff = idle ? now - idleSeconds * 1000 : now;
-        closeActivity(w, cutoff, suspended ? "suspended" : "idle");
-        stopTimer(w, cutoff, suspended ? "timer-suspended" : "timer-idle");
+    if (suspended) {
+        closeActivity(w, now, "suspended");
+        stopTimer(w, now, "timer-suspended");
         return;
     }
+    // Capture counts the window in front for as long as it is in front, input or not:
+    // reading a contract or sitting in a call is work (2026-10-22, after a call captured
+    // as seconds). Sleep and the lock screen still end it. Only the timer, which a person
+    // started and forgot, stops at the last input.
+    if (w.timer && idleSeconds >= w.preferences.idleMinutes * 60) stopTimer(w, now - idleSeconds * 1000, "timer-idle");
     if (w.timer) {
         if (now - ms(w.timer.lastHeartbeat) > GAP_SECONDS * 1000) stopTimer(w, ms(w.timer.lastHeartbeat), "timer-recovered");
         else w.timer.lastHeartbeat = iso(now);
@@ -620,12 +631,12 @@ export type Stretch = {
     draft: Draft | null;
 };
 
-const stretchKey = (a: Activity): string => `${a.ownerID}\n${a.document?.name ?? a.title ?? ""}`;
+const stretchKey = (a: Activity): string => `${a.ownerID}\n${isMail(a.ownerID) ? "" : a.document?.name ?? a.title ?? ""}`;
 const localDayOf = (isoText: string): string => { const d = new Date(isoText); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
 
 /**
  * Pending activities as stretches: consecutive sittings in the same app on the same
- * document (or title), on the same day, with gaps under STRETCH_GAP_MS, become one — even
+ * document (or title; any message, in a mail app), on the same day, with gaps under STRETCH_GAP_MS, become one — even
  * with other documents' sittings in between, which is how real work goes. Stretches under
  * NOISE_SECONDS are returned apart, to be dismissed in one go. Newest first.
  */
@@ -645,7 +656,8 @@ export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP
             last.draft ??= a.draft ?? null;
             continue;
         }
-        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: a.document?.name ?? a.title ?? a.app, document: a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy, draft: a.draft ?? null };
+        const mail = isMail(a.ownerID);
+        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: mail ? a.app : a.document?.name ?? a.title ?? a.app, document: mail ? null : a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy, draft: a.draft ?? null };
         open.set(key, fresh);
         all.push(fresh);
     }
