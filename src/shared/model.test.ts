@@ -5,6 +5,7 @@ import {
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
 import { SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { duration } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
@@ -633,6 +634,27 @@ describe("screenRecordingAttempt", () => {
     });
     it("always looks titles up once granted", () => {
         expect(screenRecordingAttempt("granted", true)).toBe(true);
+    });
+});
+
+describe("titles that drop out", () => {
+    it("a blank title in the same app does not split a segment, and a blank segment takes the first real title", () => {
+        const w = capturing();
+        w.preferences.captureTitles = true;
+        const finder = (title: string) => ({ app: "Finder", ownerID: "com.apple.finder", title });
+        ["Downloads", "", "Downloads", "", "Downloads", "Downloads"].forEach((t, i) => observe(w, finder(t), at(i * 5), 0));
+        expect(w.activities).toHaveLength(0);
+        expect(w.currentActivity).toMatchObject({ title: "Downloads", startedAt: iso(0), endedAt: iso(25) });
+        observe(w, finder("project3"), at(30), 0); // a different real title is a switch
+        expect(w.activities.map((a) => a.title)).toEqual(["Downloads"]);
+        closeActivity(w, at(35), "quit");
+        const blankFirst = capturing();
+        blankFirst.preferences.captureTitles = true;
+        ["", "", "Downloads"].forEach((t, i) => observe(blankFirst, finder(t), at(i * 5), 0));
+        expect(blankFirst.currentActivity).toMatchObject({ title: "Downloads", startedAt: iso(0) });
+    });
+    it("formats durations with seconds under ten minutes", () => {
+        expect([duration(45), duration(110), duration(120), duration(599), duration(600), duration(3900)]).toEqual(["45s", "1m 50s", "2m", "9m 59s", "10m", "1h 05m"]);
     });
 });
 

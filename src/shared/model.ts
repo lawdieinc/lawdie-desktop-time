@@ -561,7 +561,10 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
     if (current) {
         const lastSeen = ms(current.endedAt);
         if (now - lastSeen > GAP_SECONDS * 1000 || now < lastSeen) closeActivity(w, lastSeen, "gap");
-        else if (current.ownerID !== foreground.ownerID || current.title !== safeTitle) closeActivity(w, now, "switched");
+        // A blank title ("", titles on) in the same app is the OS not saying, not a new
+        // window: Finder flickered "Downloads" → "" → "Downloads" every sample and cut a
+        // minute into 5-second pieces (2026-10-23). Titles off (null) is not blank.
+        else if (current.ownerID !== foreground.ownerID || (current.title !== safeTitle && current.title !== "" && safeTitle !== "")) closeActivity(w, now, "switched");
         // A different document in the same app is different work. A segment that only now
         // learns its document keeps going, and a probe that failed this once (null) does not
         // end a segment that already knows its document.
@@ -571,6 +574,7 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         w.currentActivity = { id: uuid(), app: foreground.app, ownerID: foreground.ownerID, title: safeTitle, document, ...(screenText ? { screenText } : {}), startedAt: iso(now), endedAt: iso(now), endedBy: "switched", disposition: "pending" };
     } else {
         w.currentActivity.endedAt = iso(now);
+        if (safeTitle && w.currentActivity.title === "") w.currentActivity.title = safeTitle;
         if (document) w.currentActivity.document = document;
         // The first text read stands for the segment: scrolling is not other work.
         if (screenText && !w.currentActivity.screenText) w.currentActivity.screenText = screenText;
@@ -582,7 +586,8 @@ export function closeActivity(w: Workspace, at: number, reason: string): void {
     if (!current) return;
     w.currentActivity = null;
     const end = Math.max(ms(current.startedAt), Math.min(at, ms(current.endedAt) + 15_000));
-    const closed: Activity = { ...current, endedAt: iso(end), endedBy: reason };
+    // A title that stayed blank is no title, as stored and as sent.
+    const closed: Activity = { ...current, title: current.title || null, endedAt: iso(end), endedBy: reason };
     if (seconds(closed) >= MIN_ACTIVITY_SECONDS) w.activities.push(closed);
 }
 

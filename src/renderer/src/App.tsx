@@ -3,7 +3,7 @@ import type { AppState } from "@shared/state";
 import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
-import { ago, clock, dayLabel, duration } from "@shared/format";
+import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 import kiwiMark from "../../../resources/brand/kiwi.png";
 
@@ -193,7 +193,7 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
             <span className="bar" />
             <div className="grow">
                 <div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>
-                <div className="muted tiny"><MatterLabel name={p?.name} /> · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : ""}</div>
+                <div className="muted tiny"><MatterLabel name={p?.name} /> · {entry.sittings && entry.sittings.length > 1 ? `${spanLabel(entry.startedAt, entry.endedAt, entry.sittings.length)} · ${entry.sittings.length} sittings` : clock(entry.startedAt)}{entry.billable ? " · billable" : ""}</div>
             </div>
             <span className="mono">{duration(entrySeconds(entry))}</span>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete entry" onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
@@ -283,7 +283,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                         <div className="small strong">{st.name}</div>
                                         {st.draft && <DraftLine draft={st.draft} />}
                                         <div className="muted tiny meta">
-                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {clock(st.startedAt)}{st.sittings > 1 ? `–${clock(st.endedAt)}` : ` · ${endedLabel(st.endedBy)}`}{st.document?.path ? ` · ${st.document.path}` : ""}</span>
+                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedLabel(st.endedBy)}`}{st.document?.path ? ` · ${st.document.path}` : ""}</span>
                                             {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
                                         </div>
                                     </div>
@@ -385,7 +385,7 @@ function MatterRow({ group: g, open, onToggle, onKeep }: { group: MatterGroup; o
                     <div className="small strong">{g.matter}</div>
                     {g.draft && <DraftLine draft={g.draft} />}
                     <div className="muted tiny meta">
-                        <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {clock(g.startedAt)}–{clock(g.endedAt)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</span>
+                        <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</span>
                         <SittingsToggle label={`${g.documents.length} ${g.documents.length === 1 ? "item" : "items"}`} open={open} onClick={onToggle} />
                     </div>
                 </div>
@@ -648,7 +648,7 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
                             <span className="bar pending" />
                             <div className="grow">
                                 <div className="small strong">{g.documents.slice(0, 3).map((d) => d.name).join("; ")}</div>
-                                <div className="muted tiny">{g.apps.join(", ")} · {dayLabel(g.startedAt, new Date(now))} {clock(g.startedAt)}–{clock(g.endedAt)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</div>
+                                <div className="muted tiny">{g.apps.join(", ")} · {dayLabel(g.startedAt, new Date(now))} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</div>
                             </div>
                             <span className="mono">{duration(g.seconds)}</span>
                         </div>

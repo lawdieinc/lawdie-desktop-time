@@ -150,3 +150,7 @@ The same day: unnamed mail (`MAIL_OWNER_IDS`) is one stretch per app rather than
 message, which had sent an hour of Outlook into the short hops; and a matter whose whole
 day is under `NOISE_SECONDS` joins the short hops ("brief touches") instead of a row.
 Version 0.9.0.
+2026-10-23: a blank title ("" with titles on) in the same app no longer splits a segment
+(Finder flickered "Downloads" → "" every sample); titles off stays null. Rows of several
+sittings say "between 12:17 and 12:33", since their time is less than the span
+(`spanLabel()`), and durations under ten minutes show seconds. Version 0.9.1.
