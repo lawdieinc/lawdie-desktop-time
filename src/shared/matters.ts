@@ -11,7 +11,7 @@
    progress, never kept or dismissed time. A person's answer is never overwritten. */
 
 import { duration } from "./format";
-import { DRAFT_MAX, INSIGHT_MAX, MATTER_MAX, NOISE_SECONDS, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
+import { DRAFT_MAX, INSIGHT_MAX, MATTER_MAX, NOISE_SECONDS, PERSONAL, isPersonal, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
 
 /** Activities per request (Kiwi's limit); the rest wait for the next round. */
 export const MATTER_BATCH = 150;
@@ -91,7 +91,7 @@ export function applyMatters(w: Workspace, askedIDs: string[], answer: unknown):
     for (const a of w.activities) {
         if (!asked.has(a.id) || a.matterBy === "person" || a.disposition !== "pending") continue;
         const name = given.get(a.id) ?? null;
-        a.matter = name ? canonical.get(name.toLowerCase()) ?? name : null;
+        a.matter = name ? (isPersonal(name) ? PERSONAL : canonical.get(name.toLowerCase()) ?? name) : null;
         a.matterBy = "ai";
         if (a.matter) named += 1;
     }
@@ -128,9 +128,10 @@ export const matterStretch = (g: MatterGroup): Stretch => ({ id: g.id, app: g.ap
  * however short its sittings, since four seconds on the right matter is still that
  * matter's time; everything without a matter as stretches, as before. A matter whose
  * whole day is under NOISE_SECONDS is a brief touch, not billable time, and goes with the
- * short hops (2026-10-22: "sub-minute entries are not useful for billing").
+ * short hops (2026-10-22: "sub-minute entries are not useful for billing"). Personal time
+ * is its own list, whatever its length: it is not work to review.
  */
-export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[]; stretches: Stretch[]; short: Stretch[] } {
+export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[]; stretches: Stretch[]; short: Stretch[]; personal: MatterGroup[] } {
     const pending = activities.filter((a) => a.disposition === "pending").sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
     const byKey = new Map<string, MatterGroup>();
     const rest: Activity[] = [];
@@ -157,8 +158,9 @@ export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[
     const all = [...byKey.values()].sort((x, y) => ms(y.startedAt) - ms(x.startedAt));
     for (const g of all) g.documents.sort((x, y) => y.seconds - x.seconds);
     const { stretches, short } = stretchesOf(rest);
-    const brief = all.filter((g) => g.seconds < NOISE_SECONDS).map(matterStretch);
-    return { groups: all.filter((g) => g.seconds >= NOISE_SECONDS), stretches, short: [...brief, ...short].sort((x, y) => ms(y.startedAt) - ms(x.startedAt)) };
+    const work = all.filter((g) => !isPersonal(g.matter));
+    const brief = work.filter((g) => g.seconds < NOISE_SECONDS).map(matterStretch);
+    return { groups: work.filter((g) => g.seconds >= NOISE_SECONDS), stretches, short: [...brief, ...short].sort((x, y) => ms(y.startedAt) - ms(x.startedAt)), personal: all.filter((g) => isPersonal(g.matter)) };
 }
 
 /** What the inbox asks a person to review: matter groups and the stretches outside them. */

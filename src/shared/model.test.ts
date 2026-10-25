@@ -4,7 +4,7 @@ import {
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
-import { SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { PERSONAL, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { duration } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
@@ -400,6 +400,25 @@ describe("matters", () => {
         const inbox = inboxOf(w.activities);
         expect(inbox.groups.map((g) => g.matter)).toEqual(["Princess Pillow"]);
         expect(inbox.short.find((st) => st.name === "Brookman")?.activityIDs).toEqual(["o2"]);
+    });
+
+    it("reviews personal time apart: never a matter row, never kept, never synced, and sent back by a person", () => {
+        const w = friday();
+        applyMatters(w, matterRequest(w)!.ids, { assignments: [{ activity_id: "o1", matter: "Princess Pillow" }, { activity_id: "w1", matter: "Princess Pillow" }, { activity_id: "x1", matter: "personal" }] });
+        expect(w.activities.find((a) => a.id === "x1")!.matter).toBe(PERSONAL); // one spelling, whatever the model wrote
+        const inbox = inboxOf(w.activities);
+        expect(inbox.personal.flatMap((g) => g.activityIDs)).toEqual(["x1"]);
+        expect([...inbox.groups, ...inbox.personal].filter((g) => g.matter === PERSONAL)).toHaveLength(1);
+        expect(inbox.stretches.flatMap((st) => st.activityIDs)).not.toContain("x1");
+        expect(toReview(w.activities)).toBe(inbox.groups.length + inbox.stretches.length);
+        expect(() => keepStretch(w, ["x1"], { description: "Pool", projectID: null, matter: "Personal", billable: false }, at(2000))).toThrow(/not kept/);
+        expect(syncRequest(w, "test").activities.map((a) => a.id)).not.toContain("x1");
+        // A person can call anything personal, and take it back.
+        setMatter(w, ["p1"], " PERSONAL ");
+        expect(w.activities.find((a) => a.id === "p1")).toMatchObject({ matter: PERSONAL, matterBy: "person" });
+        setMatter(w, ["x1"], null);
+        expect(inboxOf(w.activities).personal.flatMap((g) => g.activityIDs)).toEqual(["p1"]);
+        expect(syncRequest(w, "test").activities.map((a) => a.id)).toContain("x1");
     });
 
     it("keeps a matter's day as one entry on the project of that name, made once and reused in any case", () => {

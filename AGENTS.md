@@ -154,3 +154,7 @@ Version 0.9.0.
 (Finder flickered "Downloads" → "" every sample); titles off stays null. Rows of several
 sittings say "between 12:17 and 12:33", since their time is less than the span
 (`spanLabel()`), and durations under ten minutes show seconds. Version 0.9.1.
+2026-10-25: "Personal" (`PERSONAL`) is the one reserved matter, after a football pool landed
+on a legal matter: Kiwi's prompt offers it, a person sets it with a row's Personal button;
+`inboxOf()` lists it apart (`personal`), `keepStretch()` refuses it and `syncRequest()`
+leaves it out. "Not personal" sends an item back to review.

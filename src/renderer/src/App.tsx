@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
@@ -222,7 +222,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
     const [reviewing, setReviewing] = useState<{ stretch: Stretch; matter: string | null; description: string } | null>(null);
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
-    const { groups, stretches, short } = useMemo(() => inboxOf(w.activities), [w.activities]);
+    const { groups, stretches, short, personal } = useMemo(() => inboxOf(w.activities), [w.activities]);
     // Opening the inbox freshens it; the main process skips this when it ran in the last ten minutes.
     useEffect(() => { if (w.preferences.suggestMatters) void window.lawdie.suggestMatters(); }, [w.preferences.suggestMatters]);
     // Matters and stretches are one list, so the newest work is on top whether or not it has a matter yet.
@@ -269,7 +269,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
             <Panel>
                 {filter === "pending" ? (
                     <>
-                        {groups.length === 0 && stretches.length === 0 && short.length === 0 && (
+                        {groups.length === 0 && stretches.length === 0 && short.length === 0 && personal.length === 0 && (
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
@@ -288,6 +288,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                         </div>
                                     </div>
                                     <span className="mono">{duration(st.seconds)}</span>
+                                    <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(st.activityIDs, PERSONAL)}>Personal</button>
                                     <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
                                     <button type="button" className="primary" onClick={() => setReviewing({ stretch: st, matter: null, description: st.draft?.text ?? st.document?.name ?? st.name })}>Keep time</button>
                                 </div>
@@ -296,6 +297,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                 )}
                             </div>
                         ))(r.stretch))}
+                        {personal.length > 0 && <PersonalRow groups={personal} open={!!open.personal} onToggle={() => toggle("personal")} />}
                         {short.length > 0 && (
                             <div className="activity">
                                 <span className="app-icon muted">·</span>
@@ -390,6 +392,7 @@ function MatterRow({ group: g, open, onToggle, onKeep }: { group: MatterGroup; o
                     </div>
                 </div>
                 <span className="mono">{duration(g.seconds)}</span>
+                <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(g.activityIDs, PERSONAL)}>Personal</button>
                 <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(g.activityIDs)}>Dismiss</button>
                 <button type="button" className="primary" onClick={onKeep}>Keep time</button>
             </div>
@@ -404,6 +407,42 @@ function MatterRow({ group: g, open, onToggle, onKeep }: { group: MatterGroup; o
                             <span className="mono small">{duration(d.seconds)}</span>
                             <button type="button" className="link sitting-dismiss" title="Take this out of the matter; it goes back to review on its own" onClick={() => void window.lawdie.setMatter(d.activityIDs, null)}>Not this matter</button>
                             <button type="button" className="link sitting-dismiss" title={`Dismiss ${d.activityIDs.length === 1 ? "this sitting" : `these ${d.activityIDs.length} sittings`}; the rest of the matter stays to review`} onClick={() => void window.lawdie.dismissActivity(d.activityIDs)}>Dismiss</button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** Time the AI or the person called personal, every day of it in one row: dismissed in one go, or an item sent back to review. Never kept. */
+function PersonalRow({ groups, open, onToggle }: { groups: MatterGroup[]; open: boolean; onToggle: () => void }): ReactNode {
+    const items = groups.flatMap((g) => g.documents.map((d) => ({ ...d, day: g.startedAt })));
+    const seconds = groups.reduce((n, g) => n + g.seconds, 0);
+    return (
+        <div>
+            <div className="activity">
+                <span className="app-icon muted" aria-hidden="true">⌂</span>
+                <div className="grow">
+                    <div className="small strong">{PERSONAL}</div>
+                    <div className="muted tiny meta">
+                        <span>Not work: never kept, billed or synced.</span>
+                        <SittingsToggle label={`${items.length} ${items.length === 1 ? "item" : "items"}`} open={open} onClick={onToggle} />
+                    </div>
+                </div>
+                <span className="mono">{duration(seconds)}</span>
+                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(groups.flatMap((g) => g.activityIDs))}>Dismiss all</button>
+            </div>
+            {open && (
+                <div className="sittings">
+                    {items.map((d) => (
+                        <div className="sitting" key={`${d.day}\n${d.app}\n${d.name}`}>
+                            <span className="sitting-dot" aria-hidden="true" />
+                            <span className="small">{d.name}</span>
+                            <span className="tiny muted">{d.app} · {dayLabel(d.day)}</span>
+                            <span className="grow" />
+                            <span className="mono small">{duration(d.seconds)}</span>
+                            <button type="button" className="link sitting-dismiss" title="It is work: back to review" onClick={() => void window.lawdie.setMatter(d.activityIDs, null)}>Not personal</button>
                         </div>
                     ))}
                 </div>

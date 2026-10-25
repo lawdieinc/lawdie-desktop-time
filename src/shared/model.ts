@@ -342,6 +342,7 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     const span = stretchSpan(merged, start, end);
     if (!span) throw new WorkspaceError("No captured time falls between those times.");
     const matter = input.matter?.trim().slice(0, MATTER_MAX) || null;
+    if (isPersonal(matter)) throw new WorkspaceError("Personal time is not kept. Choose a matter, or dismiss it.");
     const projectID = input.projectID ?? (matter ? projectNamed(w, matter).id : null);
     const entry: TimeEntry = {
         id: uuid(), description: input.description.trim(), projectID, ...span,
@@ -358,6 +359,15 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
 }
 
 export const MATTER_MAX = 120;
+
+/**
+ * The one reserved matter: the person's own life, not client work (a football pool, the
+ * family chat). Named by the model or the person; never kept, never billed, never synced;
+ * reviewed apart, to dismiss in one go or send back (2026-10-25, after a pool landed on a
+ * legal matter).
+ */
+export const PERSONAL = "Personal";
+export const isPersonal = (matter: string | null | undefined): boolean => !!matter && matter.trim().toLowerCase() === PERSONAL.toLowerCase();
 
 /** The project a matter name stands for: an open one of that name (any case), else a new one. */
 export function projectNamed(w: Workspace, name: string): Project {
@@ -416,7 +426,8 @@ export function archiveProject(w: Workspace, id: string, archived: boolean): voi
 
 /** The person names (or clears) the matter of pending activities. */
 export function setMatter(w: Workspace, ids: string[], matter: string | null): void {
-    const name = matter?.trim().slice(0, MATTER_MAX) || null;
+    const given = matter?.trim().slice(0, MATTER_MAX) || null;
+    const name = isPersonal(given) ? PERSONAL : given;
     for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { a.matter = name; a.matterBy = "person"; }
 }
 
@@ -694,12 +705,12 @@ export type SyncRequest = {
     deleted_entry_ids: string[];
 };
 
-/** Everything a destination should know: closed segments within retention, every kept entry, the deletions it has not acknowledged. */
+/** Everything a destination should know: closed segments within retention (personal ones never), every kept entry, the deletions it has not acknowledged. */
 export function syncRequest(w: Workspace, appVersion: string, timeZone: string | null = localTimeZone(), target: SyncTarget | null = w.sync?.targets[0] ?? null): SyncRequest {
     return {
         app_version: appVersion,
         time_zone: timeZone,
-        activities: w.activities.map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, document_name: a.document?.name ?? null, document_path: a.document?.path ?? null, excerpt: a.document?.excerpt ?? null, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
+        activities: w.activities.filter((a) => !isPersonal(a.matter)).map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, document_name: a.document?.name ?? null, document_path: a.document?.path ?? null, excerpt: a.document?.excerpt ?? null, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
         entries: w.entries.map((e) => {
             const p = project(w, e.projectID);
             return { id: e.id, description: e.description, project_name: p?.name ?? null, client_name: p?.client || null, started_at: e.startedAt, ended_at: e.endedAt, seconds: Math.round(seconds(e)), billable: e.billable, hourly_rate: e.hourlyRate, source: e.source, activity_id: e.activityID };
