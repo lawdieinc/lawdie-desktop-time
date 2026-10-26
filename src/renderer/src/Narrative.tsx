@@ -12,7 +12,29 @@ import { clock, duration } from "@shared/format";
 /** Which part or source the pointer is on. */
 export type Focus = { part?: number; source?: string } | null;
 
-const KIND_ICON: Record<string, string> = { email: "✉", meeting: "◷", transcript: "❝", document: "▤" };
+/** A small coloured badge for a source: Outlook blue for email and calendar, Teams purple for a Teams meeting or
+    transcript, and a document in its own app's colour (Word, Excel, PDF). */
+function SourceIcon({ ev }: { ev?: Evidence }): ReactNode {
+    const ext = (ev?.file ?? "").split(".").pop()?.toLowerCase();
+    const kind = ev?.kind === "meeting" ? (ev.teams ? "teams" : "calendar") : ev?.kind === "document" ? (ext === "xlsx" ? "excel" : ext === "pdf" ? "pdf" : "word") : ev?.kind ?? "other";
+    const color: Record<string, string> = { email: "#0F6CBD", calendar: "#0F6CBD", teams: "#5B5FC7", transcript: "#5B5FC7", word: "#185ABD", excel: "#107C41", pdf: "#C4302B", other: "#8A8178" };
+    const path: Record<string, ReactNode> = {
+        email: <path d="M3 5.5h10v6.5H3z M3 5.8l5 3.7 5-3.7" fill="none" stroke="#fff" strokeWidth="1.2" strokeLinejoin="round" />,
+        calendar: <><rect x="3.2" y="4.2" width="9.6" height="8.6" rx="1" fill="none" stroke="#fff" strokeWidth="1.2" /><path d="M3.2 7h9.6 M6 3v2.4 M10 3v2.4" stroke="#fff" strokeWidth="1.2" /></>,
+        teams: <><rect x="2.8" y="5" width="7" height="6" rx="1.2" fill="#fff" /><path d="M10.2 7.2l3-1.6v4.8l-3-1.6z" fill="#fff" /></>,
+        transcript: <path d="M4 5h8 M4 7.5h8 M4 10h5" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />,
+        word: <text x="8" y="11.2" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff" fontFamily="Inter, sans-serif">W</text>,
+        excel: <text x="8" y="11.2" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff" fontFamily="Inter, sans-serif">X</text>,
+        pdf: <text x="8" y="10.6" textAnchor="middle" fontSize="5.2" fontWeight="700" fill="#fff" fontFamily="Inter, sans-serif">PDF</text>,
+        other: <circle cx="8" cy="8" r="1.6" fill="#fff" />,
+    };
+    return (
+        <svg className="source-icon" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+            <rect width="16" height="16" rx="3.5" fill={color[kind] ?? color.other} />
+            {path[kind] ?? path.other}
+        </svg>
+    );
+}
 const KIND_NAME: Record<string, string> = { email: "Email", meeting: "Meeting", transcript: "Transcript", document: "Document" };
 /** What a source is, short: Email, Teams meeting, Calendar, Transcript, Document. */
 const rowKind = (ev: Evidence): string => (ev.kind === "meeting" ? (ev.teams ? "Teams meeting" : "Calendar") : KIND_NAME[ev.kind] ?? ev.kind);
@@ -145,8 +167,6 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
                             </div>
                         );
                     })}
-                    {sum && <p className="why-math" title="How the hours are counted: captured minutes, added, then rounded up to the client's tenth of an hour.">{sum}{hours !== undefined ? ` rounds up to ${hours.toFixed(1)} h in tenths` : ""}</p>}
-                    {entry.matterReason && <p className="why-math">{entry.matterReason}</p>}
                 </section>
             )}
             {(entry.reasons?.length || entry.why) && (
@@ -197,7 +217,7 @@ function SourceRow({ id, label, w, lit: on, onHover }: { id: string; label: stri
     const viewShot = async (): Promise<void> => { const data = await window.lawdie.screenshotData(id); if (data) setShot(data); else void open("screenshot"); };
     return (
         <div className={"source-row" + (on ? " hot" : "")} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
-            <span className="source-kind"><span aria-hidden="true">{KIND_ICON[ev?.kind ?? ""] ?? "·"}</span> {ev ? rowKind(ev) : "Source"}</span>
+            <span className="source-kind"><SourceIcon ev={ev} /> {ev ? rowKind(ev) : "Source"}</span>
             <span className="source-title" title={title}>{title}</span>
             <span className="source-time">{ev ? sourceTime(ev, w.evidence) : ""}</span>
             <span className="source-links">

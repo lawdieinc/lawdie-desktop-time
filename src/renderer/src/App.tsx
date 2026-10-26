@@ -10,6 +10,28 @@ import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesCont
 import { NarrativeEntry, PrivateRow, hasNarrative } from "./Narrative";
 import { ImportedPanel } from "./Imported";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
+
+/** A button that opens a small menu below it. A choice, a click outside, or Escape closes it. */
+function Menu({ label, tip, children }: { label: string; tip: string; children: ReactNode }): ReactNode {
+    const [open, setOpen] = useState(false);
+    useEffect(() => {
+        if (!open) return;
+        const close = (e: Event): void => { if (!(e.target as Element)?.closest?.(".menu")) setOpen(false); };
+        const esc = (e: KeyboardEvent): void => { if (e.key === "Escape") setOpen(false); };
+        document.addEventListener("mousedown", close);
+        document.addEventListener("keydown", esc);
+        return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+    }, [open]);
+    return (
+        <span className="menu">
+            <button type="button" className={"quiet menu-button" + (open ? " open" : "")} aria-haspopup="menu" aria-expanded={open} title={tip} onClick={() => setOpen(!open)}>
+                {label}
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            {open && <span className="menu-list" role="menu" onClick={() => setOpen(false)}>{children}</span>}
+        </span>
+    );
+}
 import kiwiMark from "../../../resources/brand/kiwi.png";
 
 /* The window. Four screens (Time, Activity, Matters, Settings) and the Kiwi
@@ -165,9 +187,15 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
                 )}
                 <span className="grow" />
                 <span className="row gap">
-                    <button type="button" className="quiet" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
-                    {canBill && <button type="button" className="quiet" disabled={!!making} title="Save this day's time detail for the matter as a PDF in the matter folder, then open it." onClick={() => void pdf("timesheet")}>{making === "timesheet" ? "Making…" : "Time sheet (PDF)"}</button>}
-                    {canBill && <button type="button" className="quiet" disabled={!!making} title="Save the matter's invoice for this day's settled entries as a PDF, with the client's rate and no-charge rules applied, then open it." onClick={() => void pdf("invoice")}>{making === "invoice" ? "Making…" : "Invoice (PDF)"}</button>}
+                    <Menu label="Entries" tip="Bring in entries typed in another time system.">
+                        <button type="button" role="menuitem" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
+                    </Menu>
+                    {canBill && (
+                        <Menu label={making ? "Making…" : "Billing"} tip="Make the matter's time sheet or invoice from these entries.">
+                            <button type="button" role="menuitem" disabled={!!making} title="Save this day's time detail for the matter as a PDF in the matter folder, then open it." onClick={() => void pdf("timesheet")}>Time sheet (PDF)</button>
+                            <button type="button" role="menuitem" disabled={!!making} title="Save the matter's invoice for this day's settled entries as a PDF, with the client's rate and no-charge rules applied, then open it." onClick={() => void pdf("invoice")}>Invoice (PDF)</button>
+                        </Menu>
+                    )}
                 </span>
             </div>
             {pdfProblem && <p className="danger small">{pdfProblem}</p>}
