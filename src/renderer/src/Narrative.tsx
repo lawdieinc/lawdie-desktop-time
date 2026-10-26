@@ -1,82 +1,254 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Evidence, NarrativePart, PrivateStretch, SourceRef, TimeEntry, Workspace } from "@shared/model";
-import { evidenceFor } from "@shared/drafter";
+import type { Evidence, NarrativePart, PrivateStretch, TimeEntry, Workspace } from "@shared/model";
 import { clock, duration } from "@shared/format";
 
-/* What the attorney typed, the narrative Lawdie drafted, and the sources behind each part
-   of it (story.json, seeded by the demo repo's console/timecapture.py --story). Hovering a
-   part lights its sources; clicking a part or a source opens "Why this narrative". */
+/* A time entry's narrative as Lawdie drafted it, edited in place, and one dropdown, "Why
+   this entry", with the work Time Capture saw (each stretch, the sum, the rounding), why it
+   is on its matter, the reasons, and the sources with their links. Hovering a source lights
+   the parts of the narrative it supports, and the other way round. Data comes from
+   story.json, seeded by the demo repo's console/timecapture.py --story. */
 
-/** Which part or source the pointer is on, or which one the panel opened at. */
+/** Which part or source the pointer is on. */
 export type Focus = { part?: number; source?: string } | null;
 
 const KIND_ICON: Record<string, string> = { email: "✉", meeting: "◷", transcript: "❝", document: "▤" };
-/** The drafter's slots, in the words the panel shows. */
-const SLOT_NAME: Record<string, string> = { verb: "task", party: "who", participants: "who", object: "what", purpose: "why" };
-const KIND_NAME: Record<string, string> ={ email: "Email", meeting: "Meeting", transcript: "Transcript", document: "Document" };
+const KIND_NAME: Record<string, string> = { email: "Email", meeting: "Meeting", transcript: "Transcript", document: "Document" };
+/** What a source is, short: Email, Teams meeting, Calendar, Transcript, Document. */
+const rowKind = (ev: Evidence): string => (ev.kind === "meeting" ? (ev.teams ? "Teams meeting" : "Calendar") : KIND_NAME[ev.kind] ?? ev.kind);
 
-/** What a source is, in a few words: "Outlook email", "Teams meeting", "Calendar", "Teams transcript (sample)", "Document". */
-const kindLabel = (ev: Evidence): string =>
-    ev.kind === "email" ? "Outlook email" : ev.kind === "meeting" ? (ev.teams ? "Teams meeting" : "Calendar") : ev.kind === "transcript" ? "Teams transcript (sample)" : KIND_NAME[ev.kind] ?? ev.kind;
+/** Whether an entry has drafted parts, work or reasons to explain. */
+export const hasNarrative = (e: TimeEntry): boolean => !!e.parts?.length || !!e.work?.length || !!e.reasons?.length || !!e.status;
 
-/** A source's label without its kind ("Outlook email: …" → "…"), for a chip. */
-const shortLabel = (s: SourceRef): string => s.label.replace(/^(Outlook email|Teams meeting|Calendar|Document): /, "").replace(/^Teams transcript \(sample\)$/, "Teams transcript");
+const lit = (focus: Focus, parts: readonly NarrativePart[], n: number): boolean => !!focus && (focus.part === n || (!!focus.source && parts[n].evidence.includes(focus.source)));
+const rowLit = (focus: Focus, parts: readonly NarrativePart[], id: string): boolean => !!focus && (focus.source === id || (focus.part !== undefined && !!parts[focus.part]?.evidence.includes(id)));
 
-/** Whether an entry has the narrative-with-sources shape. */
-export const hasNarrative = (e: TimeEntry): boolean => e.raw !== undefined || !!e.parts?.length || !!e.status;
+// ---------------------------------------------------------------------------
 
-const lit = (focus: Focus, parts: readonly NarrativePart[], n: number): boolean =>
-    !!focus && (focus.part === n || (!!focus.source && parts[n].evidence.includes(focus.source)));
-const chipLit = (focus: Focus, parts: readonly NarrativePart[], id: string): boolean =>
-    !!focus && (focus.source === id || (focus.part !== undefined && !!parts[focus.part]?.evidence.includes(id)));
+/** A small mark for the app, since the app keeps no app icons: its initial on a tint. */
+const APP_MARKS: [RegExp, string, string][] = [
+    [/teams/i, "T", "#5b5fc7"], [/outlook/i, "O", "#0f6cbd"], [/word/i, "W", "#185abd"], [/excel/i, "X", "#107c41"],
+    [/powerpoint/i, "P", "#c43e1c"], [/acrobat|pdf|preview/i, "A", "#b30b00"], [/chrome|safari|edge|firefox/i, "◍", "#5f6368"], [/phone|facetime/i, "☏", "#5e8b5a"],
+];
+function AppMark({ app }: { app: string }): ReactNode {
+    const [, mark, color] = APP_MARKS.find(([re]) => re.test(app)) ?? [/./, app.trim()[0]?.toUpperCase() ?? "·", "#7c7366"];
+    return <span className="app-mark" style={{ color, background: `${color}1f` }} aria-hidden="true">{mark}</span>;
+}
 
-/** "You typed", the narrative in parts, and the source chips: what an entry row shows. */
-export function NarrativeLines({ entry, onWhy, tag }: { entry: TimeEntry; onWhy: (f: Focus) => void; tag?: ReactNode }): ReactNode {
+const hm = (t: number): string => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+/** "9:15 to 9:51 AM", or "11:48 AM to 12:30 PM" across noon. */
+export function timeRange(startIso: string, endIso: string): string {
+    const a = hm(Date.parse(startIso)), b = hm(Date.parse(endIso));
+    return a.slice(-2) === b.slice(-2) && /[AP]M/i.test(a) ? `${a.slice(0, -3)} to ${b}` : `${a} to ${b}`;
+}
+/** A window title without the app's own name on the end: "Kickoff | Microsoft Teams" → "Kickoff". */
+export const workTitle = (title: string): string =>
+    title.replace(/\s+[|\-–]\s+(Microsoft Teams|Outlook|Microsoft Outlook|Word|Microsoft Word|Excel|Microsoft Excel|Kiwi|Google Chrome|Adobe Acrobat[^|]*)$/i, "").trim();
+const appShort = (app: string): string => app.replace(/^(Microsoft|Google|Adobe)\s+/, "");
+/** "52m in Chrome, 48m in Word": where an entry's time went. */
+export const whereTime = (e: TimeEntry): string => (e.work ?? []).map((x) => `${x.minutes}m in ${appShort(x.app)}`).join(", ");
+
+// ---------------------------------------------------------------------------
+
+/** Entries whose dropdown is open, kept while the app runs. */
+const OPEN = new Set<string>();
+
+/**
+ * The narrative line (parts, ✦ AI, Edited), the inline editor when `draft` is set, the
+ * suggested or flagged line, `meta` (matter, time, billable), and the Why dropdown.
+ */
+export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign, meta, readOnly = false }: {
+    entry: TimeEntry; w: Workspace; draft: string | null; setDraft: (d: string | null) => void;
+    onDetails?: () => void; onAssign?: () => void; meta?: ReactNode; readOnly?: boolean;
+}): ReactNode {
     const [focus, setFocus] = useState<Focus>(null);
+    const [open, setOpen] = useState(OPEN.has(entry.id));
+    const [problem, setProblem] = useState<string | null>(null);
     const parts = entry.parts ?? [];
     const asParts = parts.length > 0 && !entry.partsEdited;
-    const sources = entry.sources ?? [];
+    const toggle = (): void => { const next = !open; setOpen(next); if (next) OPEN.add(entry.id); else OPEN.delete(entry.id); };
+    const litCount = asParts ? (entry.sources ?? []).filter((s) => rowLit(focus, parts, s.id)).length : 0;
+    const save = async (): Promise<void> => {
+        if (draft === null) return;
+        if (!draft.trim()) { setProblem("Add a narrative."); return; }
+        if (draft.trim() === entry.description) { setDraft(null); return; }
+        if (await window.lawdie.editEntry(entry.id, { description: draft })) { setDraft(null); setProblem(null); } else setProblem("That could not be saved.");
+    };
     return (
         <>
-            <div className="narr-raw tiny" title="What the attorney typed on the time card.">{entry.raw ? <>You typed: <span className="narr-raw-text">{entry.raw}</span></> : "Nothing typed"}</div>
-            <div className="small strong narr">
-                {asParts ? parts.map((p, n) => (
-                    <span key={n} className={"part" + (p.evidence.length ? "" : " uncited") + (lit(focus, parts, n) ? " hot" : "")}
-                        role="button" tabIndex={0}
-                        title={p.evidence.length ? `From ${p.evidence.length === 1 ? "1 source" : `${p.evidence.length} sources`}. Click to see why.` : "The drafter's wording. Click to see the sources."}
-                        onMouseEnter={() => setFocus({ part: n })} onMouseLeave={() => setFocus(null)}
-                        onFocus={() => setFocus({ part: n })} onBlur={() => setFocus(null)}
-                        onClick={() => onWhy({ part: n })} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onWhy({ part: n }); } }}>{p.text}</span>
-                )) : entry.description || <span className="muted narr-empty">No narrative yet</span>}
-                {" "}{tag}
-                {entry.partsEdited && <span className="edited-tag" title="You edited this narrative. What you typed and the sources are kept.">Edited</span>}
-            </div>
-            {sources.length > 0 && (
-                <div className="source-chips">
-                    {sources.map((s) => (
-                        <button key={s.id} type="button" className={"source-chip" + (asParts && chipLit(focus, parts, s.id) ? " hot" : "")}
-                            title={`${s.label}. Click to see what it says.`}
-                            onMouseEnter={() => setFocus({ source: s.id })} onMouseLeave={() => setFocus(null)}
-                            onClick={() => onWhy({ source: s.id })}>
-                            <span aria-hidden="true">{KIND_ICON[s.kind] ?? "·"}</span> {shortLabel(s)}
-                        </button>
-                    ))}
+            {draft !== null ? (
+                <div className="narr-edit">
+                    <textarea autoFocus value={draft} rows={2} title="The narrative the client sees. Enter saves, Escape cancels."
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setDraft(null); } if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void save(); } }} />
+                    <div className="row gap">
+                        <button type="button" className="primary slim" title="Save this narrative (Enter). Its sources stay with the entry." onClick={() => void save()}>Save</button>
+                        <button type="button" className="quiet slim" title="Keep the narrative as it was (Escape)." onClick={() => setDraft(null)}>Cancel</button>
+                        {onDetails && <button type="button" className="link-btn" title="Change hours, task and activity codes, rate or billable." onClick={onDetails}>Hours, codes and rate</button>}
+                        {problem && <span className="danger tiny">{problem}</span>}
+                    </div>
+                </div>
+            ) : (
+                <div className="small strong narr">
+                    {asParts ? parts.map((p, n) => (
+                        <span key={n} className={"part" + (lit(focus, parts, n) ? " hot" : "")}
+                            title={p.evidence.length ? `From ${p.evidence.length === 1 ? "1 source" : `${p.evidence.length} sources`}. Click to see them.` : "Lawdie's wording."}
+                            onMouseEnter={() => setFocus({ part: n })} onMouseLeave={() => setFocus(null)}
+                            onClick={() => { if (!open) toggle(); }}>{p.text}</span>
+                    )) : entry.description || <span className="muted narr-empty">No narrative yet</span>}
+                    {" "}
+                    <span className="narr-tags">
+                        {entry.drafted && <span className="ai-tag" title="Drafted by Lawdie from the sources below. Edit it if anything is off.">✦ AI</span>}
+                        {entry.partsEdited && <span className="edited-tag" title="You edited this narrative. Its sources are kept.">Edited</span>}
+                    </span>
+                </div>
+            )}
+            {!readOnly && <StatusLine entry={entry} onAssign={onAssign} />}
+            {meta}
+            {hasNarrative(entry) && (
+                <div className="why">
+                    <button type="button" className={"why-toggle" + (open ? " open" : "") + (litCount ? " hot" : "")} aria-expanded={open}
+                        title={open ? "Hide why this entry says what it says." : "Show the work Time Capture saw, why the narrative says what it says, and its sources."} onClick={toggle}>
+                        <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true"><path d="M2.5 1 L7 4.5 L2.5 8 Z" fill="currentColor" /></svg>
+                        Why this entry
+                        {!open && litCount > 0 && <span className="why-lit">{litCount} {litCount === 1 ? "source" : "sources"} for this part</span>}
+                    </button>
+                    {open && <WhyBody entry={entry} w={w} focus={focus} setFocus={setFocus} parts={parts} asParts={asParts} />}
                 </div>
             )}
         </>
     );
 }
 
-/** The suggested or flagged line under an entry, with its actions. */
-export function StatusLine({ entry, onEdit }: { entry: TimeEntry; onEdit: () => void }): ReactNode {
+/** Inside the dropdown: work done with its sum and rounding, the matter, the reasons, the sources, who drafted it. */
+function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEntry; w: Workspace; focus: Focus; setFocus: (f: Focus) => void; parts: NarrativePart[]; asParts: boolean }): ReactNode {
+    const [message, setMessage] = useState<string | null>(null);
+    const [drafting, setDrafting] = useState(false);
+    const work = entry.work ?? [];
+    const total = work.reduce((n, x) => n + x.minutes, 0);
+    const hours = entry.hours;
+    const sum = work.length > 1 ? `${work.map((x) => `${x.minutes}m`).join(" + ")} = ${total}m` : work.length ? `${total}m` : "";
+    const redraft = async (): Promise<void> => { setDrafting(true); const r = await window.lawdie.draftNarrative(entry.id); setDrafting(false); setMessage(r.message); };
+    return (
+        <div className="why-body">
+            {work.length > 0 && (
+                <section className="why-section">
+                    <p className="why-head">Work done</p>
+                    {work.map((x, n) => {
+                        const end = new Date(Date.parse(x.startedAt) + x.minutes * 60_000).toISOString();
+                        return (
+                            <div key={n} className="work-row" title={x.url ? `${x.app}: ${x.url}` : `What Time Capture saw in ${x.app}.`}>
+                                <AppMark app={x.app} />
+                                <span className="work-what"><span className="strong">{x.app}</span> · {workTitle(x.title)}</span>
+                                <span className="work-when">{timeRange(x.startedAt, end)}</span>
+                                <span className="work-min mono">{x.minutes}m</span>
+                            </div>
+                        );
+                    })}
+                    {sum && <p className="why-math" title="How the hours are counted: captured minutes, added, then rounded up to the client's tenth of an hour.">{sum}{hours !== undefined ? ` rounds up to ${hours.toFixed(1)} h in tenths` : ""}</p>}
+                    {entry.matterReason && <p className="why-math">{entry.matterReason}</p>}
+                </section>
+            )}
+            {(entry.reasons?.length || entry.why) && (
+                <section className="why-section">
+                    <p className="why-head">Why the narrative says this</p>
+                    <ul className="why-reasons">
+                        {(entry.reasons ?? []).map((r, n) => <li key={n}>{r}</li>)}
+                        {entry.why && !(entry.reasons ?? []).includes(entry.why) && <li className={entry.status === "flagged" ? "danger" : ""}>{entry.why}</li>}
+                    </ul>
+                </section>
+            )}
+            {(entry.sources?.length ?? 0) > 0 && (
+                <section className="why-section">
+                    <p className="why-head">Sources</p>
+                    <div className="source-rows">
+                        {entry.sources!.map((s) => <SourceRow key={s.id} id={s.id} label={s.label} w={w} lit={asParts && rowLit(focus, parts, s.id)} onHover={(on) => setFocus(on ? { source: s.id } : null)} />)}
+                    </div>
+                </section>
+            )}
+            {parts.length > 0 && (
+                <div className="why-foot">
+                    <span className="tiny muted">Drafted by: {entry.drafter === "model" ? "model (Kiwi)" : "rules (demo)"}.{entry.drafter === "model" ? "" : " Swap for a model in Settings."}</span>
+                    <button type="button" className="link-btn" disabled={drafting} title={w.preferences.narrativeDrafter === "model" ? "Ask the model to write this narrative again from the same sources. Your edits are replaced." : "Put back the narrative as drafted from the sources. Your edits are replaced."} onClick={() => void redraft()}>{drafting ? "Drafting…" : "Draft again"}</button>
+                    {message && <span className="danger tiny">{message}</span>}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** When a source happened: an email's time, a meeting's span (a transcript takes its meeting's). */
+function sourceTime(ev: Evidence, all: Record<string, Evidence> | undefined): string {
+    const m = ev.kind === "transcript" && ev.meeting ? all?.[ev.meeting] : ev;
+    if (m?.start && m.end) return `${new Date(m.start).toLocaleDateString([], { month: "short", day: "numeric" })}, ${timeRange(m.start, m.end)}`;
+    if (ev.when) return new Date(ev.when).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    return "";
+}
+
+/** One source: kind, title, time, and the links it has. */
+function SourceRow({ id, label, w, lit: on, onHover }: { id: string; label: string; w: Workspace; lit: boolean; onHover: (on: boolean) => void }): ReactNode {
+    const ev = w.evidence?.[id];
+    const [lines, setLines] = useState(false);
+    const [shot, setShot] = useState<string | null>(null);
+    const [problem, setProblem] = useState<string | null>(null);
+    const meeting = ev?.kind === "transcript" && ev.meeting ? w.evidence?.[ev.meeting] : undefined;
+    const title = !ev ? label : ev.kind === "email" || ev.kind === "meeting" ? ev.subject ?? label : ev.kind === "transcript" ? meeting?.subject ?? "Teams transcript" : ev.file ?? label;
+    const open = async (what: "link" | "path" | "screenshot"): Promise<void> => setProblem(await window.lawdie.openSource(id, what));
+    const viewShot = async (): Promise<void> => { const data = await window.lawdie.screenshotData(id); if (data) setShot(data); else void open("screenshot"); };
+    return (
+        <div className={"source-row" + (on ? " hot" : "")} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
+            <span className="source-kind"><span aria-hidden="true">{KIND_ICON[ev?.kind ?? ""] ?? "·"}</span> {ev ? rowKind(ev) : "Source"}</span>
+            <span className="source-title" title={title}>{title}</span>
+            <span className="source-time">{ev ? sourceTime(ev, w.evidence) : ""}</span>
+            <span className="source-links">
+                {ev?.link && <button type="button" className="link-btn" title="Open this in Outlook on the web." onClick={() => void open("link")}>Open in Outlook</button>}
+                {ev?.screenshot && <button type="button" className="link-btn" title="See a picture of this source as it looked." onClick={() => void viewShot()}>Screenshot</button>}
+                {ev?.path && <button type="button" className="link-btn" title={`Open ${ev.file ?? "this file"} on this Mac.`} onClick={() => void open("path")}>Open file</button>}
+                {ev?.kind === "transcript" && <button type="button" className="link-btn" aria-expanded={lines} title={lines ? "Hide the transcript lines." : "Show the transcript lines here."} onClick={() => setLines(!lines)}>{lines ? "Hide transcript" : "Show transcript"}</button>}
+                {ev && !ev.link && !ev.screenshot && !ev.path && ev.kind !== "transcript" && <span className="tiny muted" title="Links are added when the mailbox and the matter folder are seeded.">No link yet</span>}
+            </span>
+            {problem && <div className="danger tiny source-wide">{problem}</div>}
+            {lines && ev?.lines && (
+                <div className="tx-lines source-wide">{ev.lines.map((l, n) => (
+                    <div key={n} className="tx-line"><span className="mono tiny muted">{l.t.slice(0, 5)}</span><span className="tiny strong">{l.who}</span><span className="small">{l.text}</span></div>
+                ))}</div>
+            )}
+            {shot && <ImageViewer src={shot} caption={title} onOpen={() => void open("screenshot")} onClose={() => setShot(null)} />}
+        </div>
+    );
+}
+
+/** A screenshot over the window; Escape or a click outside closes it. */
+function ImageViewer({ src, caption, onOpen, onClose }: { src: string; caption: string; onOpen: () => void; onClose: () => void }): ReactNode {
+    useEffect(() => {
+        const key = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+        window.addEventListener("keydown", key, true);
+        return () => window.removeEventListener("keydown", key, true);
+    }, [onClose]);
+    return createPortal(
+        <div className="viewer-scrim" onClick={onClose}>
+            <figure className="viewer" onClick={(e) => e.stopPropagation()}>
+                <div className="row between viewer-bar">
+                    <figcaption className="small strong">{caption}</figcaption>
+                    <span className="row gap">
+                        <button type="button" className="quiet slim" title="Open the picture in Preview." onClick={onOpen}>Open in Preview</button>
+                        <button type="button" className="icon" aria-label="Close" title="Close (Escape)." onClick={onClose}>×</button>
+                    </span>
+                </div>
+                <img src={src} alt={caption} />
+            </figure>
+        </div>,
+        document.body,
+    );
+}
+
+/** The suggested or flagged line under an entry, with its action. */
+export function StatusLine({ entry, onAssign }: { entry: TimeEntry; onAssign?: () => void }): ReactNode {
     if (entry.status === "suggested") {
         return (
             <div className="status-line suggested">
                 <span className="status-badge" title={entry.why ?? "Built from the matter's history. Confirm it before it is billed."}>From matter history, confirm</span>
-                {entry.why && <span className="tiny muted grow">{entry.why}</span>}
-                <button type="button" className="fix" title="The narrative is right: keep it as a normal entry." onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>
-                <button type="button" className="quiet slim" title="Change the narrative first, then keep it." onClick={onEdit}>Edit</button>
+                <button type="button" className="fix" title="The narrative is right: keep it as a normal entry. To change it first, use Edit." onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>
             </div>
         );
     }
@@ -84,8 +256,8 @@ export function StatusLine({ entry, onEdit }: { entry: TimeEntry; onEdit: () => 
         return (
             <div className="status-line flagged">
                 <span className="status-badge" title="Lawdie found no matter for this time and did not guess.">Needs you: no matter found</span>
-                {entry.why && <span className="tiny grow">{entry.why}</span>}
-                <button type="button" className="fix" title="Choose the matter and write the narrative for this time." onClick={onEdit}>Assign and edit</button>
+                {entry.why && <span className="tiny">{entry.why}</span>}
+                {onAssign && <button type="button" className="fix" title="Choose the matter and write the narrative for this time." onClick={onAssign}>Assign and edit</button>}
             </div>
         );
     }
@@ -104,134 +276,4 @@ export function PrivateRow({ item }: { item: PrivateStretch }): ReactNode {
             <span className="mono muted">{duration((Date.parse(item.endedAt) - Date.parse(item.startedAt)) / 1000)}</span>
         </div>
     );
-}
-
-// ---------------------------------------------------------------------------
-
-const STOP = new Set(["about", "after", "their", "there", "these", "those", "which", "while", "would", "could", "should", "under", "including", "regarding"]);
-/** The words of a part that are worth finding in a source: five letters or more, compared by their first five. */
-const stems = (texts: string[]): string[] => [...new Set(texts.join(" ").toLowerCase().match(/[a-z0-9]{5,}/g) ?? [])].filter((w) => !STOP.has(w)).map((w) => w.slice(0, 5));
-const hits = (line: string, keys: string[]): boolean => { const l = line.toLowerCase(); return keys.some((k) => l.includes(k)); };
-const when = (iso: string | undefined): string => (iso ? new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
-const timeOnly = (iso: string | undefined): string => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
-
-/** "Why this narrative": each part and the sources it rests on, what each source says, and a way to open it. */
-export function WhyPanel({ w, entry, focus: initial, onClose }: { w: Workspace; entry: TimeEntry; focus: Focus; onClose: () => void }): ReactNode {
-    const [focus, setFocus] = useState<Focus>(initial);
-    const [message, setMessage] = useState<string | null>(null);
-    const [drafting, setDrafting] = useState(false);
-    const evidence = evidenceFor(entry, w.evidence);
-    const parts = entry.parts ?? [];
-    const asParts = parts.length > 0 && !entry.partsEdited;
-    const focusIDs = new Set(focus?.source ? [focus.source] : focus?.part !== undefined ? parts[focus.part]?.evidence ?? [] : []);
-    const listRef = useRef<HTMLDivElement>(null);
-    // Only the source list scrolls to the focused source; the panel's heading and parts stay in view.
-    useEffect(() => {
-        const list = listRef.current;
-        const first = list?.querySelector<HTMLElement>(".src-card.focus");
-        if (list && first) list.scrollTo({ top: first.offsetTop - list.offsetTop - 24, behavior: "smooth" });
-    }, [focus]);
-    useEffect(() => {
-        const key = (e: KeyboardEvent): void => { if (e.key === "Escape") onClose(); };
-        window.addEventListener("keydown", key);
-        return () => window.removeEventListener("keydown", key);
-    }, [onClose]);
-    /** The parts that rest on a source: its own id, or (a transcript) its meeting's. */
-    const partsCiting = (ev: Evidence): NarrativePart[] => parts.filter((p) => p.evidence.includes(ev.id) || (!!ev.meeting && p.evidence.includes(ev.meeting)));
-    const open = async (ev: Evidence): Promise<void> => { setMessage(await window.lawdie.openSource(ev.id)); };
-    const redraft = async (): Promise<void> => {
-        setDrafting(true);
-        const r = await window.lawdie.draftNarrative(entry.id);
-        setDrafting(false);
-        setMessage(r.message);
-    };
-    const drafter = entry.drafter === "model" ? "model (Kiwi)" : "rules (demo)";
-    // On the body: a panel's backdrop filter would otherwise hold this fixed layer inside the panel.
-    return createPortal(
-        <div className="why-scrim" onClick={onClose}>
-            <aside className="why-panel" onClick={(e) => e.stopPropagation()} aria-label="Why this narrative">
-                <div className="row between">
-                    <div className="heading"><p className="eyebrow">{clock(entry.startedAt)} · {duration((Date.parse(entry.endedAt) - Date.parse(entry.startedAt)) / 1000)}</p><h2 className="display">Why this narrative</h2></div>
-                    <button type="button" className="icon" aria-label="Close" title="Close this panel (Esc)." onClick={onClose}>×</button>
-                </div>
-                <div className="why-typed">
-                    <p className="eyebrow">You typed</p>
-                    <p className="small">{entry.raw ? `“${entry.raw}”` : "Nothing"}</p>
-                </div>
-                <div className="why-parts">
-                    <p className="eyebrow">Lawdie drafted</p>
-                    {asParts ? parts.map((p, n) => (
-                        <button key={n} type="button" className={"why-part" + (focus?.part === n || (focus?.source && p.evidence.includes(focus.source)) ? " hot" : "")}
-                            title={p.evidence.length ? "Show the sources for this part." : "No source: the drafter's own wording."} onClick={() => setFocus({ part: n })}>
-                            {p.slot && <span className="slot">{SLOT_NAME[p.slot] ?? p.slot}</span>}
-                            <span className="why-part-text">{p.text.trim()}</span>
-                            <span className="tiny muted">{p.evidence.length ? p.evidence.map((id) => (w.evidence?.[id] ? kindLabel(w.evidence[id]) : id)).join(", ") : "no source"}</span>
-                        </button>
-                    )) : <p className="small">{entry.description || "No narrative yet."}{entry.partsEdited ? " (edited by you)" : ""}</p>}
-                </div>
-                {entry.why && <p className={"small why-note " + (entry.status ?? "")}>{entry.why}</p>}
-                <div className="why-sources" ref={listRef}>
-                    <p className="eyebrow">Sources</p>
-                    {evidence.length === 0 && <p className="muted small">No sources were captured for this time.</p>}
-                    {evidence.map((ev) => {
-                        const keys = stems(partsCiting(ev).map((p) => p.text));
-                        const meeting = ev.meeting ? w.evidence?.[ev.meeting] : undefined;
-                        return (
-                            <section key={ev.id} className={"src-card" + (focusIDs.has(ev.id) || (!!ev.meeting && focusIDs.has(ev.meeting)) ? " focus" : "")} title="Click to light the parts that rest on this source." onClick={() => setFocus({ source: ev.id })}>
-                                <div className="row between">
-                                    <span className="src-kind"><span aria-hidden="true">{KIND_ICON[ev.kind] ?? "·"}</span> {kindLabel(ev)}</span>
-                                    <OpenButton ev={ev} onOpen={() => void open(ev)} />
-                                </div>
-                                {ev.kind === "email" && (
-                                    <>
-                                        <div className="small strong">{ev.subject}</div>
-                                        <div className="tiny muted">From {ev.from} to {(ev.to ?? []).join(", ")}{ev.cc?.length ? `, cc ${ev.cc.join(", ")}` : ""} · {when(ev.when)}</div>
-                                        <div className="src-body">{(ev.body ?? "").split("\n").map((line, n) => <div key={n} className={"body-line" + (line.trim() && hits(line, keys) ? " hit" : "")}>{line || " "}</div>)}</div>
-                                    </>
-                                )}
-                                {ev.kind === "meeting" && (
-                                    <>
-                                        <div className="small strong">{ev.subject}</div>
-                                        <div className="tiny muted">{when(ev.start)} to {timeOnly(ev.end)}{ev.location ? ` · ${ev.location}` : ""}</div>
-                                        <div className="tiny">With {(ev.attendees ?? []).join(", ")}</div>
-                                        {ev.body && <div className="tiny muted">{ev.body}</div>}
-                                        {!ev.transcript && <div className="tiny muted">No recording or transcript.</div>}
-                                    </>
-                                )}
-                                {ev.kind === "transcript" && (
-                                    <>
-                                        {meeting && <div className="tiny muted">{meeting.subject}</div>}
-                                        <div className="tx-lines">{(ev.lines ?? []).map((l, n) => (
-                                            <div key={n} className={"tx-line" + (hits(l.text, keys) ? " hit" : "")}><span className="mono tiny muted">{l.t.slice(0, 5)}</span><span className="tiny strong">{l.who}</span><span className="small">{l.text}</span></div>
-                                        ))}</div>
-                                    </>
-                                )}
-                                {ev.kind === "document" && (
-                                    <>
-                                        <div className="small strong">{ev.file}</div>
-                                        <div className="tiny muted">{ev.title}</div>
-                                        {ev.facts?.length ? <ul className="src-facts">{ev.facts.map((f) => <li key={f} className={hits(f, keys) ? "hit" : ""}>{f}</li>)}</ul> : null}
-                                    </>
-                                )}
-                            </section>
-                        );
-                    })}
-                </div>
-                {message && <p className="small danger">{message}</p>}
-                <div className="why-foot row between">
-                    <span className="tiny muted">Drafted by: {drafter}.{entry.drafter === "model" ? "" : " Swap for a model in Settings."}</span>
-                    {parts.length > 0 && <button type="button" className="quiet slim" disabled={drafting} title={w.preferences.narrativeDrafter === "model" ? "Ask the model to write this narrative again from the same sources. Your edits are replaced." : "Put back the narrative as drafted from the sources. Your edits are replaced."} onClick={() => void redraft()}>{drafting ? "Drafting…" : "Draft again"}</button>}
-                </div>
-            </aside>
-        </div>,
-        document.body,
-    );
-}
-
-/** Open a source where it lives: Outlook on the web, or the file on this Mac. A transcript shows its lines above. */
-function OpenButton({ ev, onOpen }: { ev: Evidence; onOpen: () => void }): ReactNode {
-    if (ev.kind === "transcript") return <span className="tiny muted" title="The transcript lines are shown here.">Lines below</span>;
-    const where = ev.link ? (ev.kind === "document" ? "Open" : "Open in Outlook") : ev.path ? "Open file" : null;
-    const tip = ev.link ? "Open this in Outlook on the web." : ev.path ? `Open ${ev.file ?? "this file"} on this Mac.` : ev.kind === "document" ? "No file path yet. It is added when the matter folder is written." : "No Outlook link yet. It is added when the mailbox is seeded.";
-    return <button type="button" className="quiet slim" disabled={!where} title={tip} onClick={(e) => { e.stopPropagation(); onOpen(); }}>{where ?? "Open"}</button>;
 }

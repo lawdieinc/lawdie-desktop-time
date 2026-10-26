@@ -1,10 +1,13 @@
-import { appendFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { homedir, hostname } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } from "@shared/kiwi";
 import { evidenceFor, modelDrafter, rulesDrafter, type Drafter } from "@shared/drafter";
+import { matchRows, parseCsv, typedRows } from "@shared/importMatch";
+import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoice";
+import { readXlsx } from "./xlsx";
 import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type KeepInput, type KeepLine, type Preferences } from "@shared/model";
 import { demoNow } from "@shared/demo";
 import { Capture } from "./capture";
@@ -53,7 +56,11 @@ function createWindow(store: Store, hidden = false): BrowserWindow {
         webPreferences: { preload: join(__dirname, "../preload/index.mjs"), sandbox: false, contextIsolation: true },
     });
     // Opened at login: straight to the tray; the window waits until someone asks for it.
-    if (!hidden) window.on("ready-to-show", () => window.show());
+    // A verification run (--screenshot) stays out of the person's way: shown without focus, see-through, and
+    // deaf to the mouse, so it still paints for the capture but nobody can click or type into it.
+    const quiet = !!argValue("--screenshot");
+    if (quiet) { window.setFocusable(false); window.setIgnoreMouseEvents(true); window.setOpacity(0); }
+    if (!hidden) window.on("ready-to-show", () => (quiet ? window.showInactive() : window.show()));
     window.on("close", (event) => {
         // Capture continues in the background; the tray reopens the window.
         if (!quitting) { event.preventDefault(); window.hide(); }
@@ -175,11 +182,20 @@ app.whenReady().then(() => {
     ipcMain.handle("showDataFolder", () => shell.showItemInFolder(workspacePath));
     ipcMain.handle("openExternal", (_e, url: string) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); });
     // A narrative's source: an Outlook web link opens in the browser, a document from disk. Looked up here by id, so the window names no paths.
-    ipcMain.handle("openSource", async (_e, id: string) => {
+    const localPath = (p: string): string => p.replace(/^~(?=\/)/, homedir());
+    ipcMain.handle("openSource", async (_e, id: string, what?: "link" | "path" | "screenshot") => {
         const ev = store.workspace.evidence?.[String(id)];
-        if (ev?.link && /^https:\/\//.test(ev.link)) { await shell.openExternal(ev.link); return null; }
-        if (ev?.path) { const failed = await shell.openPath(ev.path.replace(/^~(?=\/)/, homedir())); return failed ? `Could not open ${ev.file ?? "the file"}: ${failed}` : null; }
+        const want = what ?? (ev?.link ? "link" : "path");
+        if (want === "link" && ev?.link && /^https:\/\//.test(ev.link)) { await shell.openExternal(ev.link); return null; }
+        const file = want === "screenshot" ? ev?.screenshot : want === "path" ? ev?.path : undefined;
+        if (file) { const failed = await shell.openPath(localPath(file)); return failed ? `Could not open ${ev?.file ?? "the file"}: ${failed}` : null; }
         return "There is nothing to open for this source yet.";
+    });
+    // A source's screenshot for the in-app viewer, as a data URL (the page's CSP allows data: images only). Null when it cannot be read.
+    ipcMain.handle("screenshotData", (_e, id: string) => {
+        const shot = store.workspace.evidence?.[String(id)]?.screenshot;
+        if (!shot || !/\.png$/i.test(shot)) return null;
+        try { return `data:image/png;base64,${readFileSync(localPath(shot)).toString("base64")}`; } catch { return null; }
     });
     // Draft an entry's narrative again with the drafter chosen in Settings. Model needs Kiwi; without it, the stored parts stand.
     ipcMain.handle("draftNarrative", async (_e, id: string) => {
@@ -203,6 +219,60 @@ app.whenReady().then(() => {
         } catch (err) {
             console.warn("[drafter]", err instanceof Error ? err.message : err);
             return { drafter: "rules", message: `The model could not draft this entry, so the rules draft stands. ${err instanceof Error ? err.message : ""}`.trim() };
+        }
+    });
+    // Import entries typed into the firm's time system (.csv or .xlsx) and match each to the captured work it describes.
+    const importFile = (file: string): boolean => {
+        try {
+            const table = /\.xlsx$/i.test(file) ? readXlsx(readFileSync(file)) : parseCsv(readFileSync(file, "utf8"));
+            const rows = typedRows(table);
+            if (!rows.length) { store.error = "That file has no time entries in it."; store.publish(); return false; }
+            const stamp = Date.now().toString(36);
+            const ok = store.change((w) => { w.imported = matchRows(w, rows, (n) => `import-${stamp}-${n}`); });
+            if (ok) store.say(`Imported ${rows.length} ${rows.length === 1 ? "entry" : "entries"} from ${basename(file)}.`);
+            return ok;
+        } catch (err) {
+            store.error = `That file could not be read. ${err instanceof Error ? err.message : ""}`.trim();
+            store.publish();
+            return false;
+        }
+    };
+    ipcMain.handle("importEntries", async () => {
+        const res = await dialog.showOpenDialog({ title: "Import time entries", properties: ["openFile"], filters: [{ name: "Time entries", extensions: ["csv", "xlsx"] }] });
+        return res.canceled || !res.filePaths[0] ? false : importFile(res.filePaths[0]);
+    });
+    ipcMain.handle("importDecision", (_e, id: string, decision: "use" | "keep" | null) => store.change((w) => {
+        const row = w.imported?.find((r) => r.id === String(id));
+        if (row) row.decision = decision === "use" || decision === "keep" ? decision : null;
+    }));
+    ipcMain.handle("clearImport", () => store.change((w) => { delete w.imported; }));
+    // The day's time sheet or invoice: HTML from src/shared/invoice.ts, printed to PDF in a hidden window, saved in the matter folder, opened.
+    ipcMain.handle("makePdf", async (_e, kind: "timesheet" | "invoice") => {
+        const w = store.workspace, terms = w.invoice;
+        if (!terms) return "This workspace has no billing terms for a time sheet or invoice.";
+        let logo: string | null = null;
+        try { if (terms.logo) logo = `data:image/png;base64,${readFileSync(localPath(terms.logo)).toString("base64")}`; } catch { logo = null; }
+        const html = kind === "invoice" ? invoiceHtml(w, terms, logo, new Date(clock())) : timeSheetHtml(w, terms, logo);
+        const name = kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}.pdf` : `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter}.pdf`;
+        let folder = terms.folder ? localPath(terms.folder) : "";
+        if (!folder || !existsSync(folder)) {
+            const res = await dialog.showOpenDialog({ title: "Where should the PDF go?", properties: ["openDirectory", "createDirectory"] });
+            if (res.canceled || !res.filePaths[0]) return null;
+            folder = res.filePaths[0];
+        }
+        const win = new BrowserWindow({ show: false, webPreferences: { javascript: false } });
+        try {
+            await win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html).toString("base64")}`);
+            const pdf = await win.webContents.printToPDF({ pageSize: "Letter", printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: footerTemplate(terms) });
+            const out = join(folder, name);
+            writeFileSync(out, pdf);
+            if (!argValue("--screenshot")) void shell.openPath(out);
+            store.say(`Saved ${name} in ${basename(folder)}.`);
+            return null;
+        } catch (err) {
+            return `The PDF could not be made. ${err instanceof Error ? err.message : ""}`.trim();
+        } finally {
+            win.destroy();
         }
     });
     ipcMain.handle("deviceName", () => hostname());
@@ -254,6 +324,9 @@ app.whenReady().then(() => {
     matters.start();
     updater.start();
     rulesFeed?.start();
+    // `--import <file.csv|.xlsx>` imports time entries at launch, as the Time page's Import entries does (verification, demos).
+    const importArg = argValue("--import");
+    if (importArg) importFile(importArg);
 
     // `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>]
     // [--crm-server <url>]` pairs on launch without a person typing the token: provisioning

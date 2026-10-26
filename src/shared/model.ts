@@ -79,6 +79,59 @@ export type TimeEntry = {
     partsEdited?: boolean;
     /** Who drafted the parts: the stored rules, or a model. */
     drafter?: DrafterKind;
+    /** What capture saw for this time: the app and its window title or document (a browser stretch has no activity). */
+    seen?: { app: string; title: string };
+    /** The high-level task this entry is part of ("hvhp-agreement", "HVHP provider agreement"); the Time page groups by it. */
+    group?: string;
+    groupLabel?: string;
+    /** When the narrative was drafted. */
+    draftedAt?: string;
+    /** What capture saw for this entry, stretch by stretch: app, window or document, start, minutes. */
+    work?: WorkStretch[];
+    /** Why the narrative says what it says, one plain sentence each. */
+    reasons?: string[];
+    /** Why the entry is on its matter ("Matter 61407-002 from the meeting title."). */
+    matterReason?: string;
+};
+
+/** What the time sheet and invoice PDFs need beyond the entries (src/shared/invoice.ts). Written by a demo seed. */
+export type InvoiceTerms = {
+    firm: { name: string; address: string[] };
+    billTo: string[];
+    client: string;
+    matter: string;
+    matterName: string;
+    number: string;
+    through: string;
+    /** The most an hour may bill at (an engagement-letter panel rate), and where that rule comes from. */
+    rateCap?: number;
+    rateCapRule?: string;
+    /** Entries with this UTBMS activity code bill at no charge (internal conferences), and the rule. */
+    noChargeActivity?: string;
+    noChargeRule?: string;
+    terms: string;
+    timekeeper: { name: string; title: string };
+    /** Where the PDFs are saved. */
+    folder?: string;
+    /** The firm's logo, an absolute PNG path on this machine. */
+    logo?: string;
+    footer?: string;
+};
+
+export type WorkStretch = { app: string; title: string; startedAt: string; minutes: number; url?: string | null };
+
+/** A row typed into the firm's time system (an iTimeKeep export), matched back to the captured entry it describes. */
+export type ImportedRow = {
+    id: string;
+    date: string;
+    matter: string;
+    timekeeper: string;
+    hours: number;
+    description: string;
+    /** The captured entry this row describes, or null when no captured work matches. */
+    entryID: string | null;
+    /** The person's choice: use Lawdie's narrative for this row, or keep what they typed. */
+    decision?: "use" | "keep" | null;
 };
 
 export type NarrativePart = { text: string; evidence: string[]; slot?: string | null };
@@ -97,6 +150,8 @@ export type Evidence = {
     facts?: string[];
     /** An Outlook web link, filled in after the Graph seed. */
     link?: string;
+    /** A picture of the source as it looked (an absolute PNG path on this machine). */
+    screenshot?: string;
 };
 /** A stretch kept off the bill on purpose (personal browsing): shown greyed, never synced. */
 export type PrivateStretch = { key: string; startedAt: string; endedAt: string; app: string; title: string; why: string };
@@ -208,6 +263,10 @@ export type Workspace = {
     evidence?: Record<string, Evidence>;
     /** Stretches kept off the bill on purpose; local only, never synced. */
     privateStretches?: PrivateStretch[];
+    /** Rows imported from the firm's time system, each matched to a captured entry (src/shared/importMatch.ts). Local only. */
+    imported?: ImportedRow[];
+    /** Firm, bill-to and the client's billing rules for the time sheet and invoice. */
+    invoice?: InvoiceTerms | null;
 };
 
 export const DEFAULT_EXCLUSIONS = [
@@ -473,7 +532,7 @@ export function setNarrative(w: Workspace, id: string, parts: NarrativePart[], d
     if (!e) throw new WorkspaceError("That entry no longer exists.");
     const text = parts.map((p) => p.text).join("").trim();
     if (!text) throw new WorkspaceError("The drafter returned no narrative.");
-    const next: TimeEntry = { ...e, description: text.slice(0, DRAFT_MAX), parts, drafter };
+    const next: TimeEntry = { ...e, description: text.slice(0, DRAFT_MAX), parts, drafter, draftedAt: new Date(now).toISOString() };
     delete next.partsEdited;
     delete next.drafted;
     saveEntry(w, next, now);
@@ -907,6 +966,10 @@ const validIso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.p
 
 const narrativeValid = (e: TimeEntry): boolean =>
     (e.raw == null || typeof e.raw === "string") && (e.why == null || typeof e.why === "string") &&
+    (e.seen == null || (typeof e.seen.app === "string" && typeof e.seen.title === "string")) &&
+    (e.work == null || (Array.isArray(e.work) && e.work.every((x) => x && typeof x.app === "string" && typeof x.title === "string" && validIso(x.startedAt) && Number.isFinite(x.minutes)))) &&
+    (e.reasons == null || (Array.isArray(e.reasons) && e.reasons.every((x) => typeof x === "string"))) &&
+    (e.group == null || typeof e.group === "string") && (e.groupLabel == null || typeof e.groupLabel === "string") && (e.draftedAt == null || validIso(e.draftedAt)) &&
     (e.status == null || ENTRY_STATUSES.has(e.status)) &&
     (e.parts == null || (Array.isArray(e.parts) && e.parts.every((p) => p && typeof p.text === "string" && Array.isArray(p.evidence) && p.evidence.every((id) => typeof id === "string")))) &&
     (e.sources == null || (Array.isArray(e.sources) && e.sources.every((x) => x && typeof x.id === "string" && typeof x.kind === "string" && typeof x.label === "string")));
@@ -918,6 +981,7 @@ export function validate(w: Workspace): Workspace {
         w.schemaVersion === SCHEMA_VERSION &&
         w.entries.every(narrativeValid) &&
         (w.evidence == null || (typeof w.evidence === "object" && !Array.isArray(w.evidence) && Object.entries(w.evidence).every(([k, v]) => !!v && typeof v === "object" && v.id === k && typeof v.kind === "string"))) &&
+        (w.imported == null || (Array.isArray(w.imported) && w.imported.every((r) => !!r && typeof r.id === "string" && typeof r.description === "string" && Number.isFinite(r.hours)))) &&
         (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&
         p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) &&

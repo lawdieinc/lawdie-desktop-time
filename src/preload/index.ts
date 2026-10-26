@@ -48,9 +48,17 @@ export const api = {
     showDataFolder: (): Promise<void> => ipcRenderer.invoke("showDataFolder"),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke("openExternal", url),
     /** Open a narrative's source by evidence id: its Outlook link, or its document on disk. Resolves to a problem, or null. */
-    openSource: (id: string): Promise<string | null> => ipcRenderer.invoke("openSource", id),
+    openSource: (id: string, what?: "link" | "path" | "screenshot"): Promise<string | null> => ipcRenderer.invoke("openSource", id, what),
+    /** A source's screenshot as a data URL for the in-app viewer, or null. */
+    screenshotData: (id: string): Promise<string | null> => ipcRenderer.invoke("screenshotData", id),
     /** Draft an entry's narrative again with the drafter chosen in Settings. */
     draftNarrative: (id: string): Promise<{ drafter: "rules" | "model"; message: string | null }> => ipcRenderer.invoke("draftNarrative", id),
+    /** Pick a .csv or .xlsx export from the firm's time system and match its rows to captured work. */
+    importEntries: (): Promise<boolean> => ipcRenderer.invoke("importEntries"),
+    importDecision: (id: string, decision: "use" | "keep" | null): Promise<boolean> => ipcRenderer.invoke("importDecision", id, decision),
+    clearImport: (): Promise<boolean> => ipcRenderer.invoke("clearImport"),
+    /** Make the day's time sheet or invoice PDF in the matter folder and open it. Resolves to a problem, or null. */
+    makePdf: (kind: "timesheet" | "invoice"): Promise<string | null> => ipcRenderer.invoke("makePdf", kind),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),
     /** Whether on-screen text can be read here, and (macOS) whether Accessibility is allowed. */
     screenTextStatus: (): Promise<{ supported: boolean; trusted: boolean; error: string | null }> => ipcRenderer.invoke("screenTextStatus"),

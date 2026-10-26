@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration } from "@shared/format";
 import { viewNow } from "@shared/demo";
 import { applyFix, roundUpToTenth, splitPlan, type EntryDraft, type Fix, type PlanLine } from "@shared/rules";
 import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesContext, sameDayOf } from "./Rules";
-import { NarrativeLines, PrivateRow, StatusLine, WhyPanel, hasNarrative, type Focus } from "./Narrative";
+import { NarrativeEntry, PrivateRow, hasNarrative } from "./Narrative";
+import { ImportedPanel } from "./Imported";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 import kiwiMark from "../../../resources/brand/kiwi.png";
 
@@ -61,7 +62,7 @@ export function App(): ReactNode {
                 </nav>
                 <div className="capture-card">
                     <div className="row"><span className={"dot" + (w.preferences.captureEnabled ? " on" : "")} /> <strong>{w.preferences.captureEnabled ? "Capture is on" : "Capture is paused"}</strong></div>
-                    <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}.` : "Your time. On your machine."}</p>
+                    <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}.` : "Saved on this computer."}</p>
                     <button type="button" className="quiet" disabled={state.loadFailed} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>
                         {w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}
                     </button>
@@ -142,24 +143,37 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
     const byProject = new Map<string, number>();
     for (const e of entries.filter((x) => x.billable)) { const name = w.projects.find((p) => p.id === e.projectID)?.name ?? "No project"; byProject.set(name, (byProject.get(name) ?? 0) + secondsWithin(e, start, end)); }
     const projects = [...byProject.entries()].sort((a, b) => b[1] - a[1]);
+    const privates = (w.privateStretches ?? []).filter((x) => Date.parse(x.startedAt) < end && Date.parse(x.endedAt) > start);
+    const privatesOf = (k: string): PrivateStretch[] => privates.filter((x) => dayKey(Date.parse(x.startedAt)) === k);
+    const [pdfProblem, setPdfProblem] = useState<string | null>(null);
+    const [making, setMaking] = useState<string | null>(null);
+    const canBill = !!w.invoice && entries.some((e) => e.projectID && (!e.status || e.status === "draft") && e.parts?.length);
+    const pdf = async (kind: "timesheet" | "invoice"): Promise<void> => { setMaking(kind); setPdfProblem(await window.lawdie.makePdf(kind)); setMaking(null); };
     return (
         <>
-            <Heading eyebrow={label} title={range === "today" ? "Your day, accounted for." : "Your time, accounted for."} />
+            <Heading title={label} />
             <div className="row between wrap">
                 <div className="segmented" role="tablist" aria-label="Range">
-                    {RANGES.map((r) => <button key={r.key} type="button" role="tab" aria-selected={range === r.key} className={range === r.key ? "active" : ""} onClick={() => setRange(r.key)}>{r.label}</button>)}
+                    {RANGES.map((r) => <button key={r.key} type="button" role="tab" aria-selected={range === r.key} className={range === r.key ? "active" : ""} title={`Show ${r.label.toLowerCase()}.`} onClick={() => setRange(r.key)}>{r.label}</button>)}
                 </div>
                 {range === "custom" && (
                     <span className="row gap small">
-                        <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
+                        <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="From" title="First day to show." />
                         <span className="muted">to</span>
-                        <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="To" />
+                        <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="To" title="Last day to show." />
                     </span>
                 )}
+                <span className="grow" />
+                <span className="row gap">
+                    <button type="button" className="quiet" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
+                    {canBill && <button type="button" className="quiet" disabled={!!making} title="Save this day's time detail for the matter as a PDF in the matter folder, then open it." onClick={() => void pdf("timesheet")}>{making === "timesheet" ? "Making…" : "Time sheet (PDF)"}</button>}
+                    {canBill && <button type="button" className="quiet" disabled={!!making} title="Save the matter's invoice for this day's settled entries as a PDF, with the client's rate and no-charge rules applied, then open it." onClick={() => void pdf("invoice")}>{making === "invoice" ? "Making…" : "Invoice (PDF)"}</button>}
+                </span>
             </div>
+            {pdfProblem && <p className="danger small">{pdfProblem}</p>}
             <div className="metrics">
                 <Metric label={range === "today" ? "Tracked today" : "Tracked"} value={duration(tracked)} detail={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`} />
-                <Metric label="Billable time" value={duration(billable)} detail={tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "Ready for your next invoice"} />
+                <Metric label="Billable time" value={duration(billable)} detail={tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "No time kept yet"} />
                 <Metric label="To review" value={String(pending)} detail="Matters and stretches of desktop work" />
             </div>
             {projects.length > 1 && (
@@ -170,10 +184,11 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
                     ))}
                 </Panel>
             )}
+            {(w.imported?.length ?? 0) > 0 && <ImportedPanel w={w} />}
             <Panel>
-                <div className="row between"><strong>{range === "today" ? "Your day, in focus" : "Entries"}</strong><span className="eyebrow">{label}</span></div>
+                <div className="row between"><strong>Entries</strong></div>
                 {entries.length === 0 ? (
-                    <Empty title={range === "today" ? "A fresh start" : "Nothing in this range"} detail="Enable capture, work in another app, then keep what matters from the Activity inbox. Your time will take shape here." />
+                    <Empty title={range === "today" ? "No entries today" : "Nothing in this range"} detail="Enable capture, work in another app, then keep the time from the Activity inbox." />
                 ) : [...days.entries()].map(([k, list]) => (
                     <div key={k}>
                         {range !== "today" && (
@@ -183,7 +198,7 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
                             </div>
                         )}
                         {[...list.map((e) => ({ at: e.startedAt, row: <EntryRow key={e.id} entry={e} w={w} /> })),
-                            ...(w.privateStretches ?? []).filter((x) => dayKey(Date.parse(x.startedAt)) === k && Date.parse(x.startedAt) < end && Date.parse(x.endedAt) > start).map((x) => ({ at: x.startedAt, row: <PrivateRow key={x.key} item={x} /> }))]
+                            ...privatesOf(k).map((x) => ({ at: x.startedAt, row: <PrivateRow key={x.key} item={x} /> }))]
                             .sort((a, b) => (a.at < b.at ? 1 : -1)).map((r) => r.row)}
                     </div>
                 ))}
@@ -195,27 +210,26 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
 function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
     const p = w.projects.find((x) => x.id === entry.projectID);
     const [editing, setEditing] = useState(false);
-    const [why, setWhy] = useState<Focus | false>(false);
+    const [draft, setDraft] = useState<string | null>(null);
     const narrative = hasNarrative(entry);
+    const inline = narrative && entry.status !== "flagged";
+    const meta = (
+        <>
+            <div className="muted tiny"><MatterLabel name={p?.name} /> · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : " · not billed"}</div>
+            <EntryRules w={w} entry={entry} />
+        </>
+    );
     return (
-        <div className={"entry" + (narrative ? " with-narrative" : "") + (entry.status === "flagged" ? " flagged" : entry.status === "suggested" ? " suggested" : "")}>
+        <div className={"entry" + (narrative ? " with-why" : "") + (entry.status === "flagged" ? " flagged" : entry.status === "suggested" ? " suggested" : "")}>
             <span className="bar" />
             <div className="grow">
-                {narrative ? (
-                    <>
-                        <NarrativeLines entry={entry} onWhy={(f) => setWhy(f)} tag={<AiTag source={entry.drafted} />} />
-                        <StatusLine entry={entry} onEdit={() => setEditing(true)} />
-                    </>
-                ) : <div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>}
-                <div className="muted tiny"><MatterLabel name={p?.name} /> · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : ""}</div>
-                <EntryRules w={w} entry={entry} />
+                {narrative ? <NarrativeEntry entry={entry} w={w} draft={draft} setDraft={setDraft} onDetails={() => setEditing(true)} onAssign={() => setEditing(true)} meta={meta} />
+                    : <><div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>{meta}</>}
             </div>
             <span className="mono">{duration(entrySeconds(entry))}</span>
-            {narrative && entry.parts?.length ? <button type="button" className="quiet" title="See the sources behind this narrative." onClick={() => setWhy({})}>Why</button> : null}
-            <button type="button" className="quiet" title="Change this entry's narrative, hours, codes or rate." onClick={() => setEditing(true)}>Edit</button>
+            <button type="button" className="quiet" disabled={draft !== null} title={inline ? "Edit this narrative here, in the row." : "Change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}>Edit</button>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
-            {editing &&<EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
-            {why !== false && <WhyPanel w={w} entry={entry} focus={why} onClose={() => setWhy(false)} />}
+            {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
         </div>
     );
 }
@@ -257,7 +271,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
     return (
         <>
             <div className="row between">
-                <Heading eyebrow="Beyond the browser" title="Review your activity." />
+                <Heading title="Activity" />
                 <button type="button" className="primary" disabled={state.loadFailed} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>{w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}</button>
             </div>
             <Panel>
@@ -628,7 +642,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
     );
     return (
         <>
-            <Heading eyebrow={label} title="Your matters." />
+            <Heading eyebrow={label} title="Matters" />
             <div className="row between wrap">{rangeTabs}</div>
             <div className="metrics">
                 <Metric label="Billable value" value={money(total)} detail={`${duration(billable)} billable across ${open.filter((r) => r.stats.tracked > 0).length} matters`} />
@@ -775,7 +789,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
     const label = isMac ? "Mac" : "computer";
     return (
         <>
-            <Heading eyebrow="On your terms" title="Your time. Your boundaries." />
+            <Heading title="Settings" />
             <Panel>
                 <strong>Desktop capture</strong>
                 <Setting title="Capture app activity" detail="Records the foreground app and duration across your desktop. Start and stop at any time. Browsers are left to the Lawdie browser extension, so web time is never counted twice.">
@@ -806,7 +820,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" />
                 </Setting>
                 {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to get AI suggestions.</p>}
-                <Setting title="Narrative drafter" detail="Who writes each entry's narrative from its sources (emails, meetings, transcripts, documents). Rules (demo) uses the narratives drafted ahead of time. Model asks Kiwi's model to write them from the same sources; each part must name the source it rests on, and a part that names an unknown source is dropped. Use Draft again in an entry's Why panel.">
+                <Setting title="Narrative drafter" detail="Who writes each entry's narrative from its sources (emails, meetings, transcripts, documents). Rules (demo) uses the narratives drafted ahead of time. Model asks Kiwi's model to write them from the same sources; each part must name the source it rests on, and a part that names an unknown source is dropped. Use Draft again in an entry's Why this entry list.">
                     <div className="segmented" role="radiogroup" aria-label="Narrative drafter">
                         {([["rules", "Rules (demo)", "Use the narratives drafted ahead of time from the sources."], ["model", "Model", "Ask Kiwi's model to write narratives from the sources. Needs this computer connected to Kiwi."]] as const).map(([k, text, tip]) => (
                             <button key={k} type="button" role="radio" aria-checked={(p.narrativeDrafter ?? "rules") === k} className={(p.narrativeDrafter ?? "rules") === k ? "active" : ""} title={tip} onClick={() => set("narrativeDrafter", k)}>{text}</button>
@@ -831,7 +845,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 </form>
             </Panel>
             <Panel>
-                <strong>Your data belongs here</strong>
+                <strong>Your data</strong>
                 <p className="muted small">No telemetry, screenshots, keystroke recording, or local network service. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
                 <p className="mono tiny muted">{state.workspacePath}</p>
                 <div className="row gap">
@@ -890,8 +904,8 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
 
 // ---------------------------------------------------------------------------
 
-function Heading({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }): ReactNode {
-    return <div className="heading"><p className="eyebrow">{eyebrow}</p><h2 className="display">{title}</h2>{subtitle && <p className="muted">{subtitle}</p>}</div>;
+function Heading({ eyebrow, title, subtitle }: { eyebrow?: string; title: string; subtitle?: string }): ReactNode {
+    return <div className="heading">{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 className="display">{title}</h2>{subtitle && <p className="muted">{subtitle}</p>}</div>;
 }
 function Panel({ children }: { children: ReactNode }): ReactNode { return <section className="panel">{children}</section>; }
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }): ReactNode {
