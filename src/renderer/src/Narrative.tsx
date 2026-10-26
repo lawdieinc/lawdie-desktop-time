@@ -267,7 +267,7 @@ export function StatusLine({ entry, onAssign }: { entry: TimeEntry; onAssign?: (
     if (entry.status === "suggested") {
         return (
             <div className="status-line suggested">
-                <span className="status-badge" title={entry.why ?? "Built from the matter's history. Confirm it before it is billed."}>From matter history, confirm</span>
+                <span className="status-badge" title={entry.why ?? "Lawdie drafted this from the matter's history. Confirm it before it bills."}>Lawdie drafted this from matter history</span>
                 <button type="button" className="fix" title="The narrative is right: keep it as a normal entry. To change it first, use Edit." onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>
             </div>
         );
