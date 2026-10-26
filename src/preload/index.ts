@@ -61,8 +61,16 @@ export const api = {
     makePdf: (kind: "timesheet" | "invoice", mode: "generic" | "rules" = "rules"): Promise<string | null> => ipcRenderer.invoke("makePdf", kind, mode),
     /** The time sheet with the client's rules as Word tracked changes and comments. Resolves to a problem, or null. */
     makeDocx: (): Promise<string | null> => ipcRenderer.invoke("makeDocx"),
-    /** Match the imported rows to captured work. */
+    /** Match the imported rows not linked yet to captured work. */
     linkImport: (): Promise<boolean> => ipcRenderer.invoke("linkImport"),
+    /** Match one typed entry (imported or added here) to the captured work it describes. */
+    expandTyped: (id: string): Promise<boolean> => ipcRenderer.invoke("expandTyped", id),
+    /** Add a simple entry to the day: a short note and its hours, shown as typed until it is expanded. */
+    addTyped: (input: { date: string; note: string; hours: string; projectID: string | null }): Promise<boolean> => ipcRenderer.invoke("addTyped", input),
+    /** Change a typed entry's note or hours; it is shown as typed again. */
+    editTyped: (id: string, change: { description?: string; hours?: string }): Promise<boolean> => ipcRenderer.invoke("editTyped", id, change),
+    /** Take a typed entry off the day, undoing what it changed. */
+    removeTyped: (id: string): Promise<boolean> => ipcRenderer.invoke("removeTyped", id),
     /** Switch one of the client's billing rules on or off. */
     setClientRule: (id: string, enabled: boolean): Promise<boolean> => ipcRenderer.invoke("setClientRule", id, enabled),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),

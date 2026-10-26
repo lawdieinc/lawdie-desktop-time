@@ -99,7 +99,7 @@ export function normalizeDate(v: string, year = new Date().getFullYear()): strin
 const STOP = new Set(["the", "and", "for", "with", "of", "to", "a", "an", "on", "in", "re", "regarding", "about", "from", "per", "w"]);
 /** Shorthand people type, widened to the words a narrative uses. */
 const WIDEN: Record<string, string[]> = {
-    agmt: ["agreement"], agrmt: ["agreement"], call: ["conference", "telephone", "teams", "call"], phone: ["telephone", "conference", "call"],
+    agmt: ["agreement"], agrmt: ["agreement"], call: ["conference", "telephone", "call"], phone: ["telephone", "conference", "call"],
     mtg: ["meeting", "conference"], meeting: ["conference", "meeting"], email: ["email", "emailed", "outlook"], memo: ["memorandum", "memo"],
     research: ["research", "researched"], redline: ["revise", "redline"], rev: ["review", "revise"], conf: ["conference"], draft: ["draft", "prepare"],
 };
@@ -120,7 +120,9 @@ function entryBag(w: Workspace, e: TimeEntry): Bag {
         return x ? [x.subject, x.file, x.title, ...(x.attendees ?? [])].filter(Boolean).join(" ") : s.label;
     })];
     const set = new Set(texts.flatMap(words));
-    if (client) set.add("client");
+    // "client" in a note means work with the client: the narrative names the client ("(Northlake)"), not just its matter.
+    const clientWord = client.split(/\s+/)[0]?.replace(/[^a-z0-9]/gi, "");
+    if (clientWord && new RegExp(`\\b${clientWord}\\b`, "i").test(e.description)) set.add("client");
     return { words: set, list: [...set], text: texts.join(" ") };
 }
 
@@ -143,23 +145,27 @@ export function score(w: Workspace, row: TypedRow, e: TimeEntry, bag = entryBag(
     const typed = words(row.description);
     if (!typed.length) return 0;
     const share = typed.filter((t) => found(t, bag)).length / typed.length;
-    if (!share) return 0;
     const h = recordedHours(e);
     const hours = row.hours && h ? 1 - Math.min(1, Math.abs(row.hours - h) / Math.max(row.hours, h)) : 0;
+    // Most of what was typed must be there, or a good part of it with hours that agree. Half a note with the wrong
+    // hours ("call w/ client" against a 0.3 h internal conference) is not enough to say it is this work.
+    if (share < 0.6 && !(share >= 0.4 && hours >= 0.75)) return 0;
     return 0.65 * share + 0.35 * hours;
 }
 
-/** Whether an entry is on the row's matter: its project's name or client names it. No matter on the row matches any. */
+/** Whether an entry is on the row's matter: the matter picked for it (Add entry), else a project whose name or client
+ *  names the typed matter. No matter on the row matches any. */
 const onMatter = (w: Workspace, row: TypedRow, e: TimeEntry): boolean => {
+    if (row.projectID) return e.projectID === row.projectID;
     if (!row.matter) return true;
     const p = w.projects.find((x) => x.id === e.projectID);
     const m = row.matter.toLowerCase();
     return !!p && (p.name.toLowerCase().includes(m) || p.client.toLowerCase().includes(m) || (p.context?.number ?? "").toLowerCase() === m);
 };
 
-/** The rows, each paired with at most one entry of its day and matter, best scores first. */
-export function matchRows(w: Workspace, rows: readonly TypedRow[], makeID: (n: number) => string): ImportedRow[] {
-    const candidates = w.entries.filter((e) => e.status !== "dismissed");
+/** Every row and captured entry that could be the same work, scored: same day, same matter, enough in common. */
+function pairsFor(w: Workspace, rows: readonly TypedRow[], exclude: ReadonlySet<string>): { r: number; e: TimeEntry; s: number }[] {
+    const candidates = w.entries.filter((e) => e.status !== "dismissed" && !exclude.has(e.id));
     const bags = new Map(candidates.map((e) => [e.id, entryBag(w, e)]));
     const pairs: { r: number; e: TimeEntry; s: number }[] = [];
     rows.forEach((row, r) => {
@@ -170,8 +176,19 @@ export function matchRows(w: Workspace, rows: readonly TypedRow[], makeID: (n: n
             if (s >= 0.3) pairs.push({ r, e, s });
         }
     });
-    pairs.sort((a, b) => b.s - a.s);
+    // Best first; equal scores fall back to the earlier entry, so a match never depends on the file's order.
+    return pairs.sort((a, b) => b.s - a.s || Date.parse(a.e.startedAt) - Date.parse(b.e.startedAt));
+}
+
+/** The rows, each paired with at most one entry of its day and matter, best scores first. `exclude` names entries
+ *  already claimed by other rows, which are never matched again. */
+export function matchRows(w: Workspace, rows: readonly TypedRow[], makeID: (n: number) => string, exclude: ReadonlySet<string> = new Set()): ImportedRow[] {
     const taken = new Set<string>(), matched = new Map<number, string>();
-    for (const p of pairs) if (!matched.has(p.r) && !taken.has(p.e.id)) { matched.set(p.r, p.e.id); taken.add(p.e.id); }
+    for (const p of pairsFor(w, rows, exclude)) if (!matched.has(p.r) && !taken.has(p.e.id)) { matched.set(p.r, p.e.id); taken.add(p.e.id); }
     return rows.map((row, n) => ({ ...row, id: makeID(n), entryID: matched.get(n) ?? null, decision: null }));
+}
+
+/** The one captured entry a single row describes, or null: the best match among the entries no other row claims. */
+export function bestMatch(w: Workspace, row: TypedRow, exclude: ReadonlySet<string> = new Set()): string | null {
+    return pairsFor(w, [row], exclude)[0]?.e.id ?? null;
 }

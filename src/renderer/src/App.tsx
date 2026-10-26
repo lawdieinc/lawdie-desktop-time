@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
 import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, toReview, type MatterGroup } from "@shared/matters";
@@ -8,23 +8,25 @@ import { viewNow } from "@shared/demo";
 import { applyFix, roundUpToTenth, splitPlan, type EntryDraft, type Fix, type PlanLine } from "@shared/rules";
 import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesContext, sameDayOf } from "./Rules";
 import { NarrativeEntry, PrivateRow, hasNarrative } from "./Narrative";
-import { ImportedPanel } from "./Imported";
+import { AddEntryForm, ImportedPanel, TypedEntries } from "./Imported";
 import { ClientRulesView } from "./ClientRules";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
-/** A button that opens a small menu below it. A choice, a click outside, or Escape closes it. */
+/** A button that opens a small menu below it. A choice, a click outside it (including on another menu), or Escape
+    closes it, so only one menu is ever open. */
 function Menu({ label, tip, children }: { label: string; tip: string; children: ReactNode }): ReactNode {
     const [open, setOpen] = useState(false);
+    const root = useRef<HTMLSpanElement>(null);
     useEffect(() => {
         if (!open) return;
-        const close = (e: Event): void => { if (!(e.target as Element)?.closest?.(".menu")) setOpen(false); };
+        const close = (e: Event): void => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
         const esc = (e: KeyboardEvent): void => { if (e.key === "Escape") setOpen(false); };
         document.addEventListener("mousedown", close);
         document.addEventListener("keydown", esc);
         return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
     }, [open]);
     return (
-        <span className="menu">
+        <span className="menu" ref={root}>
             <button type="button" className={"quiet menu-button" + (open ? " open" : "")} aria-haspopup="menu" aria-expanded={open} title={tip} onClick={() => setOpen(!open)}>
                 {label}
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -169,6 +171,10 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: () => 
     const privates = (w.privateStretches ?? []).filter((x) => Date.parse(x.startedAt) < end && Date.parse(x.endedAt) > start);
     const privatesOf = (k: string): PrivateStretch[] => privates.filter((x) => dayKey(Date.parse(x.startedAt)) === k);
     const [pdfProblem, setPdfProblem] = useState<string | null>(null);
+    const [adding, setAdding] = useState(false);
+    // Simple entries typed on this page (Add entry) for the days in range; imported rows have their own panel.
+    const typedHere = (w.imported ?? []).filter((r) => r.origin === "manual" && (() => { const t = new Date(`${r.date}T12:00:00`).getTime(); return t >= start && t < end; })());
+    const imported = (w.imported ?? []).filter((r) => r.origin !== "manual");
     const [making, setMaking] = useState<string | null>(null);
     const canBill = !!w.invoice && entries.some((e) => e.projectID && (!e.status || e.status === "draft") && e.parts?.length);
     const pdf = async (kind: "timesheet" | "invoice", mode: "generic" | "rules"): Promise<void> => { setMaking(kind); setPdfProblem(await window.lawdie.makePdf(kind, mode)); setMaking(null); };
@@ -189,7 +195,8 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: () => 
                 )}
                 <span className="grow" />
                 <span className="row gap">
-                    <Menu label="Entries" tip="Bring in entries typed in another time system.">
+                    <Menu label="Entries" tip="Add a simple entry, or bring in entries typed in another time system.">
+                        <button type="button" role="menuitem" title="Type a short note and its hours, such as .9 call w/ client. It shows as typed until you expand it into a narrative." onClick={() => setAdding(true)}>Add entry</button>
                         <button type="button" role="menuitem" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
                     </Menu>
                     {canBill && (
@@ -223,10 +230,12 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: () => 
                     ))}
                 </Panel>
             )}
-            {(w.imported?.length ?? 0) > 0 && <ImportedPanel w={w} />}
+            {imported.length > 0 && <ImportedPanel w={w} />}
             <Panel>
                 <div className="row between"><strong>Entries</strong></div>
-                {entries.length === 0 ? (
+                {adding && <AddEntryForm w={w} day={dayKey(now)} onClose={() => setAdding(false)} />}
+                <TypedEntries w={w} rows={typedHere} />
+                {entries.length === 0 ? (typedHere.length || adding ? null :
                     <Empty title={range === "today" ? "No entries today" : "Nothing in this range"} detail="Enable capture, work in another app, then keep the time from the Activity inbox." />
                 ) : [...days.entries()].map(([k, list]) => (
                     <div key={k}>

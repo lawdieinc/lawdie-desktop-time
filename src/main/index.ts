@@ -5,7 +5,8 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, systemPr
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } from "@shared/kiwi";
 import { evidenceFor, modelDrafter, rulesDrafter, type Drafter } from "@shared/drafter";
-import { matchRows, parseCsv, typedRows } from "@shared/importMatch";
+import { parseCsv, typedRows } from "@shared/importMatch";
+import { addTypedRow, clearImports, decideRow, editTypedRow, expandRow, linkAll, removeTypedRow, type TypedInput } from "@shared/typed";
 import { activeRules, footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoice";
 import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
@@ -230,7 +231,11 @@ app.whenReady().then(() => {
             const rows = typedRows(table, year);
             if (!rows.length) { store.error = "That file has no time entries in it."; store.publish(); return false; }
             const stamp = Date.now().toString(36);
-            const ok = store.change((w) => { w.imported = rows.map((r, n) => ({ ...r, id: `import-${stamp}-${n}`, entryID: null, decision: null, linked: false })); });
+            // A new import replaces the last one (its decisions undone); entries added on the Time page stay.
+            const ok = store.change((w) => {
+                clearImports(w);
+                w.imported = [...(w.imported ?? []), ...rows.map((r, n) => ({ ...r, id: `import-${stamp}-${n}`, entryID: null, decision: null, linked: false, origin: "import" as const }))];
+            });
             if (ok) store.say(`Imported ${rows.length} ${rows.length === 1 ? "entry" : "entries"} from ${basename(file)}.`);
             return ok;
         } catch (err) {
@@ -243,17 +248,21 @@ app.whenReady().then(() => {
         const res = await dialog.showOpenDialog({ title: "Import time entries", properties: ["openFile"], filters: [{ name: "Time entries", extensions: ["csv", "xlsx"] }] });
         return res.canceled || !res.filePaths[0] ? false : importFile(res.filePaths[0]);
     });
-    // Match each typed row to the captured work it describes (src/shared/importMatch.ts); the window then shows the links being made.
-    ipcMain.handle("linkImport", () => store.change((w) => {
-        const rows = w.imported ?? [];
-        const matched = matchRows(w, rows, (n) => rows[n].id);
-        w.imported = matched.map((m, n) => ({ ...rows[n], entryID: m.entryID, linked: true }));
-    }));
+    // Typed entries (src/shared/typed.ts): imported rows and entries added on the Time page. "Expand narrative" and
+    // "Link sources and draft narratives" match them to captured work; the window shows the links being made.
+    ipcMain.handle("linkImport", () => store.change((w) => { linkAll(w); }));
+    ipcMain.handle("expandTyped", (_e, id: string) => store.change((w) => { expandRow(w, String(id)); }));
     ipcMain.handle("importDecision", (_e, id: string, decision: "use" | "keep" | null) => store.change((w) => {
-        const row = w.imported?.find((r) => r.id === String(id));
-        if (row) row.decision = decision === "use" || decision === "keep" ? decision : null;
+        decideRow(w, String(id), decision === "use" || decision === "keep" ? decision : null);
     }));
-    ipcMain.handle("clearImport", () => store.change((w) => { delete w.imported; }));
+    ipcMain.handle("clearImport", () => store.change((w) => { clearImports(w); }));
+    ipcMain.handle("addTyped", (_e, input: TypedInput) => store.change((w) => {
+        addTypedRow(w, { date: String(input?.date ?? ""), note: String(input?.note ?? ""), hours: input?.hours ?? null, projectID: input?.projectID ?? null }, `typed-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
+    }));
+    ipcMain.handle("editTyped", (_e, id: string, change: { description?: string; hours?: string }) => store.change((w) => {
+        editTypedRow(w, String(id), { description: change?.description, hours: change?.hours });
+    }));
+    ipcMain.handle("removeTyped", (_e, id: string) => store.change((w) => { removeTypedRow(w, String(id)); }));
     ipcMain.handle("setClientRule", (_e, id: string, enabled: boolean) => store.change((w) => {
         const rule = w.clientRules?.rules.find((r) => r.id === String(id));
         if (rule) rule.enabled = enabled === true;

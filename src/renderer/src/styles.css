@@ -256,11 +256,32 @@ button.quiet.slim { padding: 5px 10px; font-size: 11px; } button.quiet:disabled 
 .rule-touches li.fail .touch-detail { color: var(--danger); }
 /* Imported rows as typed, before they are linked. */
 .typed-table { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden; }
-.typed-row { display: grid; grid-template-columns: 110px 70px 120px 60px minmax(0, 1fr); gap: 14px; align-items: baseline; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 12px; }
+.typed-row { display: grid; grid-template-columns: 110px 70px 120px 60px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 12px; }
+.typed-row.manual { grid-template-columns: 110px 170px 60px minmax(0, 1fr) auto; }
 .typed-row:first-child { border-top: 0; }
 .typed-row.head { font-family: var(--label); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); background: var(--raised); }
 .typed-row .num { text-align: right; }
-.typed-text { font-family: var(--mono); font-size: 12px; color: var(--text); }
+.typed-text { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.typed-actions { display: inline-flex; align-items: center; gap: 12px; justify-self: end; white-space: nowrap; }
+.typed-actions button.icon { padding: 2px 6px; }
+/* A typed row once expanded, or while its link is drawn, spans the table. */
+.typed-expanded { padding: 12px 14px; border-top: 1px solid var(--line); }
+.typed-table > .typed-expanded:first-child { border-top: 0; }
+.typed-expanded.import-row { padding: 14px; }
+.typed-expanded .link-stage { padding-top: 0; }
+.typed-merged { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--line); color: #5f574f; }
+.typed-table > .typed-merged:first-child { border-top: 0; }
+.typed-edit { display: grid; grid-template-columns: 160px 70px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
+.typed-table > .typed-edit:first-child { border-top: 0; }
+.typed-edit input { font-family: var(--mono); font-size: 12px; }
+.typed-entries { display: flex; flex-direction: column; gap: 8px; }
+/* Add entry: one line above the list, nothing hidden behind it. */
+.add-entry { display: grid; grid-template-columns: 150px 80px 200px minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 14px; border: 1px solid rgba(139, 92, 42, 0.35); border-radius: 10px; background: rgba(139, 92, 42, 0.04); }
+.add-entry .field { gap: 6px; }
+.add-entry input, .add-entry select { width: 100%; }
+.add-entry .note input { font-family: var(--mono); }
+.add-actions { padding-bottom: 2px; }
+.add-problem { grid-column: 1 / -1; }
 .link-cta { display: flex; align-items: center; gap: 16px; padding-top: 4px; }
 button.primary.big-button { padding: 13px 22px; font-size: 14px; border-radius: 10px; }
 /* The link, drawn (Imported.tsx LinkStage). */

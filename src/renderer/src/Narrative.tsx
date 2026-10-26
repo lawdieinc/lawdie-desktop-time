@@ -79,9 +79,11 @@ const OPEN = new Set<string>();
  * The narrative line (parts, ✦ AI, Edited), the inline editor when `draft` is set, the
  * suggested or flagged line, `meta` (matter, time, billable), and the Why dropdown.
  */
-export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign, meta, readOnly = false }: {
+export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign, meta, readOnly = false, onSaved }: {
     entry: TimeEntry; w: Workspace; draft: string | null; setDraft: (d: string | null) => void;
     onDetails?: () => void; onAssign?: () => void; meta?: ReactNode; readOnly?: boolean;
+    /** After the narrative is saved from the editor (an expanded typed row uses it to accept the edited narrative). */
+    onSaved?: () => void;
 }): ReactNode {
     const [focus, setFocus] = useState<Focus>(null);
     const [open, setOpen] = useState(OPEN.has(entry.id));
@@ -93,8 +95,8 @@ export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign,
     const save = async (): Promise<void> => {
         if (draft === null) return;
         if (!draft.trim()) { setProblem("Add a narrative."); return; }
-        if (draft.trim() === entry.description) { setDraft(null); return; }
-        if (await window.lawdie.editEntry(entry.id, { description: draft })) { setDraft(null); setProblem(null); } else setProblem("That could not be saved.");
+        if (draft.trim() === entry.description) { setDraft(null); onSaved?.(); return; }
+        if (await window.lawdie.editEntry(entry.id, { description: draft })) { setDraft(null); setProblem(null); onSaved?.(); } else setProblem("That could not be saved.");
     };
     return (
         <>

@@ -92,6 +92,9 @@ export type TimeEntry = {
     reasons?: string[];
     /** Why the entry is on its matter ("Matter 61407-002 from the meeting title."). */
     matterReason?: string;
+    /** A note the person typed for this work (an imported row or Add entry) that was matched and accepted into this
+     *  entry. It is the same work, so its hours are never added: the entry keeps the hours Time Capture recorded. */
+    typed?: { note: string; hours: number; rowID: string; origin: "import" | "manual" } | null;
 };
 
 /** What the time sheet and invoice PDFs need beyond the entries (src/shared/invoice.ts). Written by a demo seed. */
@@ -132,8 +135,16 @@ export type ImportedRow = {
     entryID: string | null;
     /** The person's choice: use Lawdie's narrative for this row, or keep what they typed. */
     decision?: "use" | "keep" | null;
-    /** Matched to captured work ("Link sources and draft narratives"); until then the row shows as typed. */
+    /** Matched to captured work ("Link sources and draft narratives" or "Expand narrative"); until then the row shows as typed. */
     linked?: boolean;
+    /** Where the row came from: an imported export, or typed into this app with Add entry. */
+    origin?: "import" | "manual";
+    /** The matter the row was typed for, when it was picked from this app's matters (Add entry). */
+    projectID?: string | null;
+    /** When this row found no entry of its own because another typed row already holds that work: that row's id. */
+    sameAs?: string | null;
+    /** The matched entry as it was before this row's decision changed it, so Undo puts it back exactly. */
+    prior?: Partial<Pick<TimeEntry, "description" | "status" | "why" | "partsEdited" | "drafted" | "typed">> | null;
 };
 
 /** One of a client's billing rules, in the client's own words, with what Lawdie does about it. */
@@ -998,6 +1009,7 @@ const validIso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.p
 const narrativeValid = (e: TimeEntry): boolean =>
     (e.raw == null || typeof e.raw === "string") && (e.why == null || typeof e.why === "string") &&
     (e.seen == null || (typeof e.seen.app === "string" && typeof e.seen.title === "string")) &&
+    (e.typed == null || (typeof e.typed === "object" && typeof e.typed.note === "string" && typeof e.typed.rowID === "string" && Number.isFinite(e.typed.hours))) &&
     (e.work == null || (Array.isArray(e.work) && e.work.every((x) => x && typeof x.app === "string" && typeof x.title === "string" && validIso(x.startedAt) && Number.isFinite(x.minutes)))) &&
     (e.reasons == null || (Array.isArray(e.reasons) && e.reasons.every((x) => typeof x === "string"))) &&
     (e.group == null || typeof e.group === "string") && (e.groupLabel == null || typeof e.groupLabel === "string") && (e.draftedAt == null || validIso(e.draftedAt)) &&
@@ -1013,7 +1025,8 @@ export function validate(w: Workspace): Workspace {
         w.entries.every(narrativeValid) &&
         (w.evidence == null || (typeof w.evidence === "object" && !Array.isArray(w.evidence) && Object.entries(w.evidence).every(([k, v]) => !!v && typeof v === "object" && v.id === k && typeof v.kind === "string"))) &&
         (w.clientRules == null || (Array.isArray(w.clientRules.rules) && w.clientRules.rules.every((r) => !!r && typeof r.id === "string" && RULE_KINDS.has(r.kind) && typeof r.enabled === "boolean"))) &&
-        (w.imported == null || (Array.isArray(w.imported) && w.imported.every((r) => !!r && typeof r.id === "string" && typeof r.description === "string" && Number.isFinite(r.hours)))) &&
+        (w.imported == null || (Array.isArray(w.imported) && new Set(w.imported.map((r) => r?.id)).size === w.imported.length && w.imported.every((r) => !!r && typeof r.id === "string" && typeof r.description === "string" && Number.isFinite(r.hours)
+            && (r.origin == null || r.origin === "import" || r.origin === "manual") && (r.prior == null || typeof r.prior === "object")))) &&
         (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&
         p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) &&
