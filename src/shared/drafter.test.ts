@@ -29,7 +29,7 @@ describe("narrative drafter", () => {
 
     it("the model prompt carries the client rules, what was typed and every evidence id", () => {
         const p = modelPrompt(entry(), Object.values(evidence));
-        expect(p).toContain("past tense");
+        expect(p).toContain("present tense");
         expect(p).toContain('typed: "phone call with client"');
         for (const id of Object.keys(evidence)) expect(p).toContain(`[${id}]`);
         expect(modelBody(entry(), Object.values(evidence), "61407-002").groups[0].id).toBe("e1");

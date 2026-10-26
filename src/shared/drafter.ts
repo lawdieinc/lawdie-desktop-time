@@ -29,7 +29,7 @@ export const rulesDrafter: Drafter = {
 
 /** The client's narrative rules, as the model is told them. */
 export const CLIENT_RULES = [
-    "Write in the past tense.",
+    "Write as the firm writes: start with a verb in the present tense (Review, Draft, Revise, Telephone conference with), and use 'regarding', not 're:'.",
     "Describe one task.",
     "Name the participants (initial and surname, with role for client people).",
     "Name the document worked on.",
