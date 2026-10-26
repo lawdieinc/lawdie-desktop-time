@@ -95,6 +95,9 @@ export type TimeEntry = {
     /** A note the person typed for this work (an imported row or Add entry) that was matched and accepted into this
      *  entry. It is the same work, so its hours are never added: the entry keeps the hours Time Capture recorded. */
     typed?: { note: string; hours: number; rowID: string; origin: "import" | "manual" } | null;
+    /** The tasks of a block-billed entry, one per work stretch (`stretch` indexes `work`), with their own codes: what a
+     *  split or a "time for each task" rule bills. Without them a rule splits the narrative at its semicolons. */
+    tasks?: EntryTask[] | null;
 };
 
 /** What the time sheet and invoice PDFs need beyond the entries (src/shared/invoice.ts). Written by a demo seed. */
@@ -120,6 +123,8 @@ export type InvoiceTerms = {
     logo?: string;
     footer?: string;
 };
+
+export type EntryTask = { stretch?: number | null; text: string; task?: string | null; activity?: string | null; hours?: number | null };
 
 export type WorkStretch = { app: string; title: string; startedAt: string; minutes: number; url?: string | null };
 
@@ -158,21 +163,44 @@ export type ClientRule = {
     quote: string;
     /** What Lawdie does, in a sentence. */
     does: string;
-    /** split: one task per entry; noCharge: entries with an activity code bill at no charge; rateCap: the engagement-letter rate;
-     *  tenths: hours in tenths; notBilled: entries whose narrative names one of the words are not billed. */
-    kind: "split" | "noCharge" | "rateCap" | "tenths" | "notBilled" | "check";
+    /** What the rule does to a bill (src/shared/invoice.ts): split one task per line; noCharge an activity code at no
+     *  charge; rateCap the rate; tenths hours in tenths; notBilled tasks named by `words`; codePrefix a UTBMS code in
+     *  front of the narrative; callCap calls cut to `maxHours`; blockWithTimes several tasks on one line, each task's
+     *  time written in; seniorOnly an internal conference billed for the senior attendee only. check: read only. */
+    kind: "split" | "noCharge" | "rateCap" | "tenths" | "notBilled" | "codePrefix" | "callCap" | "blockWithTimes" | "seniorOnly" | "check";
     activityCode?: string;
     rate?: number;
     words?: string[];
+    /** codePrefix: which code goes first, the task code (C300) or the activity code (A106). */
+    code?: "task" | "activity";
     /** For a check: which one (src/shared/clientRules.ts), its limit, the approved names, and typed notes to test it on. */
     check?: "vague" | "oneAttendee" | "researchCap" | "clerical" | "travel" | "timekeepers";
     maxHours?: number;
     approved?: string[];
     examples?: string[];
+    /** Where the rule is written: a document (evidence id), its section and page, and the email that delivered it. */
+    sources?: RuleSource[];
     enabled: boolean;
 };
+export type RuleSource = { doc: string; section: string; page?: number | null; email?: string | null };
 export type ClientRules = { client: string; title: string; rules: ClientRule[] };
-const RULE_KINDS = new Set<unknown>(["split", "noCharge", "rateCap", "tenths", "notBilled", "check"]);
+/** One client's billing rules as the app applies them (Time page, Apply client rules). */
+export type ClientRulebook = {
+    /** "northlake". */
+    key: string;
+    client: string;
+    /** "Northlake", "Kestrel Valley". */
+    short: string;
+    title: string;
+    /** "January 1, 2026". */
+    effective: string;
+    /** The guidelines document and the email that delivered them (evidence ids). */
+    doc: string;
+    email: string;
+    rules: ClientRule[];
+};
+const RULE_KINDS = new Set<unknown>(["split", "noCharge", "rateCap", "tenths", "notBilled", "codePrefix", "callCap", "blockWithTimes", "seniorOnly", "check"]);
+const rulesValid = (rules: unknown): boolean => Array.isArray(rules) && rules.every((r) => !!r && typeof r.id === "string" && RULE_KINDS.has(r.kind) && typeof r.enabled === "boolean");
 
 export type NarrativePart = { text: string; evidence: string[]; slot?: string | null };
 export type SourceRef = { id: string; kind: string; label: string };
@@ -309,6 +337,9 @@ export type Workspace = {
     invoice?: InvoiceTerms | null;
     /** The client's billing rules (its outside counsel guidelines and engagement letter), each on or off. */
     clientRules?: ClientRules | null;
+    /** Every client whose rules can be applied to the day, and the one applied now (its key), or null for generic billing. */
+    clientRulebooks?: ClientRulebook[] | null;
+    billingClient?: string | null;
 };
 
 export const DEFAULT_EXCLUSIONS = [
@@ -1009,6 +1040,7 @@ const validIso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.p
 const narrativeValid = (e: TimeEntry): boolean =>
     (e.raw == null || typeof e.raw === "string") && (e.why == null || typeof e.why === "string") &&
     (e.seen == null || (typeof e.seen.app === "string" && typeof e.seen.title === "string")) &&
+    (e.tasks == null || (Array.isArray(e.tasks) && e.tasks.every((t) => !!t && typeof t.text === "string"))) &&
     (e.typed == null || (typeof e.typed === "object" && typeof e.typed.note === "string" && typeof e.typed.rowID === "string" && Number.isFinite(e.typed.hours))) &&
     (e.work == null || (Array.isArray(e.work) && e.work.every((x) => x && typeof x.app === "string" && typeof x.title === "string" && validIso(x.startedAt) && Number.isFinite(x.minutes)))) &&
     (e.reasons == null || (Array.isArray(e.reasons) && e.reasons.every((x) => typeof x === "string"))) &&
@@ -1024,7 +1056,9 @@ export function validate(w: Workspace): Workspace {
         w.schemaVersion === SCHEMA_VERSION &&
         w.entries.every(narrativeValid) &&
         (w.evidence == null || (typeof w.evidence === "object" && !Array.isArray(w.evidence) && Object.entries(w.evidence).every(([k, v]) => !!v && typeof v === "object" && v.id === k && typeof v.kind === "string"))) &&
-        (w.clientRules == null || (Array.isArray(w.clientRules.rules) && w.clientRules.rules.every((r) => !!r && typeof r.id === "string" && RULE_KINDS.has(r.kind) && typeof r.enabled === "boolean"))) &&
+        (w.clientRules == null || rulesValid(w.clientRules.rules)) &&
+        (w.clientRulebooks == null || (Array.isArray(w.clientRulebooks) && w.clientRulebooks.every((b) => !!b && typeof b.key === "string" && typeof b.client === "string" && rulesValid(b.rules)))) &&
+        (w.billingClient == null || typeof w.billingClient === "string") &&
         (w.imported == null || (Array.isArray(w.imported) && new Set(w.imported.map((r) => r?.id)).size === w.imported.length && w.imported.every((r) => !!r && typeof r.id === "string" && typeof r.description === "string" && Number.isFinite(r.hours)
             && (r.origin == null || r.origin === "import" || r.origin === "manual") && (r.prior == null || typeof r.prior === "object")))) &&
         (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
