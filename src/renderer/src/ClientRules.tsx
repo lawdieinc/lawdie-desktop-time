@@ -68,7 +68,7 @@ export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Wor
         return (
             <span className="src-half">
                 <SourceIcon ev={x} />
-                <span className="src-label" title={x.file ?? title}>{title}{section ? ` · ${section}` : ""}{page ? ` · page ${page}` : ""}</span>
+                <span className="src-label with-where" title={x.file ?? title}><span className="src-title">{title}</span>{(section || page) && <span className="src-where">{section ? ` · ${section}` : ""}{page ? ` · page ${page}` : ""}</span>}</span>
                 {actions(id, x, title)}
             </span>
         );

@@ -63,7 +63,12 @@ export function TotalsLine({ bill, onRules }: { bill: AppliedBill; onRules: Open
 
 /** A narrative with the words a rule added marked as inserted, the way a tracked change shows them. */
 export function Segments({ segments, book }: { segments: Segment[]; book?: ClientRulebook | null }): ReactNode {
-    return <>{segments.map((g, n) => (g.ins ? <ins key={n} className="rule-ins" title={`Added by ${g.ins}${book ? ` (${book.rules.find((r) => r.id === g.ins)?.title ?? ""})` : ""}.`}>{g.text}</ins> : <span key={n}>{g.text}</span>))}</>;
+    // The mark covers the added words only; a space before or after them stays plain text.
+    return <>{segments.map((g, n) => {
+        if (!g.ins) return <span key={n}>{g.text}</span>;
+        const [, lead, words, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(g.text) ?? ["", "", g.text, ""];
+        return <span key={n}>{lead}<ins className="rule-ins" title={`Added by ${g.ins}${book ? ` (${book.rules.find((r) => r.id === g.ins)?.title ?? ""})` : ""}.`}>{words}</ins>{trail}</span>;
+    })}</>;
 }
 
 /** The small chip naming the rule behind a change. Click or right-click opens the client's rules at that rule. */
@@ -107,7 +112,7 @@ export function EntryChanges({ lines, book, w, onRules }: { lines: AppliedLine[]
                 <div className="split-block">
                     <div className="split-head"><span className="split-rule" aria-hidden="true" /><span className="split-word">split</span><span className="split-rule" aria-hidden="true" /><RuleChip ruleId={split.ruleId} book={book} w={w} onRules={onRules} /></div>
                     {lines.map((l) => (
-                        <div key={l.part ?? 0} className="split-line">
+                        <div key={l.part ?? 0} className="split-row">
                             <span className="split-text"><Segments segments={l.segments} book={book} /></span>
                             <span className="mono split-hours">{l.hours.toFixed(1)} h</span>
                         </div>

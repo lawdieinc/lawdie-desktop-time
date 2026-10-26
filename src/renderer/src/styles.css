@@ -256,12 +256,12 @@ button.totals-line:hover { border-color: rgba(139, 92, 42, 0.45); background: #f
 .rule-chip { display: inline-flex; align-items: baseline; gap: 5px; border: 1px solid rgba(139, 92, 42, 0.28); background: #f6efe4; color: #6b4a22; border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .rule-chip .mono { font-family: var(--label); font-size: 10px; letter-spacing: 0.06em; font-weight: 400; }
 .rule-chip:hover { background: #efe4d2; border-color: rgba(139, 92, 42, 0.5); }
-ins.rule-ins { text-decoration: underline; text-decoration-color: rgba(47, 106, 53, 0.55); text-underline-offset: 3px; color: #2f6a35; background: rgba(94, 139, 90, 0.12); border-radius: 3px; padding: 0 2px; }
+ins.rule-ins { text-decoration: underline; text-decoration-color: rgba(47, 106, 53, 0.55); text-underline-offset: 3px; color: #2f6a35; background: rgba(94, 139, 90, 0.12); border-radius: 3px; padding: 0 1px; }
 .split-block { border-left: 2px solid rgba(139, 92, 42, 0.25); padding: 2px 0 2px 12px; display: flex; flex-direction: column; gap: 5px; }
 .split-head { display: flex; align-items: center; gap: 8px; }
 .split-rule { width: 18px; height: 1px; background: rgba(139, 92, 42, 0.4); }
 .split-word { font-family: var(--label); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
-.split-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; font-size: 12.5px; line-height: 1.45; }
+.split-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; font-size: 12.5px; line-height: 1.45; }
 .split-text { min-width: 0; color: var(--text); }
 .split-hours { font-size: 12px; }
 /* Client rules (ClientRules.tsx): the client, its documents, one calm card per rule. */
@@ -313,6 +313,9 @@ ins.rule-ins { text-decoration: underline; text-decoration-color: rgba(47, 106, 
 .src-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 22px; padding: 5px 0; font-size: 12.5px; }
 .src-half { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 9px; align-items: center; min-width: 0; }
 .src-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.src-label.with-where { display: flex; min-width: 0; }
+.src-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-where { flex: none; white-space: pre; color: #6b6156; }
 /* Imported rows as typed, before they are linked. */
 .typed-table { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden; }
 .typed-row { display: grid; grid-template-columns: 110px 70px 120px 60px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 12px; }

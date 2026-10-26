@@ -96,8 +96,9 @@ export function timeSheetHtml(w: Workspace, terms: InvoiceTerms, logo: string | 
 <tbody>${body}<tr class="total"><td colspan="2">Total</td><td class="num">${t.hours.toFixed(1)}${t.billedHours !== t.hours ? ` <span class="nc">(${t.billedHours.toFixed(1)} billed)</span>` : ""}</td><td></td><td class="num">${money(t.fees)}</td><td></td></tr></tbody></table>`, "sheet");
 }
 
+/** The seed's remittance lines as written, or placeholders that ask for the invoice number. */
 const remitLines = (terms: InvoiceTerms): string[] =>
-    !terms.remit ? ["Check: [lockbox address]", "Wire: [bank name], account [account number], ABA [routing number]"] : Array.isArray(terms.remit) ? terms.remit : terms.remit.split("\n");
+    !terms.remit ? [`Please reference invoice ${terms.number} with your payment.`, "Check: [lockbox address]", "Wire: [bank name], account [account number], ABA [routing number]"] : Array.isArray(terms.remit) ? terms.remit : terms.remit.split("\n");
 
 /** The invoice: firm, bill-to, numbers and the total due on page 1, fee detail, timekeeper summary, terms, remittance. */
 export function invoiceHtml(w: Workspace, terms: InvoiceTerms, logo: string | null, today: Date, bill: AppliedBill): string {
@@ -124,5 +125,5 @@ export function invoiceHtml(w: Workspace, terms: InvoiceTerms, logo: string | nu
 <tbody><tr><td>${esc(terms.timekeeper.name)}</td><td>${esc(terms.timekeeper.title)}</td><td class="num">${t.billedHours.toFixed(1)}</td><td class="num">${money(rate)}</td><td class="num">${money(t.fees)}</td></tr></tbody></table>
 <table class="due"><tbody><tr><td>Total fees</td><td class="num">${money(t.fees)}</td></tr><tr class="grand"><td>Total due</td><td class="num">${money(t.fees)}</td></tr></tbody></table>
 <p class="sub" style="text-align:right;margin-top:6pt">Payment terms: ${esc(terms.terms)}${terms.contact ? `<br />${esc(terms.contact)}` : ""}</p>
-<div class="remit"><strong>Remittance</strong><br />Please reference invoice ${esc(terms.number)} with your payment.<br />${remitLines(terms).map(esc).join("<br />")}</div></div>`, "invoice");
+<div class="remit"><strong>Remittance</strong><br />${remitLines(terms).map(esc).join("<br />")}</div></div>`, "invoice");
 }

@@ -195,7 +195,7 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
             )}
             {parts.length > 0 && (
                 <div className="why-foot">
-                    <span className="tiny muted">Drafted by: {entry.drafter === "model" ? "model (Kiwi)" : "rules (demo)"}.{entry.drafter === "model" ? "" : " Swap for a model in Settings."}</span>
+                    <span className="tiny muted" title={entry.drafter === "model" ? "Kiwi's model wrote this narrative from the sources." : "The rules wrote this narrative. Pick Model under Narrative drafter in Settings to use Kiwi's model."}>Drafted by: {entry.drafter === "model" ? "model (Kiwi)" : "rules (demo)"}.</span>
                     <button type="button" className="link-btn" disabled={drafting} title={w.preferences.narrativeDrafter === "model" ? "Ask the model to write this narrative again from the same sources. Your edits are replaced." : "Put back the narrative as drafted from the sources. Your edits are replaced."} onClick={() => void redraft()}>{drafting ? "Drafting…" : "Draft again"}</button>
                     {message && <span className="danger tiny">{message}</span>}
                 </div>

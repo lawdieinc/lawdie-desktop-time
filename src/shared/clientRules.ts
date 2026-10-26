@@ -89,7 +89,8 @@ function changeReport(w: Workspace, terms: InvoiceTerms, book: ClientRulebook, r
         const touches = [...new Set(std.map((l) => l.entryID))].map((id) => {
             const e = w.entries.find((x) => x.id === id)!;
             const minutes = (e.work ?? []).reduce((n, x) => n + x.minutes, 0);
-            return { entryID: id, label: name(id), detail: `${minutes}m → ${h(std.find((l) => l.entryID === id)!.stdHours)}` };
+            const recorded = minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
+            return { entryID: id, label: name(id), detail: `${recorded} → ${h(std.find((l) => l.entryID === id)!.stdHours)}` };
         });
         return { rule, status: effects.length ? "changes" : touches.length ? "pass" : "none", summary: effects.length ? `Changes ${plural(effects.length, "entry", "entries")}` : `Checked, all ${touches.length} in tenths`, touches };
     }

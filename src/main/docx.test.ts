@@ -38,7 +38,7 @@ describe("one applied bill behind every view", () => {
         const w = manattDay();
         const terms = { ...w.invoice!, remit: ["Check: Lockbox 1", "Wire: Bank 2", "ACH: Bank 3"], contact: "Questions: billing desk" };
         const html = invoiceHtml(w, terms, null, new Date(`${day}T12:00:00`), applyRules(w, day, "northlake"));
-        expect(html).toContain("Check: Lockbox 1<br />Wire: Bank 2<br />ACH: Bank 3</div>");
+        expect(html).toContain("<strong>Remittance</strong><br />Check: Lockbox 1<br />Wire: Bank 2<br />ACH: Bank 3</div>");
         expect(html).toContain("<br />Questions: billing desk</p>");
         expect(invoiceHtml(w, w.invoice!, null, new Date(`${day}T12:00:00`), applyRules(w, day, "northlake"))).toContain("[lockbox address]");
     });
