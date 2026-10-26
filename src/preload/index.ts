@@ -58,7 +58,13 @@ export const api = {
     importDecision: (id: string, decision: "use" | "keep" | null): Promise<boolean> => ipcRenderer.invoke("importDecision", id, decision),
     clearImport: (): Promise<boolean> => ipcRenderer.invoke("clearImport"),
     /** Make the day's time sheet or invoice PDF in the matter folder and open it. Resolves to a problem, or null. */
-    makePdf: (kind: "timesheet" | "invoice"): Promise<string | null> => ipcRenderer.invoke("makePdf", kind),
+    makePdf: (kind: "timesheet" | "invoice", mode: "generic" | "rules" = "rules"): Promise<string | null> => ipcRenderer.invoke("makePdf", kind, mode),
+    /** The time sheet with the client's rules as Word tracked changes and comments. Resolves to a problem, or null. */
+    makeDocx: (): Promise<string | null> => ipcRenderer.invoke("makeDocx"),
+    /** Match the imported rows to captured work. */
+    linkImport: (): Promise<boolean> => ipcRenderer.invoke("linkImport"),
+    /** Switch one of the client's billing rules on or off. */
+    setClientRule: (id: string, enabled: boolean): Promise<boolean> => ipcRenderer.invoke("setClientRule", id, enabled),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),
     /** Whether on-screen text can be read here, and (macOS) whether Accessibility is allowed. */
     screenTextStatus: (): Promise<{ supported: boolean; trusted: boolean; error: string | null }> => ipcRenderer.invoke("screenTextStatus"),

@@ -7,15 +7,23 @@
    internal conference (the no-charge activity code) bills at no charge; an entry that joins
    two tasks with a semicolon is split into one line per task, each with its own captured time. */
 
-import { seconds, type InvoiceTerms, type TimeEntry, type Workspace } from "./model";
+import { seconds, type ClientRule, type InvoiceTerms, type TimeEntry, type Workspace } from "./model";
 
-export type FeeLine = { entryID: string; date: string; timekeeper: string; description: string; hours: number; rate: number; amount: number; noCharge: boolean; note: string | null };
+/** One billed line. `std*` are the line as the firm's standard terms bill it; `changes` names the rules that changed it. */
+export type FeeLine = {
+    entryID: string; date: string; timekeeper: string; description: string;
+    hours: number; rate: number; amount: number; noCharge: boolean; note: string | null;
+    stdHours: number; stdRate: number; stdAmount: number;
+    changes: string[];
+    /** A block-billed entry split by NBH-1: this line's part, of how many, and the entry's full narrative. */
+    split?: { part: number; of: number; full: string } | null;
+};
 
 /** Billing hours: captured time rounded up to the tenth. */
 export const tenths = (minutes: number): number => Math.ceil(Math.round(minutes * 100) / 100 / 6 - 1e-9) / 10;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-/** Entries that bill: on a matter, settled (no open suggestion or flag), billable. */
+/** Entries that bill: on a matter, settled (no open suggestion or flag), with a narrative. */
 export function billable(w: Workspace): TimeEntry[] {
     return w.entries.filter((e) => e.projectID && (!e.status || e.status === "draft") && e.description.trim())
         .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
@@ -23,22 +31,58 @@ export function billable(w: Workspace): TimeEntry[] {
 
 const sentence = (t: string): string => { const s = t.trim().replace(/[.;]+$/, ""); return s ? `${s[0].toUpperCase()}${s.slice(1)}.` : s; };
 const usDate = (iso: string): string => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
+/** "Northlake OCG §5.1" or "Engagement letter §3": where a rule comes from, for a line's note. */
+export const citeOf = (r: ClientRule, w: Workspace): string => (/^engagement|\bOCG\b/i.test(r.section) ? r.section : `${(w.clientRules?.client ?? "Client").split(" ")[0]} OCG ${r.section}`);
 
-/** One line per task, with hours, rate and amount after the client's rules. */
-export function feeLines(w: Workspace, terms: InvoiceTerms): FeeLine[] {
+/** The rules in force for a rules bill: the client's rules that are on, or, without client rules, the terms' rate cap and no-charge code. */
+export function activeRules(w: Workspace, terms: InvoiceTerms): ClientRule[] {
+    if (w.clientRules) return w.clientRules.rules.filter((r) => r.enabled);
+    const base = { section: "", title: "", quote: "", does: "", enabled: true };
+    return [
+        ...(terms.rateCap ? [{ ...base, id: "rate", kind: "rateCap" as const, rate: terms.rateCap }] : []),
+        ...(terms.noChargeActivity ? [{ ...base, id: "nc", section: terms.noChargeRule ?? "", kind: "noCharge" as const, activityCode: terms.noChargeActivity }] : []),
+        { ...base, id: "split", kind: "split" as const }, { ...base, id: "tenths", kind: "tenths" as const },
+    ];
+}
+
+/**
+ * One line per task. With no rules (a generic bill) each entry bills as recorded at its own
+ * rate. Each rule changes the lines it applies to: split a block-billed entry into one line per
+ * task with its own captured time, cap the rate, bill a no-charge activity or a not-billed
+ * task at nothing, and keep hours in tenths (off: hours to the hundredth).
+ */
+export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly ClientRule[] = []): FeeLine[] {
+    const has = (k: ClientRule["kind"]) => rules.find((r) => r.kind === k);
     const out: FeeLine[] = [];
     for (const e of billable(w)) {
-        const rate = Math.min(e.hourlyRate, terms.rateCap ?? Infinity);
-        const internal = !!terms.noChargeActivity && e.activityCode === terms.noChargeActivity;
-        const noCharge = internal || !e.billable;
-        const note = internal ? `No charge per ${terms.noChargeRule ?? "client rules"}` : !e.billable ? "No charge" : null;
-        const hours = e.hours ?? tenths(seconds(e) / 60);
+        const recorded = e.hours ?? tenths(seconds(e) / 60);
+        const stdRate = e.hourlyRate;
+        const changes: string[] = [];
+        // Hours are in tenths unless the client's tenths rule was switched off for this bill.
+        const tenthsOff = rules.length > 0 && !has("tenths") && !!w.clientRules?.rules.some((r) => r.kind === "tenths" && !r.enabled);
+        const hoursOf = (minutes: number): number => (tenthsOff ? round2(minutes / 60) : tenths(minutes));
+        const entryMinutes = (e.work ?? []).reduce((n, x) => n + x.minutes, 0) || seconds(e) / 60;
+        const hours = rules.length ? hoursOf(entryMinutes) : recorded;
+        if (rules.length && hours !== recorded) changes.push("tenths");
+        const cap = has("rateCap");
+        const rate = cap?.rate && stdRate > cap.rate ? cap.rate : stdRate;
+        if (rate !== stdRate && cap) changes.push(cap.id);
+        const nc = rules.find((r) => r.kind === "noCharge" && r.activityCode && e.activityCode === r.activityCode);
+        const nb = rules.find((r) => r.kind === "notBilled" && (r.words ?? []).some((x) => e.description.toLowerCase().includes(x.toLowerCase()) || (e.group ?? "").toLowerCase().includes(x.toLowerCase())));
+        const why = nc ?? nb;
+        if (why) changes.push(why.id);
+        const noCharge = !!why || !e.billable;
+        const note = why ? `No charge per ${citeOf(why, w)}` : !e.billable ? "No charge" : null;
+        const base = { entryID: e.id, date: usDate(e.startedAt), timekeeper: terms.timekeeper.name, rate, noCharge, note, stdHours: recorded, stdRate, stdAmount: e.billable ? round2(recorded * stdRate) : 0 };
         const tasks = e.description.split(/;\s+/);
-        const base = { entryID: e.id, date: usDate(e.startedAt), timekeeper: terms.timekeeper.name, rate, noCharge, note };
-        if (tasks.length > 1 && e.work && e.work.length === tasks.length) {
+        const split = has("split");
+        if (split && tasks.length > 1 && e.work && e.work.length === tasks.length) {
             // Block billing split: each task takes the captured time of its own stretch.
-            tasks.forEach((t, n) => { const h = tenths(e.work![n].minutes); out.push({ ...base, description: sentence(t), hours: h, amount: noCharge ? 0 : round2(h * rate) }); });
-        } else out.push({ ...base, description: sentence(e.description), hours, amount: noCharge ? 0 : round2(hours * rate) });
+            tasks.forEach((t, n) => {
+                const h = hoursOf(e.work![n].minutes);
+                out.push({ ...base, description: sentence(t), hours: h, amount: noCharge ? 0 : round2(h * rate), changes: [...changes, split.id], split: { part: n, of: tasks.length, full: e.description } });
+            });
+        } else out.push({ ...base, description: sentence(e.description), hours, amount: noCharge ? 0 : round2(hours * rate), changes, split: null });
     }
     return out;
 }
@@ -49,6 +93,15 @@ export function totals(lines: readonly FeeLine[]): { hours: number; billedHours:
         billedHours: round2(lines.filter((l) => !l.noCharge).reduce((n, l) => n + l.hours, 0)),
         fees: round2(lines.reduce((n, l) => n + l.amount, 0)),
     };
+}
+
+/** What one rule does to today's entries on its own: each entry it changes, before and after. */
+export function ruleEffects(w: Workspace, terms: InvoiceTerms, rule: ClientRule): { entryID: string; before: FeeLine[]; after: FeeLine[] }[] {
+    const before = feeLines(w, terms, []);
+    const after = feeLines(w, terms, [{ ...rule, enabled: true }]);
+    const ids = [...new Set(before.map((l) => l.entryID))];
+    return ids.map((id) => ({ entryID: id, before: before.filter((l) => l.entryID === id), after: after.filter((l) => l.entryID === id) }))
+        .filter(({ before: b, after: a }) => JSON.stringify(b.map((l) => [l.description, l.hours, l.rate, l.amount, l.noCharge])) !== JSON.stringify(a.map((l) => [l.description, l.hours, l.rate, l.amount, l.noCharge])));
 }
 
 export const money = (n: number): string => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -96,23 +149,23 @@ const page = (title: string, body: string, cls = ""): string =>
     `<!doctype html><html><head><meta charset="utf-8" /><title>${esc(title)}</title><style>${STYLE}</style></head><body class="${cls}">${body}</body></html>`;
 
 /** "Time detail: Rosa Delacroix": every settled entry of the day with hours, rate and amount. */
-export function timeSheetHtml(w: Workspace, terms: InvoiceTerms, logo: string | null): string {
-    const lines = feeLines(w, terms);
+export function timeSheetHtml(w: Workspace, terms: InvoiceTerms, logo: string | null, rules: readonly ClientRule[] = []): string {
+    const lines = feeLines(w, terms, rules);
     const t = totals(lines);
     const who = w.profile?.name ?? terms.timekeeper.name;
     const rows = lines.map((l) => `<tr><td>${l.date}</td><td>${esc(l.timekeeper)}</td><td class="num">${l.hours.toFixed(1)}</td><td class="num">${money(l.rate)}</td><td class="num">${l.noCharge ? `<span class="nc">No charge</span>` : money(l.amount)}</td><td>${esc(l.description)}${l.note ? `<br /><span class="nc">${esc(l.note)}</span>` : ""}</td></tr>`).join("");
     return page(`Time detail ${terms.matter}`, `${head(terms, logo)}
 <h1>Time detail: ${esc(who)}</h1>
-<p class="sub">${esc(terms.matter)} ${esc(terms.matterName)} · ${lines[0]?.date ?? ""}</p>
+<p class="sub">${esc(terms.matter)} ${esc(terms.matterName)} · ${lines[0]?.date ?? ""}<br />${rules.length ? `With ${esc(w.clientRules?.client ?? "the client")}'s billing rules applied` : "Generic: standard rates, no client rules applied"}</p>
 <table><thead><tr><th>Date</th><th>Timekeeper</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th><th>Description</th></tr></thead>
 <tbody>${rows}<tr class="total"><td colspan="2">Total</td><td class="num">${t.hours.toFixed(1)}${t.billedHours !== t.hours ? ` <span class="nc">(${t.billedHours.toFixed(1)} billed)</span>` : ""}</td><td></td><td class="num">${money(t.fees)}</td><td></td></tr></tbody></table>`, "sheet");
 }
 
 /** The invoice: firm, bill-to, numbers, fee detail, timekeeper summary, totals, terms, remittance (placeholders only). */
-export function invoiceHtml(w: Workspace, terms: InvoiceTerms, logo: string | null, today: Date): string {
-    const lines = feeLines(w, terms);
+export function invoiceHtml(w: Workspace, terms: InvoiceTerms, logo: string | null, today: Date, rules: readonly ClientRule[] = []): string {
+    const lines = feeLines(w, terms, rules);
     const t = totals(lines);
-    const rate = lines.find((l) => !l.noCharge)?.rate ?? terms.rateCap ?? 0;
+    const rate = lines.find((l) => !l.noCharge)?.rate ?? 0;
     const date = `${today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`;
     const rows = lines.map((l) => `<tr><td>${l.date}</td><td>${esc(l.timekeeper)}</td><td>${esc(l.description)}${l.note ? `<br /><span class="nc">${esc(l.note)}</span>` : ""}</td><td class="num">${l.hours.toFixed(1)}</td><td class="num">${l.noCharge ? `<span class="nc">No charge</span>` : money(l.amount)}</td></tr>`).join("");
     return page(`Invoice ${terms.number}`, `${head(terms, logo)}
@@ -124,7 +177,7 @@ export function invoiceHtml(w: Workspace, terms: InvoiceTerms, logo: string | nu
   </tbody></table>
 </div>
 <p><strong>${esc(terms.matterName)}</strong></p>
-<p class="sub">For professional services rendered through ${esc(terms.through)}</p>
+<p class="sub">For professional services rendered through ${esc(terms.through)}${rules.length ? "" : "<br />Generic invoice: standard rates, no client rules applied"}</p>
 <h2>Fee detail</h2>
 <table><thead><tr><th>Date</th><th>Timekeeper</th><th>Description</th><th class="num">Hours</th><th class="num">Amount</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="keep"><h2>Timekeeper summary</h2>

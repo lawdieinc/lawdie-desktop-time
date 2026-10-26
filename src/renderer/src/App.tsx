@@ -9,6 +9,7 @@ import { applyFix, roundUpToTenth, splitPlan, type EntryDraft, type Fix, type Pl
 import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesContext, sameDayOf } from "./Rules";
 import { NarrativeEntry, PrivateRow, hasNarrative } from "./Narrative";
 import { ImportedPanel } from "./Imported";
+import { ClientRulesView } from "./ClientRules";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
 /** A button that opens a small menu below it. A choice, a click outside, or Escape closes it. */
@@ -38,7 +39,7 @@ import kiwiMark from "../../../resources/brand/kiwi.png";
    connection. Everything it shows is the main process's AppState; everything it does
    goes back over window.lawdie. */
 
-type Route = "today" | "activity" | "matters" | "settings";
+type Route = "today" | "activity" | "matters" | "settings" | "rules";
 const ROUTES: { key: Route; label: string; icon: string }[] = [
     { key: "today", label: "Time", icon: "▦" },
     { key: "activity", label: "Activity", icon: "∿" },
@@ -55,7 +56,7 @@ export function App(): ReactNode {
     useEffect(() => {
         void window.lawdie.getState().then(setState);
         const offState = window.lawdie.onState(setState);
-        const offRoute = window.lawdie.onRoute((r) => { if (ROUTES.some((x) => x.key === r)) setRoute(r as Route); });
+        const offRoute = window.lawdie.onRoute((r) => { if (r === "rules" || ROUTES.some((x) => x.key === r)) setRoute(r as Route); });
         const tick = setInterval(() => setNow(Date.now()), 1000);
         return () => { offState(); offRoute(); clearInterval(tick); };
     }, []);
@@ -75,7 +76,7 @@ export function App(): ReactNode {
                 <p className="eyebrow">Workspace</p>
                 <nav>
                     {ROUTES.map((r) => (
-                        <button key={r.key} type="button" className={"nav" + (route === r.key ? " active" : "")} onClick={() => setRoute(r.key)} aria-current={route === r.key ? "page" : undefined}>
+                        <button key={r.key} type="button" className={"nav" + (route === r.key || (route === "rules" && r.key === "today") ? " active" : "")} onClick={() => setRoute(r.key)} aria-current={route === r.key ? "page" : undefined}>
                             <span className="nav-icon" aria-hidden="true">{r.icon}</span>
                             {r.label}
                             {r.key === "activity" && pending > 0 && <span className="badge">{pending}</span>}
@@ -96,7 +97,7 @@ export function App(): ReactNode {
             </aside>
             <main className="content">
                 <header className="topbar">
-                    <span className="muted">Workspace</span><span className="muted">›</span><span>{ROUTES.find((r) => r.key === route)?.label}</span>
+                    <span className="muted">Workspace</span><span className="muted">›</span><span>{route === "rules" ? "Time › Client rules" : ROUTES.find((r) => r.key === route)?.label}</span>
                     <span className="grow" />
                     <span className={"muted" + (w.sync?.targets.some((t) => t.lastError) ? " danger" : "")}>{statusLine(state, now)}</span>
                     <span className="divider" />
@@ -112,7 +113,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={() => setRoute("rules")} /> : route === "rules" ? <ClientRulesView w={w} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} />}
                 </div>
             </main>
         </div>
@@ -150,7 +151,7 @@ function rangeBounds(key: RangeKey, now: number, from: string, to: string): { st
     return { start: f, end: Math.max(t, f + 86_400_000), label: `${new Date(f).toLocaleDateString([], { month: "short", day: "numeric" })} – ${new Date(t - 1).toLocaleDateString([], { month: "short", day: "numeric" })}` };
 }
 
-function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
+function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: () => void }): ReactNode {
     const [range, setRange] = useState<RangeKey>("today");
     const [from, setFrom] = useState(dayKey(now - 6 * 86_400_000));
     const [to, setTo] = useState(dayKey(now));
@@ -170,7 +171,8 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
     const [pdfProblem, setPdfProblem] = useState<string | null>(null);
     const [making, setMaking] = useState<string | null>(null);
     const canBill = !!w.invoice && entries.some((e) => e.projectID && (!e.status || e.status === "draft") && e.parts?.length);
-    const pdf = async (kind: "timesheet" | "invoice"): Promise<void> => { setMaking(kind); setPdfProblem(await window.lawdie.makePdf(kind)); setMaking(null); };
+    const pdf = async (kind: "timesheet" | "invoice", mode: "generic" | "rules"): Promise<void> => { setMaking(kind); setPdfProblem(await window.lawdie.makePdf(kind, mode)); setMaking(null); };
+    const docx = async (): Promise<void> => { setMaking("docx"); setPdfProblem(await window.lawdie.makeDocx()); setMaking(null); };
     return (
         <>
             <Heading title={label} />
@@ -191,9 +193,18 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
                         <button type="button" role="menuitem" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
                     </Menu>
                     {canBill && (
-                        <Menu label={making ? "Making…" : "Billing"} tip="Make the matter's time sheet or invoice from these entries.">
-                            <button type="button" role="menuitem" disabled={!!making} title="Save this day's time detail for the matter as a PDF in the matter folder, then open it." onClick={() => void pdf("timesheet")}>Time sheet (PDF)</button>
-                            <button type="button" role="menuitem" disabled={!!making} title="Save the matter's invoice for this day's settled entries as a PDF, with the client's rate and no-charge rules applied, then open it." onClick={() => void pdf("invoice")}>Invoice (PDF)</button>
+                        <Menu label={making ? "Making…" : "Billing"} tip="Make the matter's time sheet or invoice from these entries, generic or with the client's rules.">
+                            <span className="menu-group" role="presentation">Generic</span>
+                            <button type="button" role="menuitem" disabled={!!making} title="Time detail at standard rates, no client rules applied, as a PDF in the matter folder." onClick={() => void pdf("timesheet", "generic")}>Time sheet (PDF)</button>
+                            <button type="button" role="menuitem" disabled={!!making} title="Invoice at standard rates, no client rules applied, as a PDF in the matter folder." onClick={() => void pdf("invoice", "generic")}>Invoice (PDF)</button>
+                            {w.clientRules && (
+                                <>
+                                    <span className="menu-group" role="presentation">Client: {w.clientRules.client}</span>
+                                    <button type="button" role="menuitem" title={`See ${w.clientRules.client}'s billing rules, what each one does to today's entries, and switch them on or off.`} onClick={onRules}>Client rules</button>
+                                    <button type="button" role="menuitem" disabled={!!making} title="Time detail with the client's rules as Word tracked changes, each with a comment that quotes the rule." onClick={() => void docx()}>Time sheet with rules (DOCX)</button>
+                                    <button type="button" role="menuitem" disabled={!!making} title="Invoice with the client's rules applied, as a PDF in the matter folder." onClick={() => void pdf("invoice", "rules")}>Invoice with rules (PDF)</button>
+                                </>
+                            )}
                         </Menu>
                     )}
                 </span>

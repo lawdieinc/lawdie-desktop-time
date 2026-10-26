@@ -14,7 +14,7 @@ export type Focus = { part?: number; source?: string } | null;
 
 /** A small coloured badge for a source: Outlook blue for email and calendar, Teams purple for a Teams meeting or
     transcript, and a document in its own app's colour (Word, Excel, PDF). */
-function SourceIcon({ ev }: { ev?: Evidence }): ReactNode {
+export function SourceIcon({ ev }: { ev?: Evidence }): ReactNode {
     const ext = (ev?.file ?? "").split(".").pop()?.toLowerCase();
     const kind = ev?.kind === "meeting" ? (ev.teams ? "teams" : "calendar") : ev?.kind === "document" ? (ext === "xlsx" ? "excel" : ext === "pdf" ? "pdf" : "word") : ev?.kind ?? "other";
     const color: Record<string, string> = { email: "#0F6CBD", calendar: "#0F6CBD", teams: "#5B5FC7", transcript: "#5B5FC7", word: "#185ABD", excel: "#107C41", pdf: "#C4302B", other: "#8A8178" };
@@ -37,7 +37,7 @@ function SourceIcon({ ev }: { ev?: Evidence }): ReactNode {
 }
 const KIND_NAME: Record<string, string> = { email: "Email", meeting: "Meeting", transcript: "Transcript", document: "Document" };
 /** What a source is, short: Email, Teams meeting, Calendar, Transcript, Document. */
-const rowKind = (ev: Evidence): string => (ev.kind === "meeting" ? (ev.teams ? "Teams meeting" : "Calendar") : KIND_NAME[ev.kind] ?? ev.kind);
+export const rowKind = (ev: Evidence): string => (ev.kind === "meeting" ? (ev.teams ? "Teams meeting" : "Calendar") : KIND_NAME[ev.kind] ?? ev.kind);
 
 /** Whether an entry has drafted parts, work or reasons to explain. */
 export const hasNarrative = (e: TimeEntry): boolean => !!e.parts?.length || !!e.work?.length || !!e.reasons?.length || !!e.status;
@@ -52,7 +52,7 @@ const APP_MARKS: [RegExp, string, string][] = [
     [/teams/i, "T", "#5b5fc7"], [/outlook/i, "O", "#0f6cbd"], [/word/i, "W", "#185abd"], [/excel/i, "X", "#107c41"],
     [/powerpoint/i, "P", "#c43e1c"], [/acrobat|pdf|preview/i, "A", "#b30b00"], [/chrome|safari|edge|firefox/i, "◍", "#5f6368"], [/phone|facetime/i, "☏", "#5e8b5a"],
 ];
-function AppMark({ app }: { app: string }): ReactNode {
+export function AppMark({ app }: { app: string }): ReactNode {
     const [, mark, color] = APP_MARKS.find(([re]) => re.test(app)) ?? [/./, app.trim()[0]?.toUpperCase() ?? "·", "#7c7366"];
     return <span className="app-mark" style={{ color, background: `${color}1f` }} aria-hidden="true">{mark}</span>;
 }
@@ -68,7 +68,7 @@ export const workTitle = (title: string): string =>
     title.replace(/\s+[|\-–]\s+(Microsoft Teams|Outlook|Microsoft Outlook|Word|Microsoft Word|Excel|Microsoft Excel|Kiwi|Google Chrome|Adobe Acrobat[^|]*)$/i, "").trim();
 const appShort = (app: string): string => app.replace(/^(Microsoft|Google|Adobe)\s+/, "");
 /** "52m in Chrome, 48m in Word": where an entry's time went. */
-export const whereTime = (e: TimeEntry): string => (e.work ?? []).map((x) => `${x.minutes}m in ${appShort(x.app)}`).join(", ");
+export const whereTime = (e: TimeEntry): string => (e.work ?? []).map((x) => (/phone/i.test(x.app) ? `${x.minutes}m on the calendar` : `${x.minutes}m in ${appShort(x.app)}`)).join(", ");
 
 // ---------------------------------------------------------------------------
 

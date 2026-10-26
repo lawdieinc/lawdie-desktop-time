@@ -132,7 +132,36 @@ export type ImportedRow = {
     entryID: string | null;
     /** The person's choice: use Lawdie's narrative for this row, or keep what they typed. */
     decision?: "use" | "keep" | null;
+    /** Matched to captured work ("Link sources and draft narratives"); until then the row shows as typed. */
+    linked?: boolean;
 };
+
+/** One of a client's billing rules, in the client's own words, with what Lawdie does about it. */
+export type ClientRule = {
+    /** "NBH-2". */
+    id: string;
+    /** "§5.1" or "Engagement letter §3". */
+    section: string;
+    title: string;
+    /** The client's words, quoted. */
+    quote: string;
+    /** What Lawdie does, in a sentence. */
+    does: string;
+    /** split: one task per entry; noCharge: entries with an activity code bill at no charge; rateCap: the engagement-letter rate;
+     *  tenths: hours in tenths; notBilled: entries whose narrative names one of the words are not billed. */
+    kind: "split" | "noCharge" | "rateCap" | "tenths" | "notBilled" | "check";
+    activityCode?: string;
+    rate?: number;
+    words?: string[];
+    /** For a check: which one (src/shared/clientRules.ts), its limit, the approved names, and typed notes to test it on. */
+    check?: "vague" | "oneAttendee" | "researchCap" | "clerical" | "travel" | "timekeepers";
+    maxHours?: number;
+    approved?: string[];
+    examples?: string[];
+    enabled: boolean;
+};
+export type ClientRules = { client: string; title: string; rules: ClientRule[] };
+const RULE_KINDS = new Set<unknown>(["split", "noCharge", "rateCap", "tenths", "notBilled", "check"]);
 
 export type NarrativePart = { text: string; evidence: string[]; slot?: string | null };
 export type SourceRef = { id: string; kind: string; label: string };
@@ -267,6 +296,8 @@ export type Workspace = {
     imported?: ImportedRow[];
     /** Firm, bill-to and the client's billing rules for the time sheet and invoice. */
     invoice?: InvoiceTerms | null;
+    /** The client's billing rules (its outside counsel guidelines and engagement letter), each on or off. */
+    clientRules?: ClientRules | null;
 };
 
 export const DEFAULT_EXCLUSIONS = [
@@ -981,6 +1012,7 @@ export function validate(w: Workspace): Workspace {
         w.schemaVersion === SCHEMA_VERSION &&
         w.entries.every(narrativeValid) &&
         (w.evidence == null || (typeof w.evidence === "object" && !Array.isArray(w.evidence) && Object.entries(w.evidence).every(([k, v]) => !!v && typeof v === "object" && v.id === k && typeof v.kind === "string"))) &&
+        (w.clientRules == null || (Array.isArray(w.clientRules.rules) && w.clientRules.rules.every((r) => !!r && typeof r.id === "string" && RULE_KINDS.has(r.kind) && typeof r.enabled === "boolean"))) &&
         (w.imported == null || (Array.isArray(w.imported) && w.imported.every((r) => !!r && typeof r.id === "string" && typeof r.description === "string" && Number.isFinite(r.hours)))) &&
         (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&

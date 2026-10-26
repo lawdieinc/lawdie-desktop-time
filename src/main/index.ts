@@ -6,9 +6,10 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } from "@shared/kiwi";
 import { evidenceFor, modelDrafter, rulesDrafter, type Drafter } from "@shared/drafter";
 import { matchRows, parseCsv, typedRows } from "@shared/importMatch";
-import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoice";
+import { activeRules, footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoice";
+import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
-import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type KeepInput, type KeepLine, type Preferences } from "@shared/model";
+import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences } from "@shared/model";
 import { demoNow } from "@shared/demo";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
@@ -221,14 +222,15 @@ app.whenReady().then(() => {
             return { drafter: "rules", message: `The model could not draft this entry, so the rules draft stands. ${err instanceof Error ? err.message : ""}`.trim() };
         }
     });
-    // Import entries typed into the firm's time system (.csv or .xlsx) and match each to the captured work it describes.
+    // Import entries typed into the firm's time system (.csv or .xlsx). They show as typed until "Link sources and draft narratives".
     const importFile = (file: string): boolean => {
         try {
             const table = /\.xlsx$/i.test(file) ? readXlsx(readFileSync(file)) : parseCsv(readFileSync(file, "utf8"));
-            const rows = typedRows(table);
+            const year = new Date(clock()).getFullYear();
+            const rows = typedRows(table, year);
             if (!rows.length) { store.error = "That file has no time entries in it."; store.publish(); return false; }
             const stamp = Date.now().toString(36);
-            const ok = store.change((w) => { w.imported = matchRows(w, rows, (n) => `import-${stamp}-${n}`); });
+            const ok = store.change((w) => { w.imported = rows.map((r, n) => ({ ...r, id: `import-${stamp}-${n}`, entryID: null, decision: null, linked: false })); });
             if (ok) store.say(`Imported ${rows.length} ${rows.length === 1 ? "entry" : "entries"} from ${basename(file)}.`);
             return ok;
         } catch (err) {
@@ -241,38 +243,72 @@ app.whenReady().then(() => {
         const res = await dialog.showOpenDialog({ title: "Import time entries", properties: ["openFile"], filters: [{ name: "Time entries", extensions: ["csv", "xlsx"] }] });
         return res.canceled || !res.filePaths[0] ? false : importFile(res.filePaths[0]);
     });
+    // Match each typed row to the captured work it describes (src/shared/importMatch.ts); the window then shows the links being made.
+    ipcMain.handle("linkImport", () => store.change((w) => {
+        const rows = w.imported ?? [];
+        const matched = matchRows(w, rows, (n) => rows[n].id);
+        w.imported = matched.map((m, n) => ({ ...rows[n], entryID: m.entryID, linked: true }));
+    }));
     ipcMain.handle("importDecision", (_e, id: string, decision: "use" | "keep" | null) => store.change((w) => {
         const row = w.imported?.find((r) => r.id === String(id));
         if (row) row.decision = decision === "use" || decision === "keep" ? decision : null;
     }));
     ipcMain.handle("clearImport", () => store.change((w) => { delete w.imported; }));
-    // The day's time sheet or invoice: HTML from src/shared/invoice.ts, printed to PDF in a hidden window, saved in the matter folder, opened.
-    ipcMain.handle("makePdf", async (_e, kind: "timesheet" | "invoice") => {
+    ipcMain.handle("setClientRule", (_e, id: string, enabled: boolean) => store.change((w) => {
+        const rule = w.clientRules?.rules.find((r) => r.id === String(id));
+        if (rule) rule.enabled = enabled === true;
+    }));
+
+    /** The matter folder for billing files, or the folder the person picks when it is missing. Null when they cancel. */
+    const billingFolder = async (terms: InvoiceTerms, what: string): Promise<string | null> => {
+        const folder = terms.folder ? localPath(terms.folder) : "";
+        if (folder && existsSync(folder)) return folder;
+        const res = await dialog.showOpenDialog({ title: `Where should the ${what} go?`, properties: ["openDirectory", "createDirectory"] });
+        return res.canceled || !res.filePaths[0] ? null : res.filePaths[0];
+    };
+    const saved = (folder: string, name: string, data: Buffer): void => {
+        const out = join(folder, name);
+        writeFileSync(out, data);
+        if (!argValue("--screenshot")) void shell.openPath(out);
+        store.say(`Saved ${name} in ${basename(folder)}.`);
+    };
+    const logoFile = (terms: InvoiceTerms): Buffer | null => { try { return terms.logo ? readFileSync(localPath(terms.logo)) : null; } catch { return null; } };
+    // The day's time sheet or invoice: generic (standard rates, no client rules) or with the client's rules that are on.
+    // HTML from src/shared/invoice.ts, printed to PDF in a hidden window, saved in the matter folder, opened.
+    ipcMain.handle("makePdf", async (_e, kind: "timesheet" | "invoice", mode: "generic" | "rules" = "rules") => {
         const w = store.workspace, terms = w.invoice;
         if (!terms) return "This workspace has no billing terms for a time sheet or invoice.";
-        let logo: string | null = null;
-        try { if (terms.logo) logo = `data:image/png;base64,${readFileSync(localPath(terms.logo)).toString("base64")}`; } catch { logo = null; }
-        const html = kind === "invoice" ? invoiceHtml(w, terms, logo, new Date(clock())) : timeSheetHtml(w, terms, logo);
-        const name = kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}.pdf` : `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter}.pdf`;
-        let folder = terms.folder ? localPath(terms.folder) : "";
-        if (!folder || !existsSync(folder)) {
-            const res = await dialog.showOpenDialog({ title: "Where should the PDF go?", properties: ["openDirectory", "createDirectory"] });
-            if (res.canceled || !res.filePaths[0]) return null;
-            folder = res.filePaths[0];
-        }
+        const png = logoFile(terms);
+        const logo = png ? `data:image/png;base64,${png.toString("base64")}` : null;
+        const rules = mode === "rules" ? activeRules(w, terms) : [];
+        const html = kind === "invoice" ? invoiceHtml(w, terms, logo, new Date(clock()), rules) : timeSheetHtml(w, terms, logo, rules);
+        const tag = mode === "generic" ? " (generic)" : " (client rules)";
+        const name = kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}${tag}.pdf` : `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter}${tag}.pdf`;
+        const folder = await billingFolder(terms, "PDF");
+        if (!folder) return null;
         const win = new BrowserWindow({ show: false, webPreferences: { javascript: false } });
         try {
             await win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html).toString("base64")}`);
             const pdf = await win.webContents.printToPDF({ pageSize: "Letter", printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: footerTemplate(terms) });
-            const out = join(folder, name);
-            writeFileSync(out, pdf);
-            if (!argValue("--screenshot")) void shell.openPath(out);
-            store.say(`Saved ${name} in ${basename(folder)}.`);
+            saved(folder, name, pdf);
             return null;
         } catch (err) {
             return `The PDF could not be made. ${err instanceof Error ? err.message : ""}`.trim();
         } finally {
             win.destroy();
+        }
+    });
+    // The time sheet with the client's rules as Word tracked changes and comments (src/main/docx.ts).
+    ipcMain.handle("makeDocx", async () => {
+        const w = store.workspace, terms = w.invoice;
+        if (!terms) return "This workspace has no billing terms for a time sheet.";
+        const folder = await billingFolder(terms, "time sheet");
+        if (!folder) return null;
+        try {
+            saved(folder, `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter} (client rules).docx`, await timeSheetDocx(w, terms, logoFile(terms), new Date()));
+            return null;
+        } catch (err) {
+            return `The time sheet could not be made. ${err instanceof Error ? err.message : ""}`.trim();
         }
     });
     ipcMain.handle("deviceName", () => hostname());
