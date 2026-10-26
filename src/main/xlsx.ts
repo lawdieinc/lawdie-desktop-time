@@ -4,7 +4,7 @@
 
 import { inflateRawSync } from "node:zlib";
 
-function unzip(buf: Buffer): Map<string, Buffer> {
+export function unzip(buf: Buffer): Map<string, Buffer> {
     const files = new Map<string, Buffer>();
     const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
     if (eocd < 0) throw new Error("This is not an .xlsx file.");

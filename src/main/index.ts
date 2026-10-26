@@ -7,10 +7,12 @@ import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } f
 import { evidenceFor, modelDrafter, rulesDrafter, type Drafter } from "@shared/drafter";
 import { parseCsv, typedRows } from "@shared/importMatch";
 import { addTypedRow, clearImports, decideRow, editTypedRow, expandRow, linkAll, removeTypedRow, type TypedInput } from "@shared/typed";
-import { activeRules, footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoice";
+import { localDay, rulebooksOf, shortName } from "@shared/invoice";
+import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoiceHtml";
+import { applyRules, type AppliedBill } from "@shared/applyRules";
 import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
-import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences } from "@shared/model";
+import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type Workspace } from "@shared/model";
 import { demoNow } from "@shared/demo";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
@@ -263,9 +265,16 @@ app.whenReady().then(() => {
         editTypedRow(w, String(id), { description: change?.description, hours: change?.hours });
     }));
     ipcMain.handle("removeTyped", (_e, id: string) => store.change((w) => { removeTypedRow(w, String(id)); }));
-    ipcMain.handle("setClientRule", (_e, id: string, enabled: boolean) => store.change((w) => {
-        const rule = w.clientRules?.rules.find((r) => r.id === String(id));
+    // One of a client's rules on or off (the rules page); the older single-client rules follow when they name the same rule.
+    ipcMain.handle("setClientRule", (_e, bookKey: string, id: string, enabled: boolean) => store.change((w) => {
+        const rule = rulebooksOf(w).find((b) => b.key === String(bookKey))?.rules.find((r) => r.id === String(id));
         if (rule) rule.enabled = enabled === true;
+        const legacy = w.clientRules?.rules.find((r) => r.id === String(id));
+        if (legacy && (bookKey === "client" || w.clientRulebooks?.[0]?.key === bookKey)) legacy.enabled = enabled === true;
+    }));
+    // Apply a client's rulebook to the day, or none (generic billing).
+    ipcMain.handle("setBillingClient", (_e, key: string | null) => store.change((w) => {
+        w.billingClient = key && rulebooksOf(w).some((b) => b.key === key) ? key : null;
     }));
 
     /** The matter folder for billing files, or the folder the person picks when it is missing. Null when they cancel. */
@@ -284,14 +293,20 @@ app.whenReady().then(() => {
     const logoFile = (terms: InvoiceTerms): Buffer | null => { try { return terms.logo ? readFileSync(localPath(terms.logo)) : null; } catch { return null; } };
     // The day's time sheet or invoice: generic (standard rates, no client rules) or with the client's rules that are on.
     // HTML from src/shared/invoice.ts, printed to PDF in a hidden window, saved in the matter folder, opened.
-    ipcMain.handle("makePdf", async (_e, kind: "timesheet" | "invoice", mode: "generic" | "rules" = "rules") => {
+    /** The rulebook a billing file is for: a client's key, "generic", or the older "rules" (the first client). */
+    /** The applied bill for a billing file: the day shown on the Time page (else the demo day, else today) and the mode
+     *  ("generic" or a client's key), from the one function the Time page renders from too. */
+    const billOf = (w: Workspace, mode: string | null | undefined, day: string | null | undefined): AppliedBill =>
+        applyRules(w, day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : w.demo?.day ?? localDay(new Date(clock()).toISOString()), mode ?? "generic");
+    const modeTag = (bill: AppliedBill): string => (bill.book ? ` (${shortName(bill.book)} rules)` : " (generic)");
+    ipcMain.handle("makePdf", async (_e, kind: "timesheet" | "invoice", mode: string = "generic", day?: string) => {
         const w = store.workspace, terms = w.invoice;
         if (!terms) return "This workspace has no billing terms for a time sheet or invoice.";
         const png = logoFile(terms);
         const logo = png ? `data:image/png;base64,${png.toString("base64")}` : null;
-        const rules = mode === "rules" ? activeRules(w, terms) : [];
-        const html = kind === "invoice" ? invoiceHtml(w, terms, logo, new Date(clock()), rules) : timeSheetHtml(w, terms, logo, rules);
-        const tag = mode === "generic" ? " (generic)" : " (client rules)";
+        const bill = billOf(w, mode, day);
+        const html = kind === "invoice" ? invoiceHtml(w, terms, logo, new Date(clock()), bill) : timeSheetHtml(w, terms, logo, bill);
+        const tag = modeTag(bill);
         const name = kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}${tag}.pdf` : `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter}${tag}.pdf`;
         const folder = await billingFolder(terms, "PDF");
         if (!folder) return null;
@@ -308,13 +323,14 @@ app.whenReady().then(() => {
         }
     });
     // The time sheet with the client's rules as Word tracked changes and comments (src/main/docx.ts).
-    ipcMain.handle("makeDocx", async () => {
+    ipcMain.handle("makeDocx", async (_e, mode: string = "generic", day?: string) => {
         const w = store.workspace, terms = w.invoice;
         if (!terms) return "This workspace has no billing terms for a time sheet.";
         const folder = await billingFolder(terms, "time sheet");
         if (!folder) return null;
+        const bill = billOf(w, mode, day);
         try {
-            saved(folder, `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter} (client rules).docx`, await timeSheetDocx(w, terms, logoFile(terms), new Date()));
+            saved(folder, `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter}${modeTag(bill)}.docx`, await timeSheetDocx(w, terms, logoFile(terms), new Date(), bill));
             return null;
         } catch (err) {
             return `The time sheet could not be made. ${err instanceof Error ? err.message : ""}`.trim();

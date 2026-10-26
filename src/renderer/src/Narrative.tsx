@@ -79,11 +79,15 @@ const OPEN = new Set<string>();
  * The narrative line (parts, ✦ AI, Edited), the inline editor when `draft` is set, the
  * suggested or flagged line, `meta` (matter, time, billable), and the Why dropdown.
  */
-export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign, meta, readOnly = false, onSaved }: {
+export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign, meta, readOnly = false, onSaved, override, after }: {
     entry: TimeEntry; w: Workspace; draft: string | null; setDraft: (d: string | null) => void;
     onDetails?: () => void; onAssign?: () => void; meta?: ReactNode; readOnly?: boolean;
     /** After the narrative is saved from the editor (an expanded typed row uses it to accept the edited narrative). */
     onSaved?: () => void;
+    /** The narrative as a client's rules write it (codes and task times added, marked as inserted), shown instead. */
+    override?: ReactNode;
+    /** Shown under the matter line, before the Why dropdown: the changes a client's rules made. */
+    after?: ReactNode;
 }): ReactNode {
     const [focus, setFocus] = useState<Focus>(null);
     const [open, setOpen] = useState(OPEN.has(entry.id));
@@ -114,12 +118,12 @@ export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign,
                 </div>
             ) : (
                 <div className="small strong narr">
-                    {asParts ? parts.map((p, n) => (
+                    {override ?? (asParts ? parts.map((p, n) => (
                         <span key={n} className={"part" + (lit(focus, parts, n) ? " hot" : "")}
                             title={p.evidence.length ? `From ${p.evidence.length === 1 ? "1 source" : `${p.evidence.length} sources`}. Click to see them.` : "Lawdie's wording."}
                             onMouseEnter={() => setFocus({ part: n })} onMouseLeave={() => setFocus(null)}
                             onClick={() => { if (!open) toggle(); }}>{p.text}</span>
-                    )) : entry.description || <span className="muted narr-empty">No narrative yet</span>}
+                    )) : entry.description || <span className="muted narr-empty">No narrative yet</span>)}
                     {" "}
                     <span className="narr-tags">
                         {entry.drafted && <span className="ai-tag" title="Drafted by Lawdie from the sources below. Edit it if anything is off.">✦ AI</span>}
@@ -129,6 +133,7 @@ export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign,
             )}
             {!readOnly && <StatusLine entry={entry} onAssign={onAssign} />}
             {meta}
+            {after}
             {hasNarrative(entry) && (
                 <div className="why">
                     <button type="button" className={"why-toggle" + (open ? " open" : "") + (litCount ? " hot" : "")} aria-expanded={open}
@@ -219,7 +224,7 @@ function SourceRow({ id, label, w, lit: on, onHover }: { id: string; label: stri
     const viewShot = async (): Promise<void> => { const data = await window.lawdie.screenshotData(id); if (data) setShot(data); else void open("screenshot"); };
     return (
         <div className={"source-row" + (on ? " hot" : "")} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
-            <span className="source-kind"><SourceIcon ev={ev} /> {ev ? rowKind(ev) : "Source"}</span>
+            <span className="source-kind"><SourceIcon ev={ev} /> {ev ? (ev.invite_for ? "Teams invite" : rowKind(ev)) : "Source"}</span>
             <span className="source-title" title={title}>{title}</span>
             <span className="source-time">{ev ? sourceTime(ev, w.evidence) : ""}</span>
             <span className="source-links">
@@ -241,7 +246,7 @@ function SourceRow({ id, label, w, lit: on, onHover }: { id: string; label: stri
 }
 
 /** A screenshot over the window; Escape or a click outside closes it. */
-function ImageViewer({ src, caption, onOpen, onClose }: { src: string; caption: string; onOpen: () => void; onClose: () => void }): ReactNode {
+export function ImageViewer({ src, caption, onOpen, onClose }: { src: string; caption: string; onOpen: () => void; onClose: () => void }): ReactNode {
     useEffect(() => {
         const key = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
         window.addEventListener("keydown", key, true);

@@ -265,7 +265,7 @@ function cardsFor(w: Workspace, e: TimeEntry): Card[] {
         const x = ev[s.id];
         const meeting = x?.kind === "transcript" && x.meeting ? ev[x.meeting] : undefined;
         const when = x?.start && x.end ? timeRange(x.start, x.end) : x?.when ? new Date(x.when).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : meeting?.start && meeting.end ? timeRange(meeting.start, meeting.end) : "";
-        const kind = x ? (x.kind === "email" && /invite/i.test(s.label) ? "Teams invite" : rowKind(x)) : "Source";
+        const kind = x ? (x.invite_for ? "Teams invite" : rowKind(x)) : "Source";
         return { key: `ev:${s.id}`, kind: "source", icon: <SourceIcon ev={x} />, label: kind, title: x?.subject ?? x?.file ?? meeting?.subject ?? s.label, when };
     });
     const capture: Card[] = (e.work ?? []).map((x, n) => ({

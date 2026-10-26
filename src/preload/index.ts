@@ -58,9 +58,9 @@ export const api = {
     importDecision: (id: string, decision: "use" | "keep" | null): Promise<boolean> => ipcRenderer.invoke("importDecision", id, decision),
     clearImport: (): Promise<boolean> => ipcRenderer.invoke("clearImport"),
     /** Make the day's time sheet or invoice PDF in the matter folder and open it. Resolves to a problem, or null. */
-    makePdf: (kind: "timesheet" | "invoice", mode: "generic" | "rules" = "rules"): Promise<string | null> => ipcRenderer.invoke("makePdf", kind, mode),
+    makePdf: (kind: "timesheet" | "invoice", mode: string = "generic", day?: string): Promise<string | null> => ipcRenderer.invoke("makePdf", kind, mode, day),
     /** The time sheet with the client's rules as Word tracked changes and comments. Resolves to a problem, or null. */
-    makeDocx: (): Promise<string | null> => ipcRenderer.invoke("makeDocx"),
+    makeDocx: (mode: string = "generic", day?: string): Promise<string | null> => ipcRenderer.invoke("makeDocx", mode, day),
     /** Match the imported rows not linked yet to captured work. */
     linkImport: (): Promise<boolean> => ipcRenderer.invoke("linkImport"),
     /** Match one typed entry (imported or added here) to the captured work it describes. */
@@ -72,7 +72,9 @@ export const api = {
     /** Take a typed entry off the day, undoing what it changed. */
     removeTyped: (id: string): Promise<boolean> => ipcRenderer.invoke("removeTyped", id),
     /** Switch one of the client's billing rules on or off. */
-    setClientRule: (id: string, enabled: boolean): Promise<boolean> => ipcRenderer.invoke("setClientRule", id, enabled),
+    setClientRule: (bookKey: string, id: string, enabled: boolean): Promise<boolean> => ipcRenderer.invoke("setClientRule", bookKey, id, enabled),
+    /** Apply a client's rulebook to the day by its key, or null for generic billing. */
+    setBillingClient: (key: string | null): Promise<boolean> => ipcRenderer.invoke("setBillingClient", key),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),
     /** Whether on-screen text can be read here, and (macOS) whether Accessibility is allowed. */
     screenTextStatus: (): Promise<{ supported: boolean; trusted: boolean; error: string | null }> => ipcRenderer.invoke("screenTextStatus"),

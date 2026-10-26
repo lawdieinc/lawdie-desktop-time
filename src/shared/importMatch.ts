@@ -126,27 +126,49 @@ function entryBag(w: Workspace, e: TimeEntry): Bag {
     return { words: set, list: [...set], text: texts.join(" ") };
 }
 
-/** Whether one typed word is in the entry: the word, a word it starts (three letters or more), its shorthand, a state code, or initials of a name. */
-function found(t: string, bag: Bag): boolean {
-    if (t.length === 2 && STATES[t]) return bag.words.has(STATES[t]);
+/** How a typed word was found in the entry. word: itself, or a word it starts ("rev" in "review"). widened: only as its
+ *  shorthand ("agmt" as "agreement", "redline" as "revise"). code: initials of a name ("PR" for P. Raman) or a state code. */
+type Hit = "word" | "widened" | "code" | null;
+/** How much each kind of hit counts: the word itself counts most; a code never counts on its own (see score). */
+const WEIGHT: Record<Exclude<Hit, null>, number> = { word: 1, widened: 0.7, code: 0.7 };
+
+const inBag = (x: string, bag: Bag): boolean =>
+    bag.words.has(x) || (x.length >= 3 && bag.list.some((y) => y.startsWith(x))) || (x.length >= 6 && bag.list.some((y) => y.startsWith(x.slice(0, 5))));
+
+function found(t: string, bag: Bag): Hit {
+    if (t.length === 2 && STATES[t]) return bag.words.has(STATES[t]) ? "code" : null;
     if (t.length === 2 && /^[a-z]{2}$/.test(t)) {
         // "PR" is P. Raman or Priya Raman: initials of a capitalized name in the entry's text.
         const [a, b] = t.toUpperCase();
-        return new RegExp(`\\b${a}[a-z]*\\.?\\s+${b}[a-z]+`).test(bag.text) || bag.words.has(t);
+        if (bag.words.has(t)) return "word";
+        return new RegExp(`\\b${a}[a-z]*\\.?\\s+${b}[a-z]+`).test(bag.text) ? "code" : null;
     }
-    return [t, ...(WIDEN[t] ?? [])].some((x) => bag.words.has(x) || (x.length >= 3 && bag.list.some((y) => y.startsWith(x))) || (x.length >= 6 && bag.list.some((y) => y.startsWith(x.slice(0, 5)))));
+    if (inBag(t, bag)) return "word";
+    return (WIDEN[t] ?? []).some((x) => inBag(x, bag)) ? "widened" : null;
 }
 
 /** Billing hours of an entry: as recorded, else its time rounded up to the tenth. */
 export const recordedHours = (e: TimeEntry): number => e.hours ?? Math.ceil(seconds(e) / 360) / 10;
 
-/** 0..1: the share of typed words found in the entry, weighted with how close the hours are. */
+/** How close typed hours are to an entry's: its recorded hours, or the time of one of its stretches or tasks, whichever
+ *  is nearest (".7 research" is the 41-minute research stretch of a research and matrix entry). 0..1. */
+function hoursCloseness(typed: number, e: TimeEntry): number {
+    if (!typed) return 0;
+    const near = (h: number): number => (h ? 1 - Math.min(1, Math.abs(typed - h) / Math.max(typed, h)) : 0);
+    const stretches = (e.work ?? []).map((x) => Math.ceil(x.minutes / 6 - 1e-9) / 10);
+    const tasks = (e.tasks ?? []).map((t) => t.hours ?? 0);
+    return Math.max(near(recordedHours(e)), ...stretches.map(near), ...tasks.map(near));
+}
+
+/** 0..1: the share of typed words found in the entry (the word itself counts most), weighted with how close the hours are. */
 export function score(w: Workspace, row: TypedRow, e: TimeEntry, bag = entryBag(w, e)): number {
     const typed = words(row.description);
     if (!typed.length) return 0;
-    const share = typed.filter((t) => found(t, bag)).length / typed.length;
-    const h = recordedHours(e);
-    const hours = row.hours && h ? 1 - Math.min(1, Math.abs(row.hours - h) / Math.max(row.hours, h)) : 0;
+    const hits = typed.map((t) => found(t, bag));
+    // Initials or a state code alone never say it is this work ("email PR" is not the phone call with P. Raman).
+    if (!hits.some((x) => x === "word" || x === "widened")) return 0;
+    const share = hits.reduce((n, x) => n + (x ? WEIGHT[x] : 0), 0) / typed.length;
+    const hours = hoursCloseness(row.hours, e);
     // Most of what was typed must be there, or a good part of it with hours that agree. Half a note with the wrong
     // hours ("call w/ client" against a 0.3 h internal conference) is not enough to say it is this work.
     if (share < 0.6 && !(share >= 0.4 && hours >= 0.75)) return 0;

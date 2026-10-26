@@ -8,6 +8,8 @@
    Nothing here is the person's problem: a failed check is logged and tried again later,
    never shown. The window only hears that an update is ready. */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { app } from "electron";
 // CommonJS, and this bundle is an ES module: a named import fails at launch.
 import electronUpdater from "electron-updater";
@@ -24,8 +26,11 @@ export class Updater {
     constructor(private readonly store: Store) {}
 
     start(): void {
-        // A development run or an unpacked build has nothing to update.
+        // A development run or an unpacked build has nothing to update. Neither has a demo build: a workspace seeded for a
+        // demo, or a local build packaged without a publish config (no app-update.yml), is never replaced by a release.
         if (!app.isPackaged) return;
+        if (this.store.workspace.demo) return;
+        if (!existsSync(join(process.resourcesPath, "app-update.yml"))) return;
         autoUpdater.autoDownload = true;
         autoUpdater.autoInstallOnAppQuit = true;
         autoUpdater.logger = null;

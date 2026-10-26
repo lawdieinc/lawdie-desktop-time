@@ -122,6 +122,10 @@ export type InvoiceTerms = {
     /** The firm's logo, an absolute PNG path on this machine. */
     logo?: string;
     footer?: string;
+    /** Where and how to pay, as lines (the seed writes them); without them the invoice prints placeholders. */
+    remit?: string[] | string | null;
+    /** Who to ask about the invoice. */
+    contact?: string | null;
 };
 
 export type EntryTask = { stretch?: number | null; text: string; task?: string | null; activity?: string | null; hours?: number | null };
@@ -216,6 +220,8 @@ export type Evidence = {
     meeting?: string; lines?: { t: string; who: string; text: string }[];
     file?: string; title?: string; path?: string;
     facts?: string[];
+    /** A Teams invite: the meeting it is the invite for. */
+    invite_for?: string | null;
     /** An Outlook web link, filled in after the Graph seed. */
     link?: string;
     /** A picture of the source as it looked (an absolute PNG path on this machine). */
