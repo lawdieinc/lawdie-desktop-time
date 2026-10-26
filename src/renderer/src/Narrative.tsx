@@ -290,8 +290,7 @@ export function PrivateRow({ item }: { item: PrivateStretch }): ReactNode {
         <div className="entry private-row" title="Personal time. It is not billed and never leaves this Mac.">
             <span className="bar private" />
             <div className="grow">
-                <div className="small">Personal, never leaves this Mac</div>
-                <div className="muted tiny">{item.app} · {clock(item.startedAt)} · not billed, not synced</div>
+                <div className="small">Personal</div>
             </div>
             <span className="mono muted">{duration((Date.parse(item.endedAt) - Date.parse(item.startedAt)) / 1000)}</span>
         </div>
