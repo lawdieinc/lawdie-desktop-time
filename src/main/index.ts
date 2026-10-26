@@ -1,10 +1,11 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { hostname } from "node:os";
+import { homedir, hostname } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import { isDestination, type Destination, type Product } from "@shared/kiwi";
-import { archiveProject, closeActivity, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type KeepInput, type KeepLine, type Preferences } from "@shared/model";
+import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } from "@shared/kiwi";
+import { evidenceFor, modelDrafter, rulesDrafter, type Drafter } from "@shared/drafter";
+import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, editEntry, keepLines, keepStretch, mergeProjects, setMatter, updateProject, type EntryChange, type KeepInput, type KeepLine, type Preferences } from "@shared/model";
 import { demoNow } from "@shared/demo";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
@@ -173,6 +174,37 @@ app.whenReady().then(() => {
     ipcMain.handle("dismissMessage", () => { store.error = null; store.notice = null; store.publish(); });
     ipcMain.handle("showDataFolder", () => shell.showItemInFolder(workspacePath));
     ipcMain.handle("openExternal", (_e, url: string) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); });
+    // A narrative's source: an Outlook web link opens in the browser, a document from disk. Looked up here by id, so the window names no paths.
+    ipcMain.handle("openSource", async (_e, id: string) => {
+        const ev = store.workspace.evidence?.[String(id)];
+        if (ev?.link && /^https:\/\//.test(ev.link)) { await shell.openExternal(ev.link); return null; }
+        if (ev?.path) { const failed = await shell.openPath(ev.path.replace(/^~(?=\/)/, homedir())); return failed ? `Could not open ${ev.file ?? "the file"}: ${failed}` : null; }
+        return "There is nothing to open for this source yet.";
+    });
+    // Draft an entry's narrative again with the drafter chosen in Settings. Model needs Kiwi; without it, the stored parts stand.
+    ipcMain.handle("draftNarrative", async (_e, id: string) => {
+        const w = store.workspace;
+        const entry = w.entries.find((x) => x.id === String(id));
+        if (!entry) return { drafter: "rules", message: "That entry no longer exists." };
+        let drafter: Drafter = rulesDrafter;
+        let message: string | null = null;
+        if ((w.preferences.narrativeDrafter ?? "rules") === "model") {
+            const kiwi = w.sync?.targets.find((t) => t.product === "kiwi");
+            const token = kiwi ? tokens.load() : null;
+            if (kiwi && token) {
+                const client = new KiwiClient(kiwi.serverURL, token, fetch, 120_000, PRODUCTS.kiwi.label);
+                drafter = modelDrafter((body) => client.drafts(body), w.projects.find((p) => p.id === entry.projectID)?.name ?? null);
+            } else message = "Model not connected. Connect this computer to Kiwi in Settings. The rules draft stands.";
+        }
+        try {
+            const d = await drafter.draft(entry, evidenceFor(entry, w.evidence));
+            if (d.parts.length) store.change((x) => { setNarrative(x, entry.id, d.parts, d.drafter, clock()); });
+            return { drafter: d.drafter, message };
+        } catch (err) {
+            console.warn("[drafter]", err instanceof Error ? err.message : err);
+            return { drafter: "rules", message: `The model could not draft this entry, so the rules draft stands. ${err instanceof Error ? err.message : ""}`.trim() };
+        }
+    });
     ipcMain.handle("deviceName", () => hostname());
     ipcMain.handle("officeStatus", () => ({ supported: capture.office.supported, errors: Object.fromEntries(capture.office.lastError) }));
     ipcMain.handle("screenTextStatus", () => ({
@@ -196,11 +228,13 @@ app.whenReady().then(() => {
         // `--click <css selector>` presses one control first, so a folded part of a screen can be captured open.
         const click = argValue("--click");
         // `--steps "btn:Keep time||type:input[autofocus]=Review draft||click:.fix"` walks a flow first, one step a second:
-        // btn: presses the first visible button whose text starts with it, click: a CSS selector, type: sets an input's value.
+        // btn: presses the first visible button whose text starts with it, click: a CSS selector, hover: points at one, type: sets an input's value.
         const steps = (argValue("--steps") ?? "").split("||").filter(Boolean);
         const run = (step: string): string => `(() => {
             const s = ${JSON.stringify(step)}; const [kind, ...rest] = s.split(":"); const arg = rest.join(":");
             const visible = (e) => e.offsetParent !== null;
+            if (kind === "scroll") { const el = [...document.querySelectorAll(arg)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); el?.scrollIntoView({ block: "start" }); return; }
+            if (kind === "hover") { const el = [...document.querySelectorAll(arg)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); el?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })); return; }
             if (kind === "btn") { const el = [...document.querySelectorAll("button")].filter(visible).find((b) => b.textContent.trim().startsWith(arg)); console.log("--steps", s, el ? "ok" : "matched nothing"); el?.click(); return; }
             if (kind === "type") { const [sel, ...t] = arg.split("="); const el = [...document.querySelectorAll(sel)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); if (!el) return;
                 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, t.join("=")); el.dispatchEvent(new Event("input", { bubbles: true })); return; }

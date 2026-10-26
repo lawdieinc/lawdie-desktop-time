@@ -7,6 +7,7 @@ import { ago, clock, dayLabel, duration } from "@shared/format";
 import { viewNow } from "@shared/demo";
 import { applyFix, roundUpToTenth, splitPlan, type EntryDraft, type Fix, type PlanLine } from "@shared/rules";
 import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesContext, sameDayOf } from "./Rules";
+import { NarrativeLines, PrivateRow, StatusLine, WhyPanel, hasNarrative, type Focus } from "./Narrative";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 import kiwiMark from "../../../resources/brand/kiwi.png";
 
@@ -181,7 +182,9 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
                                 <span className="muted tiny mono">{duration(list.reduce((s, e) => s + secondsWithin(e, start, end), 0))} · billable {duration(list.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0))}</span>
                             </div>
                         )}
-                        {list.map((e) => <EntryRow key={e.id} entry={e} w={w} />)}
+                        {[...list.map((e) => ({ at: e.startedAt, row: <EntryRow key={e.id} entry={e} w={w} /> })),
+                            ...(w.privateStretches ?? []).filter((x) => dayKey(Date.parse(x.startedAt)) === k && Date.parse(x.startedAt) < end && Date.parse(x.endedAt) > start).map((x) => ({ at: x.startedAt, row: <PrivateRow key={x.key} item={x} /> }))]
+                            .sort((a, b) => (a.at < b.at ? 1 : -1)).map((r) => r.row)}
                     </div>
                 ))}
             </Panel>
@@ -192,18 +195,27 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
 function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
     const p = w.projects.find((x) => x.id === entry.projectID);
     const [editing, setEditing] = useState(false);
+    const [why, setWhy] = useState<Focus | false>(false);
+    const narrative = hasNarrative(entry);
     return (
-        <div className="entry">
+        <div className={"entry" + (narrative ? " with-narrative" : "") + (entry.status === "flagged" ? " flagged" : entry.status === "suggested" ? " suggested" : "")}>
             <span className="bar" />
             <div className="grow">
-                <div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>
+                {narrative ? (
+                    <>
+                        <NarrativeLines entry={entry} onWhy={(f) => setWhy(f)} tag={<AiTag source={entry.drafted} />} />
+                        <StatusLine entry={entry} onEdit={() => setEditing(true)} />
+                    </>
+                ) : <div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>}
                 <div className="muted tiny"><MatterLabel name={p?.name} /> · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : ""}</div>
                 <EntryRules w={w} entry={entry} />
             </div>
             <span className="mono">{duration(entrySeconds(entry))}</span>
+            {narrative && entry.parts?.length ? <button type="button" className="quiet" title="See the sources behind this narrative." onClick={() => setWhy({})}>Why</button> : null}
             <button type="button" className="quiet" title="Change this entry's narrative, hours, codes or rate." onClick={() => setEditing(true)}>Edit</button>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
-            {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
+            {editing &&<EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
+            {why !== false && <WhyPanel w={w} entry={entry} focus={why} onClose={() => setWhy(false)} />}
         </div>
     );
 }
@@ -794,6 +806,14 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" />
                 </Setting>
                 {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to get AI suggestions.</p>}
+                <Setting title="Narrative drafter" detail="Who writes each entry's narrative from its sources (emails, meetings, transcripts, documents). Rules (demo) uses the narratives drafted ahead of time. Model asks Kiwi's model to write them from the same sources; each part must name the source it rests on, and a part that names an unknown source is dropped. Use Draft again in an entry's Why panel.">
+                    <div className="segmented" role="radiogroup" aria-label="Narrative drafter">
+                        {([["rules", "Rules (demo)", "Use the narratives drafted ahead of time from the sources."], ["model", "Model", "Ask Kiwi's model to write narratives from the sources. Needs this computer connected to Kiwi."]] as const).map(([k, text, tip]) => (
+                            <button key={k} type="button" role="radio" aria-checked={(p.narrativeDrafter ?? "rules") === k} className={(p.narrativeDrafter ?? "rules") === k ? "active" : ""} title={tip} onClick={() => set("narrativeDrafter", k)}>{text}</button>
+                        ))}
+                    </div>
+                </Setting>
+                {p.narrativeDrafter === "model" && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Model not connected. Narratives stay with the rules until this {label} is connected to Kiwi below.</p>}
                 <Setting title="Idle timeout" detail="Stops capture and your timer at the last input after this much inactivity.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>

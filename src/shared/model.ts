@@ -10,7 +10,12 @@ import type { MatterContext, Profile, RuleSet } from "./rules";
    not time, until a person keeps it; kept time never overlaps; rates freeze at save.
    Dates are ISO-8601 strings, which is both the file format and the wire format. */
 
-export const SCHEMA_VERSION = 2;
+/** 3 (2026-10-26): entries may carry what the person typed, the drafted narrative's parts and
+ *  their sources, and the workspace an evidence list. Every addition is optional, so a version 2
+ *  file reads as it is and is written back as 3. */
+export const SCHEMA_VERSION = 3;
+/** Older versions this app reads unchanged. */
+const READS_VERSIONS = new Set<unknown>([2, SCHEMA_VERSION]);
 export const APP_ID = "co.lawdie.timecapture.desktop";
 /** A stalled process or a sleep must never inflate a timer or a segment. */
 export const GAP_SECONDS = 45;
@@ -60,7 +65,41 @@ export type TimeEntry = {
     /** UTBMS task and activity codes (P500 / A103), when the client asks for them. */
     taskCode?: string;
     activityCode?: string;
+    /** What the attorney typed on the time card ("phone call with client"); empty when nothing. */
+    raw?: string;
+    /** The drafted narrative in parts, each with the evidence ids it rests on (workspace.evidence). */
+    parts?: NarrativePart[];
+    /** The sources behind the parts, in order, as the side panel lists them. */
+    sources?: SourceRef[];
+    /** draft: drafted from evidence; suggested: built from matter history, to confirm; flagged: needs the person. */
+    status?: EntryStatus;
+    /** Why an entry is suggested or flagged. */
+    why?: string;
+    /** The person edited the narrative: the parts no longer match it, so it shows as plain text. */
+    partsEdited?: boolean;
+    /** Who drafted the parts: the stored rules, or a model. */
+    drafter?: DrafterKind;
 };
+
+export type NarrativePart = { text: string; evidence: string[]; slot?: string | null };
+export type SourceRef = { id: string; kind: string; label: string };
+export type EntryStatus = "draft" | "suggested" | "flagged" | "dismissed";
+const ENTRY_STATUSES = new Set<unknown>(["draft", "suggested", "flagged", "dismissed"]);
+export type DrafterKind = "rules" | "model";
+/** One thing a narrative rests on: an email, a meeting, a transcript or a document (story.json's evidence). */
+export type Evidence = {
+    id: string;
+    kind: string;
+    subject?: string; from?: string; to?: string[]; cc?: string[]; when?: string; body?: string;
+    start?: string; end?: string; attendees?: string[]; organizer?: string; teams?: boolean; location?: string; transcript?: string | null;
+    meeting?: string; lines?: { t: string; who: string; text: string }[];
+    file?: string; title?: string; path?: string;
+    facts?: string[];
+    /** An Outlook web link, filled in after the Graph seed. */
+    link?: string;
+};
+/** A stretch kept off the bill on purpose (personal browsing): shown greyed, never synced. */
+export type PrivateStretch = { key: string; startedAt: string; endedAt: string; app: string; title: string; why: string };
 
 export type Interval = { startedAt: string; endedAt: string };
 
@@ -127,6 +166,8 @@ export type Preferences = {
     idleMinutes: number;
     retentionDays: number;
     excludedOwnerIDs: string[];
+    /** Who drafts narratives from evidence: the stored rules (the demo) or a model through Kiwi. */
+    narrativeDrafter?: DrafterKind;
 };
 
 /** One product this computer syncs to. Each has its own device row, so its own id and name. */
@@ -163,6 +204,10 @@ export type Workspace = {
     profile?: Profile | null;
     /** A demo workspace made from a seed file: which reset and which stage it is at. Never set on a real workspace. */
     demo?: { seed: string; epoch: number; stage: string; day: string } | null;
+    /** What narratives rest on, by id: emails, meetings, transcripts, documents. Local only; never synced. */
+    evidence?: Record<string, Evidence>;
+    /** Stretches kept off the bill on purpose; local only, never synced. */
+    privateStretches?: PrivateStretch[];
 };
 
 export const DEFAULT_EXCLUSIONS = [
@@ -179,7 +224,7 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export function defaultPreferences(): Preferences {
-    return { captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
+    return { captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS], narrativeDrafter: "rules" };
 }
 
 export function emptyWorkspace(): Workspace {
@@ -422,7 +467,24 @@ export function foldInto(w: Workspace, entryID: string, activityIDs: string[], i
     return next;
 }
 
-export type EntryChange = { description?: string; hours?: number; taskCode?: string; activityCode?: string; billable?: boolean; hourlyRate?: number };
+/** A redrafted narrative for an entry (src/shared/drafter.ts): the parts and the text they make. */
+export function setNarrative(w: Workspace, id: string, parts: NarrativePart[], drafter: DrafterKind, now: number): TimeEntry {
+    const e = w.entries.find((x) => x.id === id);
+    if (!e) throw new WorkspaceError("That entry no longer exists.");
+    const text = parts.map((p) => p.text).join("").trim();
+    if (!text) throw new WorkspaceError("The drafter returned no narrative.");
+    const next: TimeEntry = { ...e, description: text.slice(0, DRAFT_MAX), parts, drafter };
+    delete next.partsEdited;
+    delete next.drafted;
+    saveEntry(w, next, now);
+    return next;
+}
+
+export type EntryChange = { description?: string; hours?: number; taskCode?: string; activityCode?: string; billable?: boolean; hourlyRate?: number;
+    /** The matter the entry goes to (a flagged entry the person assigns). */
+    projectID?: string | null;
+    /** The person confirms a suggested or flagged entry as it now stands. */
+    confirm?: boolean };
 
 /** Change a kept entry's description, billing details, billable flag or rate (a client rule's fix). Its times stay. */
 export function editEntry(w: Workspace, id: string, change: EntryChange, now: number): TimeEntry {
@@ -434,8 +496,20 @@ export function editEntry(w: Workspace, id: string, change: EntryChange, now: nu
     if (change.activityCode !== undefined && !change.activityCode.trim()) delete next.activityCode;
     if (change.description !== undefined) {
         next.description = change.description.trim();
-        if (next.description !== e.description) delete next.drafted;
+        if (next.description !== e.description) {
+            delete next.drafted;
+            // The person's own words: what they typed and the sources stay; the parts no longer describe it.
+            if (next.parts?.length) next.partsEdited = true;
+        }
     }
+    if (change.projectID !== undefined) {
+        if (change.projectID && !project(w, change.projectID)) throw new WorkspaceError("Choose an existing matter.");
+        next.projectID = change.projectID || null;
+    }
+    // A person's edit or confirmation settles a suggestion; a flagged entry settles once it has a matter and a narrative.
+    if (next.status === "suggested" && (change.confirm || next.description !== e.description)) delete next.status;
+    if (next.status === "flagged" && change.confirm && next.projectID && next.description.trim()) delete next.status;
+    if (!next.status) delete next.why;
     if (change.billable !== undefined) next.billable = change.billable === true;
     if (change.hourlyRate !== undefined) next.hourlyRate = change.hourlyRate;
     saveEntry(w, next, now);
@@ -831,11 +905,20 @@ export function normalizeSync(raw: unknown): SyncState | null {
 const DISPOSITIONS = new Set(["pending", "kept", "dismissed"]);
 const validIso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.parse(v));
 
+const narrativeValid = (e: TimeEntry): boolean =>
+    (e.raw == null || typeof e.raw === "string") && (e.why == null || typeof e.why === "string") &&
+    (e.status == null || ENTRY_STATUSES.has(e.status)) &&
+    (e.parts == null || (Array.isArray(e.parts) && e.parts.every((p) => p && typeof p.text === "string" && Array.isArray(p.evidence) && p.evidence.every((id) => typeof id === "string")))) &&
+    (e.sources == null || (Array.isArray(e.sources) && e.sources.every((x) => x && typeof x.id === "string" && typeof x.kind === "string" && typeof x.label === "string")));
+
 /** Throws on anything that would make the engine misbehave; a corrupt file is preserved, never repaired. */
 export function validate(w: Workspace): Workspace {
     const p = w.preferences;
     const ok =
         w.schemaVersion === SCHEMA_VERSION &&
+        w.entries.every(narrativeValid) &&
+        (w.evidence == null || (typeof w.evidence === "object" && !Array.isArray(w.evidence) && Object.entries(w.evidence).every(([k, v]) => !!v && typeof v === "object" && v.id === k && typeof v.kind === "string"))) &&
+        (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&
         p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) &&
         new Set(w.entries.map((e) => e.id)).size === w.entries.length &&
@@ -881,8 +964,10 @@ export function migrateV1(raw: Record<string, unknown>): Workspace {
 export function parseWorkspace(text: string): Workspace {
     const raw = JSON.parse(text) as Record<string, unknown>;
     if (raw.schemaVersion === 1) return validate(migrateV1(raw));
-    if (raw.schemaVersion !== SCHEMA_VERSION) throw new WorkspaceError("This workspace was created by a newer Time Capture version. Update Time Capture before opening it.");
+    if (!READS_VERSIONS.has(raw.schemaVersion)) throw new WorkspaceError("This workspace was created by a newer Time Capture version. Update Time Capture before opening it.");
     const w = raw as unknown as Workspace;
+    // Version 2 holds nothing version 3 reads differently: it is written back as 3.
+    w.schemaVersion = SCHEMA_VERSION;
     w.preferences = { ...defaultPreferences(), ...(w.preferences ?? {}) };
     w.sync = normalizeSync(w.sync);
     w.timer ??= null;

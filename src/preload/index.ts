@@ -47,6 +47,10 @@ export const api = {
     dismissMessage: (): Promise<void> => ipcRenderer.invoke("dismissMessage"),
     showDataFolder: (): Promise<void> => ipcRenderer.invoke("showDataFolder"),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke("openExternal", url),
+    /** Open a narrative's source by evidence id: its Outlook link, or its document on disk. Resolves to a problem, or null. */
+    openSource: (id: string): Promise<string | null> => ipcRenderer.invoke("openSource", id),
+    /** Draft an entry's narrative again with the drafter chosen in Settings. */
+    draftNarrative: (id: string): Promise<{ drafter: "rules" | "model"; message: string | null }> => ipcRenderer.invoke("draftNarrative", id),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),
     /** Whether on-screen text can be read here, and (macOS) whether Accessibility is allowed. */
     screenTextStatus: (): Promise<{ supported: boolean; trusted: boolean; error: string | null }> => ipcRenderer.invoke("screenTextStatus"),

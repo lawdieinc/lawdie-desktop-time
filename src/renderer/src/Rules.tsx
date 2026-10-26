@@ -109,20 +109,34 @@ export function EditSheet({ w, entry, onClose }: { w: Workspace; entry: TimeEntr
     const c = rulesContext(w, project);
     const [d, setD] = useState<EntryDraft>(draftOf(entry));
     const [problem, setProblem] = useState<string | null>(null);
+    // A flagged entry has no matter yet: the person picks one here.
+    const assign = entry.status === "flagged" || !entry.projectID;
+    const [projectID, setProjectID] = useState<string>(entry.projectID ?? "");
     const suggestion = suggestionFor(w, entry, c);
     const check: CheckContext = { ...c, sameDay: sameDayOf(w, entry.projectID, d.day, entry.id), suggestion };
     const save = async (): Promise<void> => {
         if (!d.description.trim()) { setProblem("Add a description."); return; }
+        if (entry.status === "flagged" && !projectID) { setProblem("Choose the matter for this time."); return; }
         // Hours are written only when the entry already bills hours or the person changed them, so a plain entry stays as it was.
         const sendHours = entry.hours !== undefined || d.hours !== draftOf(entry).hours;
-        const ok = await window.lawdie.editEntry(entry.id, { description: d.description, ...(sendHours ? { hours: d.hours } : {}), taskCode: d.taskCode ?? "", activityCode: d.activityCode ?? "", billable: d.billable, hourlyRate: d.hourlyRate });
+        const ok = await window.lawdie.editEntry(entry.id, { description: d.description, ...(sendHours ? { hours: d.hours } : {}), taskCode: d.taskCode ?? "", activityCode: d.activityCode ?? "", billable: d.billable, hourlyRate: d.hourlyRate,
+            ...(assign && projectID !== (entry.projectID ?? "") ? { projectID: projectID || null } : {}), ...(entry.status === "suggested" || entry.status === "flagged" ? { confirm: true } : {}) });
         if (ok) onClose(); else setProblem("That could not be saved.");
     };
     return (
         <div className="scrim" onClick={onClose}>
             <form className="sheet wide" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
                 <div className="heading"><p className="eyebrow">{project?.name ?? "No matter"}</p><h2 className="display">Edit entry</h2></div>
-                <label className="field"><span className="eyebrow">Narrative</span><input autoFocus value={d.description} title="Edit the narrative; the client's rules check it as you type." onChange={(e) => setD({ ...d, description: e.target.value })} /></label>
+                {entry.why && entry.status === "flagged" && <p className="small muted">{entry.why}</p>}
+                {assign && (
+                    <label className="field"><span className="eyebrow">Matter</span>
+                        <select value={projectID} title="The matter this time is billed to." onChange={(e) => setProjectID(e.target.value)}>
+                            <option value="">Choose a matter…</option>
+                            {w.projects.filter((x) => !x.archived).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                        </select>
+                    </label>
+                )}
+                <label className="field"><span className="eyebrow">Narrative</span><input autoFocus value={d.description} placeholder={entry.raw === "" ? "Nothing was typed. Say what the work was." : undefined} title="Edit the narrative; the client's rules check it as you type." onChange={(e) => setD({ ...d, description: e.target.value })} /></label>
                 <div className="row gap">
                     <label className="field"><span className="eyebrow">Hours</span><input type="number" step="0.05" min="0" value={d.hours} title="Billed hours for this entry." onChange={(e) => setD({ ...d, hours: Number(e.target.value) })} /></label>
                     <label className="field"><span className="eyebrow">Task code</span><input value={d.taskCode ?? ""} title="UTBMS task code, such as P500." onChange={(e) => setD({ ...d, taskCode: e.target.value.toUpperCase() })} /></label>

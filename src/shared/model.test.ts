@@ -4,7 +4,7 @@ import {
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
-import { SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { SCHEMA_VERSION, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
 // The Swift app's 20 core checks, carried over as the contract this engine keeps.
@@ -590,7 +590,7 @@ describe("files", () => {
             preferences: { captureEnabled: true, captureTitles: false, idleMinutes: 3, retentionDays: 14, excludedBundleIDs: ["com.apple.Passwords"] },
         };
         const w = parseWorkspace(JSON.stringify(swift));
-        expect(w.schemaVersion).toBe(2);
+        expect(w.schemaVersion).toBe(SCHEMA_VERSION);
         expect(w.activities[0]).toMatchObject({ ownerID: "com.todesktop.230313mzl4w4u92", startedAt: "2026-09-30T20:26:40.000Z", endedAt: "2026-09-30T21:26:40.000Z", disposition: "kept" });
         expect(w.entries[0]).toMatchObject({ projectID: "P1", startedAt: "2026-09-30T20:26:40.000Z", billable: true });
         expect(w.preferences).toMatchObject({ captureEnabled: true, excludedOwnerIDs: ["com.apple.Passwords"] });
