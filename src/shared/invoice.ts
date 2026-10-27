@@ -183,6 +183,7 @@ export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly Clie
             // One line, each task's time written in after it: "Research ... (0.7); review ... (0.9)."
             const lineEffects = [...effects];
             const segs: Segment[] = [];
+            // A later task reads on after the semicolon as the seed wrote it ("; review and revise ..."): a name stays a name.
             tasks!.forEach((t, n) => {
                 const text = t.text.trim().replace(/[.;]+$/, "");
                 segs.push({ text: n === 0 ? `${text[0].toUpperCase()}${text.slice(1)}` : `; ${text}` });
@@ -211,8 +212,11 @@ export function totals(lines: readonly FeeLine[]): { hours: number; billedHours:
 
 /** What one rule does to today's entries on its own: each entry it touches, the lines before and after, and its effects. */
 export function ruleEffects(w: Workspace, terms: InvoiceTerms, rule: ClientRule, book?: ClientRulebook | null): { entryID: string; before: FeeLine[]; after: FeeLine[]; effects: LineEffect[] }[] {
-    const before = feeLines(w, terms, [], { book });
-    const after = feeLines(w, terms, [{ ...rule, enabled: true }], { book });
+    // The entries as the bill shapes them under the client's other rules that are on (split into tasks, or each task's
+    // time written in), so a rule's change shows on the lines the bill prints: a code in front of each split task.
+    const shape = (book?.rules ?? []).filter((r) => r.enabled && r.id !== rule.id && (r.kind === "split" || r.kind === "blockWithTimes"));
+    const before = feeLines(w, terms, shape, { book });
+    const after = feeLines(w, terms, [...shape, { ...rule, enabled: true }], { book });
     const ids = [...new Set(before.map((l) => l.entryID))];
     return ids.map((id) => {
         const a = after.filter((l) => l.entryID === id);

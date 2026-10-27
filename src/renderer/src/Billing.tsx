@@ -95,7 +95,9 @@ export function EntryChanges({ lines, book, w, onRules }: { lines: AppliedLine[]
     const all = changesOf(lines);
     if (!all.length) return null;
     const split = lines.length > 1 ? all.find((c) => c.kind === "split") : undefined;
-    const items = all.filter((c) => c.kind !== "split");
+    // A split entry's codes belong to its lines, each in front of its own task below; the entry shows no code chip.
+    const code = book.rules.find((r) => r.kind === "codePrefix")?.id;
+    const items = all.filter((c) => c.kind !== "split" && !(split && c.ruleId === code));
     return (
         <div className="entry-changes">
             {items.length > 0 && (

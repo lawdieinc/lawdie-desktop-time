@@ -148,6 +148,8 @@ export type ImportedRow = {
     linked?: boolean;
     /** Where the row came from: an imported export, or typed into this app with Add entry. */
     origin?: "import" | "manual";
+    /** For an imported row, the file it came from: the iTimeKeep CSV export, or a spreadsheet (.xlsx). */
+    source?: "itimekeep" | "excel" | null;
     /** The matter the row was typed for, when it was picked from this app's matters (Add entry). */
     projectID?: string | null;
     /** When this row found no entry of its own because another typed row already holds that work: that row's id. */

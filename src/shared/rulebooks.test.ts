@@ -35,7 +35,7 @@ describe("billing the seeded day under each client's rules", () => {
         expect(states.lines.map((l) => l.hours)).toEqual([0.7, 0.9]);
         expect(states.effects).toContainEqual({ rule: "NBH-1", what: "split", before: "1.6 h", after: "0.7 h + 0.9 h" });
         expect(states.lines[0].description).toMatch(/^C200 Research telehealth licensure .* Florida\.$/);
-        expect(states.lines[1].description).toMatch(/^C200 Review and revise six-state licensure/);
+        expect(states.lines[1].description).toMatch(/^C300 Review and revise six-state licensure/);
     });
 
     it("Kestrel Valley: partner cap, activity code first, the call cut to 0.5, the conference kept for the senior attendee, each task's time written in", () => {

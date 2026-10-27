@@ -43,7 +43,7 @@ export function ImportedPanel({ w }: { w: Workspace }): ReactNode {
     return (
         <section className="panel">
             <div className="row between">
-                <span className="row gap"><strong>Entered in iTimeKeep</strong><span className="muted small">{rows.length} {rows.length === 1 ? "entry" : "entries"}{open.length ? ` · ${open.length} as typed` : ""}{rows.length - open.length ? ` · ${matched} matched to captured work` : ""}</span></span>
+                <span className="row gap"><strong>Entered in {[...new Set(rows.map(sourceName))].join(" and ")}</strong><span className="muted small">{rows.length} {rows.length === 1 ? "entry" : "entries"}{open.length ? ` · ${open.length} as typed` : ""}{rows.length - open.length ? ` · ${matched} matched to captured work` : ""}</span></span>
                 <span className="row gap">
                     {!batch && rows.some((r) => r.linked) && <button type="button" className="link-btn" title="Show Lawdie linking each expanded entry to its sources again." onClick={() => setBatch(rows.filter((r) => r.linked).map((r) => r.id))}>Replay</button>}
                     <button type="button" className="quiet slim" title="Remove the imported entries from this list and undo what they changed. Time Capture's own entries stay." onClick={() => void window.lawdie.clearImport()}>Clear import</button>
@@ -79,6 +79,9 @@ export function TypedEntries({ w, rows }: { w: Workspace; rows: ImportedRow[] })
         </div>
     );
 }
+
+/** Where an imported row was typed: "iTimeKeep" for the CSV export, "Excel" for a spreadsheet. */
+const sourceName = (row: ImportedRow): string => (row.source === "excel" ? "Excel" : "iTimeKeep");
 
 /** Add entry: a date, the hours, the matter and a short note, on the page above the list. */
 export function AddEntryForm({ w, day, onClose }: { w: Workspace; day: string; onClose: () => void }): ReactNode {
@@ -176,7 +179,7 @@ function NoteEditForm({ row, origin, onDone }: { row: ImportedRow; origin: "impo
     };
     return (
         <form className="typed-edit" onSubmit={(e) => { e.preventDefault(); void save(); }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onDone(); } }}>
-            <span className="import-label">{origin === "import" ? "Entered in iTimeKeep" : "Typed here"}</span>
+            <span className="import-label">{origin === "import" ? `Entered in ${sourceName(row)}` : "Typed here"}</span>
             <input className="hours" value={hours} title="Hours: .9, 0.9, 54m or 1.5h." onChange={(e) => setHours(e.target.value)} />
             <input autoFocus className="note" value={note} title="The note. Name the person or the document so Lawdie can find the work." onChange={(e) => setNote(e.target.value)} />
             <button type="submit" className="primary slim" title="Save the note. Expand it again to see the narrative.">Save</button>
@@ -191,7 +194,7 @@ function Expanded({ w, row, origin, onEditNote }: { w: Workspace; row: ImportedR
     const entry = entryOf(w, row);
     const [draft, setDraft] = useState<string | null>(null);
     const decide = (d: "use" | "keep" | null): void => void window.lawdie.importDecision(row.id, d);
-    const label = origin === "import" ? "Entered in iTimeKeep" : "Typed here";
+    const label = origin === "import" ? `Entered in ${sourceName(row)}` : "Typed here";
     const thing = origin === "import" ? "entry" : "note";
     // A note added here and accepted is part of the day: one line, and the entry itself is in the list below.
     if (origin === "manual" && row.decision && entry) {

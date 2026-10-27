@@ -236,7 +236,7 @@ app.whenReady().then(() => {
             // A new import replaces the last one (its decisions undone); entries added on the Time page stay.
             const ok = store.change((w) => {
                 clearImports(w);
-                w.imported = [...(w.imported ?? []), ...rows.map((r, n) => ({ ...r, id: `import-${stamp}-${n}`, entryID: null, decision: null, linked: false, origin: "import" as const }))];
+                w.imported = [...(w.imported ?? []), ...rows.map((r, n) => ({ ...r, id: `import-${stamp}-${n}`, entryID: null, decision: null, linked: false, origin: "import" as const, source: /\.xlsx$/i.test(file) ? "excel" as const : "itimekeep" as const }))];
             });
             if (ok) store.say(`Imported ${rows.length} ${rows.length === 1 ? "entry" : "entries"} from ${basename(file)}.`);
             return ok;

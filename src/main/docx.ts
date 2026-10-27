@@ -90,16 +90,21 @@ export async function timeSheetDocx(w: Workspace, terms: InvoiceTerms, logo: Buf
                 ? [...added, text(first), del(s.narrative.slice(first.length)), ins(".")]
                 : [...added, del(s.narrative), ins(`${first}.`)];
         }
-        const textRules = [...rulesOf(cs, "text"), ...(split ? rulesOf(cs, "split") : [])];
+        // A split entry's code changes belong to its lines: this row says the first task's, each inserted row its own.
+        const own = split ? a.changes : cs;
+        const textRules = [...rulesOf(own, "text"), ...(split ? rulesOf(cs, "split") : [])];
         const said = [
-            ...cs.filter((c) => c.kind === "text" && c.text).map((c) => `${c.text}.`),
+            ...own.filter((c) => c.kind === "text" && c.text).map((c) => `${c.text}.`),
             ...(split ? [`Split into ${lines.length} lines, one per task: ${lines.map((l) => `${l.hours.toFixed(1)} h “${l.narrative}”`).join(" and ")}`] : []),
         ].join(" ");
         const descCell = textRules.length ? commented(comment(textRules, said), descRuns) : descRuns;
         rows.push(new TableRow({ cantSplit: true, children: [cell([text(a.date)], 0), cell([text(a.timekeeper)], 1), cell(hoursCell, 2, true), cell(rateCell, 3, true), cell(amountCell, 4, true), cell(descCell, 5)] }));
         for (const p of lines.slice(1)) {
+            const pSaid = [...p.changes.filter((c) => c.kind === "text" && c.text).map((c) => `${c.text}.`),
+                `Task ${(p.part ?? 0) + 1} of ${lines.length} from the split entry, with its own captured time: ${p.hours.toFixed(1)} h.`].join(" ");
+            const pDesc = commented(comment([...rulesOf(p.changes, "text"), ...rulesOf(p.changes, "split")], pSaid), p.segments.map((g) => ins(g.text)));
             rows.push(new TableRow({ cantSplit: true, insertion: { id: rev++, author: AUTHOR, date },
-                children: [cell([ins(p.date)], 0), cell([ins(p.timekeeper)], 1), cell([ins(p.hours.toFixed(1))], 2, true), cell([ins(money(p.rate).slice(1))], 3, true), cell([ins(amountOf(p))], 4, true), cell(p.segments.map((g) => ins(g.text)), 5)] }));
+                children: [cell([ins(p.date)], 0), cell([ins(p.timekeeper)], 1), cell([ins(p.hours.toFixed(1))], 2, true), cell([ins(money(p.rate).slice(1))], 3, true), cell([ins(amountOf(p))], 4, true), cell(pDesc, 5)] }));
         }
     }
     const rule = { style: BorderStyle.SINGLE, size: 4, color: GREY };

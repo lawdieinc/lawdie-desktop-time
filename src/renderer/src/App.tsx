@@ -154,8 +154,10 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
     const { start, end, label } = rangeBounds(range, now, from, to);
     const entries = w.entries.filter((e) => Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
     const tracked = entries.reduce((s, e) => s + secondsWithin(e, start, end), 0);
-    const billable = entries.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0);
+    // Billable time is what goes on the bill: kept entries, not a suggestion or a flag still waiting for Rosa.
+    const billable = entries.filter((e) => e.billable && (!e.status || e.status === "draft")).reduce((s, e) => s + secondsWithin(e, start, end), 0);
     const pending = toReview(w.activities);
+    const waiting = entries.filter((e) => e.status === "suggested" || e.status === "flagged").length;
     // Grouped by day, newest first; a day's figure is only what fell inside the range.
     const days = new Map<string, TimeEntry[]>();
     for (const e of entries) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
@@ -204,8 +206,8 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
             {pdfProblem && <p className="danger small">{pdfProblem}</p>}
             <div className="metrics">
                 <Metric label={range === "today" ? "Tracked today" : "Tracked"} value={duration(tracked)} detail={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`} />
-                <Metric label="Billable time" value={duration(billable)} detail={tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "No time kept yet"} />
-                <Metric label="To review" value={String(pending)} detail="Matters and stretches of desktop work" />
+                <Metric label="Billable time" value={duration(billable)} detail={`${tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "No time kept yet"}${range === "today" && w.invoice && dayBill.lines.length ? ` · ${dayBill.totals.billedHours.toFixed(1)} h billed` : ""}`} />
+                <Metric label="To review" value={String(pending + waiting)} detail={waiting ? `${waiting} ${waiting === 1 ? "entry" : "entries"} to confirm${pending ? `, ${pending} from desktop work` : ""}` : "Matters and stretches of desktop work"} />
             </div>
             {projects.length > 1 && (
                 <Panel>

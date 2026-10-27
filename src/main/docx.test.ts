@@ -40,7 +40,28 @@ describe("one applied bill behind every view", () => {
         const html = invoiceHtml(w, terms, null, new Date(`${day}T12:00:00`), applyRules(w, day, "northlake"));
         expect(html).toContain("<strong>Remittance</strong><br />Check: Lockbox 1<br />Wire: Bank 2<br />ACH: Bank 3</div>");
         expect(html).toContain("<br />Questions: billing desk</p>");
-        expect(invoiceHtml(w, w.invoice!, null, new Date(`${day}T12:00:00`), applyRules(w, day, "northlake"))).toContain("[lockbox address]");
+        const bare = invoiceHtml(w, { ...w.invoice!, remit: null, contact: null }, null, new Date(`${day}T12:00:00`), applyRules(w, day, "northlake"));
+        expect(bare).toContain("<strong>Remittance</strong><br />Please reference invoice 712418 with your payment.<br />Check: [lockbox address]");
+    });
+
+    it("bills each split task under its own code: the Northlake invoice lines in order", () => {
+        const rows = invoiceRows(applyRules(manattDay(), day, "northlake"));
+        expect(rows.map((r) => [r.narrative.split(" ").slice(0, 3).join(" "), r.hours, r.noCharge])).toEqual([
+            ["C300 Teams conference", 0.6, false],
+            ["C300 Review and", 1.7, false],
+            ["C300 Conference with", 0.3, true],
+            ["C200 Research telehealth", 0.7, false],
+            ["C300 Review and", 0.9, false],
+            ["C300 Review Northlake", 0.5, false],
+        ]);
+        expect(rows[4].narrative).toMatch(/^C300 Review and revise six-state licensure and prescribing matrix/);
+        expect(rows[5].narrative).toMatch(/^C300 Review Northlake 42 CFR Part 2/);
+    });
+
+    it("keeps the block-billed entry on one Kestrel line under its own activity code, A102", () => {
+        const rows = invoiceRows(applyRules(manattDay(), day, "kestrel")).filter((r) => /Research telehealth/.test(r.narrative));
+        expect(rows).toHaveLength(1);
+        expect(rows[0].narrative).toBe("A102 Research telehealth licensure and prescribing rules for New York, California, Texas and Florida (0.7); review and revise six-state licensure and prescribing matrix for the MAT program (0.9).");
     });
 
     it("the invoice shows the total due on page 1, beside the invoice number", () => {
@@ -75,8 +96,15 @@ describe("the DOCX time sheet under Northlake's rules", async () => {
     });
 
     it("says the split in a readable sentence", () => {
-        expect(comments).toMatch(/Split into 2 lines, one per task: 0\.7 h “C200 Research telehealth licensure [^”]+Florida\.” and 0\.9 h “C200 Review and revise six-state licensure[^”]+\.”/);
+        expect(comments).toMatch(/Split into 2 lines, one per task: 0\.7 h “C200 Research telehealth licensure [^”]+Florida\.” and 0\.9 h “C300 Review and revise six-state licensure[^”]+\.”/);
         expect(comments).not.toMatch(/Florida\. and/);
+    });
+
+    it("comments on each split row with that task's own code: C200 on the research row, C300 on the matrix row", () => {
+        const lines = comments.split("\n");
+        expect(lines.find((l) => l.includes("Split into 2 lines"))).toMatch(/^NBH-11 Northlake OCG §4\.4; NBH-1 Northlake OCG §4\.2: C200 added in front\. Split into/);
+        expect(lines).toContain("NBH-11 Northlake OCG §4.4; NBH-1 Northlake OCG §4.2: C300 added in front. Task 2 of 2 from the split entry, with its own captured time: 0.9 h.");
+        expect(comments).not.toMatch(/C200 added in front\. C300 added in front/);
     });
 });
 
