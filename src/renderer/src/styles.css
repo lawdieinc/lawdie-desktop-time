@@ -15,7 +15,7 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { font: 13px/1.45 var(--body); color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased; user-select: none; }
+body { font: 13px/1.45 var(--body); color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased; user-select: none; font-variant-numeric: lining-nums; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 p { margin: 0; }

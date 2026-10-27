@@ -13,7 +13,7 @@ import { ClientRulesView } from "./ClientRules";
 import { Menu } from "./Menu";
 import { ApplyRulesMenu, BillingMenu, EntryChanges, TotalsLine, inlineNarrative } from "./Billing";
 import { applyRules, linesByEntry, type AppliedBill, type AppliedLine } from "@shared/applyRules";
-import { shortName } from "@shared/invoice";
+import { money as dollars, shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
 import kiwiMark from "../../../resources/brand/kiwi.png";
@@ -671,16 +671,19 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
 
 const money = (n: number): string => n.toLocaleString([], { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 type MatterStats = { tracked: number; billable: number; value: number; entries: TimeEntry[] };
-/** What a matter's kept time came to inside [start, end): every entry at the rate it was saved with. */
-function statsFor(w: Workspace, projectID: string | null, start: number, end: number): MatterStats {
+/** An entry that goes on the bill: kept as billable, not a suggestion, a flag or a dismissal still waiting for Rosa. */
+const onBill = (e: TimeEntry): boolean => e.billable && (!e.status || e.status === "draft");
+/** What a matter's kept time came to inside [start, end): all its time, the time that goes on the bill, and that
+ *  time's value as the bill prices it at standard rates (`amounts`, from applyRules), so it agrees with the Time page. */
+function statsFor(w: Workspace, projectID: string | null, start: number, end: number, amounts: ReadonlyMap<string, number>): MatterStats {
     const entries = w.entries.filter((e) => e.projectID === projectID && Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
     let tracked = 0, billable = 0, value = 0;
     for (const e of entries) {
         const secs = secondsWithin(e, start, end);
         tracked += secs;
-        if (e.billable) { billable += secs; value += (secs / 3600) * e.hourlyRate; }
+        if (onBill(e)) { billable += secs; value += amounts.get(e.id) ?? 0; }
     }
-    return { tracked, billable, value, entries };
+    return { tracked, billable, value: Math.round(value * 100) / 100, entries };
 }
 const MATTER_RANGES = RANGES.filter((r) => r.key !== "custom");
 
@@ -691,10 +694,16 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
     const { start, end, label } = rangeBounds(range, now, "", "");
     const { groups } = useMemo(() => inboxOf(w.activities), [w.activities]);
     const waiting = (name: string): MatterGroup[] => groups.filter((g) => g.matter.toLowerCase() === name.trim().toLowerCase());
-    const rows = w.projects.map((p) => ({ p, stats: statsFor(w, p.id, start, end), waiting: waiting(p.name) }));
+    // Every settled entry's amount on the bill at standard rates: what the Time page's Generic total adds up.
+    const amounts = useMemo(() => {
+        const m = new Map<string, number>();
+        for (const l of applyRules(w, null, "generic").lines) m.set(l.entryId, (m.get(l.entryId) ?? 0) + l.amount);
+        return m;
+    }, [w]);
+    const rows = w.projects.map((p) => ({ p, stats: statsFor(w, p.id, start, end, amounts), waiting: waiting(p.name) }));
     const open = rows.filter((r) => !r.p.archived).sort((a, b) => b.stats.tracked - a.stats.tracked || a.p.name.localeCompare(b.p.name));
     const archived = rows.filter((r) => r.p.archived).sort((a, b) => a.p.name.localeCompare(b.p.name));
-    const none = statsFor(w, null, start, end);
+    const none = statsFor(w, null, start, end, amounts);
     const total = open.reduce((n, r) => n + r.stats.value, 0);
     const billable = open.reduce((n, r) => n + r.stats.billable, 0);
     const chosen = selected === "none" ? null : w.projects.find((p) => p.id === selected);
@@ -704,7 +713,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
         </div>
     );
     if (selected && (chosen || selected === "none")) {
-        return <MatterDetail key={selected} w={w} project={chosen ?? null} stats={chosen ? statsFor(w, chosen.id, start, end) : none} waiting={chosen ? waiting(chosen.name) : []} label={label} rangeTabs={rangeTabs} now={now} onBack={() => setSelected(null)} onReview={onReview} />;
+        return <MatterDetail key={selected} w={w} project={chosen ?? null} stats={chosen ? statsFor(w, chosen.id, start, end, amounts) : none} waiting={chosen ? waiting(chosen.name) : []} label={label} rangeTabs={rangeTabs} now={now} onBack={() => setSelected(null)} onReview={onReview} />;
     }
     const row = ({ p, stats, waiting: list }: (typeof rows)[number]) => (
         <button type="button" key={p.id} className={"matter-row" + (p.archived ? " archived" : "")} title="Open this matter's time, rate and settings." onClick={() => setSelected(p.id)}>
@@ -715,7 +724,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
             </span>
             <span className="mono small">{duration(stats.tracked)}</span>
             <span className="mono small">{duration(stats.billable)}</span>
-            <span className="mono small">{money(stats.value)}</span>
+            <span className="mono small">{dollars(stats.value)}</span>
             <span className="tiny">{list.length ? <span className="waiting">{list.length} to review</span> : null}</span>
         </button>
     );
@@ -724,7 +733,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
             <Heading eyebrow={label} title="Matters" />
             <div className="row between wrap">{rangeTabs}</div>
             <div className="metrics">
-                <Metric label="Billable value" value={money(total)} detail={`${duration(billable)} billable across ${open.filter((r) => r.stats.tracked > 0).length} matters`} />
+                <Metric label="Billable value" value={dollars(total)} detail={((n) => `${duration(billable)} billable across ${n} ${n === 1 ? "matter" : "matters"}`)(open.filter((r) => r.stats.tracked > 0).length)} />
                 <Metric label="Open matters" value={String(open.length)} detail={archived.length ? `${archived.length} archived` : "Made when you keep time on a matter"} />
                 <Metric label="No matter" value={duration(none.tracked)} detail={none.entries.length ? `${none.entries.length} ${none.entries.length === 1 ? "entry" : "entries"} kept without one` : "Everything kept is on a matter"} />
             </div>
@@ -738,7 +747,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
                         <span className="matter-name"><span className="small strong muted">No matter</span><span className="muted tiny">Kept without a matter</span></span>
                         <span className="mono small">{duration(none.tracked)}</span>
                         <span className="mono small">{duration(none.billable)}</span>
-                        <span className="mono small">{money(none.value)}</span>
+                        <span className="mono small">{dollars(none.value)}</span>
                         <span />
                     </button>
                 )}
@@ -767,7 +776,7 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
             <div className="metrics">
                 <Metric label="Tracked" value={duration(stats.tracked)} detail={`${stats.entries.length} ${stats.entries.length === 1 ? "entry" : "entries"}`} />
                 <Metric label="Billable" value={duration(stats.billable)} detail={stats.tracked ? `${Math.round((stats.billable / stats.tracked) * 100)}% of tracked` : "Nothing kept in this range"} />
-                <Metric label="Value" value={money(stats.value)} detail="At the rate each entry was kept at" />
+                <Metric label="Value" value={dollars(stats.value)} detail="At the rate each entry was kept at" />
             </div>
             {p?.insight && (
                 <Panel>

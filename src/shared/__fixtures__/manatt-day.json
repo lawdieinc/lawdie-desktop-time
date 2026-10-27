@@ -207,7 +207,7 @@
    ],
    "reasons": [
     "Rosa spent 52 minutes on HVHP v3 in Kiwi and made the issues list there. She then spent 48 minutes on the redline in Word.",
-    "Both stretches work on the same agreement, so Lawdie makes them one task: review and revise.",
+    "Rosa worked on the same agreement in both stretches, so Lawdie makes them one task, review and revise.",
     "The redline changes the four items that the narrative names."
    ],
    "status": "draft",
@@ -305,7 +305,7 @@
     }
    ],
    "reasons": [
-    "Rosa's invite set up the Teams call with T. Navarro from 12:30 to 12:48.",
+    "Teams was in a call with T. Navarro from 12:30 to 12:48. Rosa's invite set it up.",
     "The transcript and Theo's email cover the matrix columns and who takes which states."
    ],
    "status": "draft",
@@ -409,7 +409,7 @@
    ],
    "reasons": [
     "Rosa researched NY OMH, Medi-Cal, Texas and Florida licensure in Chrome for 41 minutes. She then worked on the matrix in Excel for 54 minutes.",
-    "The entry holds two tasks, so the pre-bill splits it from this record: 0.7 research and 0.9 matrix.",
+    "The entry holds two tasks, research (0.7) and the matrix (0.9). A client rule that wants one task per line splits it at these times.",
     "Priya asked for all six states on the kickoff call and in her first email."
    ],
    "status": "draft",
@@ -499,7 +499,7 @@
     {
      "id": "mail-summary",
      "kind": "email",
-     "label": "Email: RE: Medicaid plan contract + telehealth expansion (61407-002)"
+     "label": "Email: RE: Medicaid plan contract + telehealth expansion: need counsel by Nov 20"
     }
    ],
    "work": [
@@ -659,7 +659,7 @@
    "document": {
     "name": "Northlake telehealth licensure matrix 61407-002.xlsx",
     "path": "~/Documents/Manatt/Northlake 61407-002",
-    "excerpt": "Sheet: Six states. State | Licensure | Interstate compact | Controlled substance prescribing | Part 2 notes"
+    "excerpt": "Sheet: Six states. State | Licensure | Interstate compact | Controlled substance prescribing (DEA) | State CS rules | Part 2 notes | Owner | Due"
    },
    "startedAt": "2026-10-26T17:52:00.000Z",
    "endedAt": "2026-10-26T18:46:00.000Z",
@@ -728,7 +728,7 @@
     "Part 2 consent and BAA review",
     "guidelines attached"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFitAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi1AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-intake.png"
   },
   "mail-engagement": {
@@ -757,7 +757,7 @@
     "guidelines apply",
     "monthly invoices"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFiuAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi2AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-engagement.png"
   },
   "mail-kestrel-ocg": {
@@ -781,7 +781,7 @@
     "0.5 hour calls",
     "activity code first"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFivAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi3AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-kestrel-ocg.png"
   },
   "mail-agenda": {
@@ -804,7 +804,7 @@
     "termination without cause",
     "NY and NJ first"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFiwAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi4AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-agenda.png"
   },
   "mail-hvhp": {
@@ -835,7 +835,7 @@
     "v3 from HVHP",
     "signature by 11/20"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFixAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi5AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-hvhp.png"
   },
   "mail-theo": {
@@ -850,14 +850,14 @@
    "subject": "matrix (61407-002)",
    "body": "Rosa,\n\nFirst pass at the Northlake matrix is attached. Columns are what we said on the call:\n- licensure\n- interstate compact\n- DEA\n- state controlled substance rules\n- Part 2 notes\n\nAll six states have a first pass. I'd start with NY and NJ since they go first.\n\nOne flag on NY: the MAT side needs OASAS certification, not just the OMH telehealth approval. I put it in the NY row.\n\nTheo",
    "attach": [
-    "matrix"
+    "matrix-v1"
    ],
    "facts": [
     "matrix columns",
     "all six states",
     "OASAS for MAT in NY"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFiyAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi6AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-theo.png"
   },
   "mail-summary": {
@@ -872,7 +872,7 @@
    "cc": [
     "Marcus Bell"
    ],
-   "subject": "RE: Medicaid plan contract + telehealth expansion (61407-002)",
+   "subject": "RE: Medicaid plan contract + telehealth expansion: need counsel by Nov 20",
    "body": "Priya,\n\nWhere we are after today:\n\nHVHP agreement. Redline is attached. Main asks: rates in Exhibit B up to your Riverbend numbers, credentialing in 60 days with provisional status after that, and no termination without cause in year one. The 42 CFR 438 terms they left out are in now too. Once you're fine with it I'll send it to Janet.\n\nStates. Theo's matrix covers all six. NY and NJ go first, then CA, IL, TX and FL. Prescribing for the MAT program is in the same chart.\n\nPart 2 consent and BAA. Comments on both coming early next week. The consent form is still on the old language and the 2024 rule is in force now, so it needs updating.\n\nTalk soon,\nRosa",
    "quote_of": "mail-intake",
    "attach": [
@@ -884,7 +884,7 @@
     "states timeline",
     "Part 2 next week"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEJAAD5LraLlFCyRYOJpX_f5YpZAAAePU8XAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEJAAD5LraLlFCyRYOJpX_f5YpZAAAePU8ZAAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-summary.png"
   },
   "mail-invite-kickoff": {
@@ -906,14 +906,14 @@
     "Teams invite",
     "Priya, Marcus, Rosa"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFizAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi7AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-invite-kickoff.png"
   },
   "mail-invite-theo": {
    "id": "mail-invite-theo",
    "kind": "email",
    "folder": "sentitems",
-   "when": "2026-10-26T11:02:00",
+   "when": "2026-10-26T10:52:00",
    "from": "Rosa Delacroix",
    "to": [
     "Theo Navarro"
@@ -925,7 +925,7 @@
     "Teams invite",
     "Rosa, Theo"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEJAAD5LraLlFCyRYOJpX_f5YpZAAAePU8YAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEJAAD5LraLlFCyRYOJpX_f5YpZAAAePU8aAAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-invite-theo.png"
   },
   "mail-theo-reply": {
@@ -946,12 +946,15 @@
     "subject": "RE: matrix (61407-002)",
     "text": "Looks good. Pull NJ CDS out as its own step, it's not the same as DEA.\n\nR"
    },
+   "attach": [
+    "matrix"
+   ],
    "facts": [
     "DEA and state CS split",
-    "NJ CDS row",
+    "NJ CDS in the state CS column",
     "question on DEA registrations"
    ],
-   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi0AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi8AAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-theo-reply.png"
   },
   "mtg-kickoff": {
@@ -959,7 +962,7 @@
    "kind": "meeting",
    "teams": true,
    "start": "2026-10-26T09:15:00",
-   "end": "2026-10-26T09:51:00",
+   "end": "2026-10-26T10:00:00",
    "subject": "Northlake / Manatt kickoff (61407-002)",
    "organizer": "Priya Raman",
    "attendees": [
@@ -982,12 +985,9 @@
     "Theo on matrix, incl. MAT CS rules",
     "summary to Priya EOD"
    ],
-   "attach": [
-    "hvhp-v3"
-   ],
    "importance": "high",
    "transcript": "tx-kickoff",
-   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMPAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMSAAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mtg-kickoff.png"
   },
   "mtg-theo": {
@@ -995,7 +995,7 @@
    "kind": "meeting",
    "teams": true,
    "start": "2026-10-26T12:30:00",
-   "end": "2026-10-26T12:48:00",
+   "end": "2026-10-26T12:45:00",
    "subject": "Rosa / Theo: Northlake licensure matrix (61407-002)",
    "organizer": "Rosa Delacroix",
    "attendees": [
@@ -1004,7 +1004,7 @@
    ],
    "body": "Quick one on the six-state matrix before Theo starts.",
    "agenda": [
-    "Columns: licensure, compact, DEA, state CS rules, Part 2",
+    "Columns: licensure, compact, prescribing, Part 2",
     "Who takes which states",
     "MAT prescribing"
    ],
@@ -1012,11 +1012,8 @@
     "split DEA / state CS",
     "NY + NJ first, then CA IL TX FL"
    ],
-   "attach": [
-    "matrix"
-   ],
    "transcript": "tx-theo",
-   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMQAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMTAAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mtg-theo.png"
   },
   "cal-call": {
@@ -1032,13 +1029,13 @@
     "Priya Raman"
    ],
    "location": "Phone: Priya cell (312) 555-0143",
-   "body": "Priya wants to talk California timing before the December board deck.",
+   "body": "Priya wants to talk California timing before the December board deck. 4:10 to 4:25 PM on her cell, (312) 555-0143.",
    "notes": [
     "CA in phase 2? check Medi-Cal telehealth policy",
     "she'll confirm board date"
    ],
    "transcript": null,
-   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMRAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMUAAA%3D?login_hint=r.delacroix%40lawdie.ai",
    "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/cal-call.png"
   },
   "tx-kickoff": {
@@ -1097,7 +1094,7 @@
      "text": "Great. Send me where we are end of day?"
     }
    ],
-   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMPAAA%3D?login_hint=r.delacroix%40lawdie.ai"
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMSAAA%3D?login_hint=r.delacroix%40lawdie.ai"
   },
   "tx-theo": {
    "id": "tx-theo",
@@ -1125,7 +1122,7 @@
      "text": "OK. NY and NJ first."
     }
    ],
-   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMQAAA%3D?login_hint=r.delacroix%40lawdie.ai"
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMTAAA%3D?login_hint=r.delacroix%40lawdie.ai"
   },
   "hvhp-v3": {
    "id": "hvhp-v3",
@@ -1237,8 +1234,8 @@
   "firm": {
    "name": "Manatt, Phelps & Phillips, LLP",
    "address": [
-    "2049 Century Park East, Suite 1700",
-    "Los Angeles, CA 90067"
+    "7 Times Square",
+    "New York, NY 10036"
    ]
   },
   "billTo": [
@@ -1307,7 +1304,7 @@
     },
     {
      "id": "NBH-10",
-     "section": "§3.4",
+     "section": "§3.2",
      "title": "Approved timekeepers only",
      "kind": "check",
      "check": "timekeepers",
@@ -1321,7 +1318,7 @@
      "sources": [
       {
        "doc": "ocg-northlake",
-       "section": "§3.4",
+       "section": "§3.2",
        "email": "mail-intake",
        "page": 1
       },
@@ -1375,6 +1372,9 @@
      "check": "vague",
      "quote": "Entries such as \"review file\", \"attention to matter\", \"call\" or \"email\" without the subject and the other party are not paid.",
      "does": "Checks that each narrative names the task, the people and the subject. A bare note such as \"phone call with client\" fails.",
+     "examples": [
+      "phone call with client"
+     ],
      "enabled": true,
      "sources": [
       {
@@ -1466,7 +1466,7 @@
     },
     {
      "id": "NBH-8",
-     "section": "§6.4",
+     "section": "§6.2",
      "title": "No clerical time",
      "kind": "check",
      "check": "clerical",
@@ -1489,7 +1489,7 @@
      "sources": [
       {
        "doc": "ocg-northlake",
-       "section": "§6.4",
+       "section": "§6.2",
        "email": "mail-intake",
        "page": 1
       }
@@ -1497,7 +1497,7 @@
     },
     {
      "id": "NBH-9",
-     "section": "§7.2",
+     "section": "§7.1",
      "title": "Travel at 50%",
      "kind": "check",
      "check": "travel",
@@ -1510,7 +1510,7 @@
      "sources": [
       {
        "doc": "ocg-northlake",
-       "section": "§7.2",
+       "section": "§7.1",
        "email": "mail-intake",
        "page": 2
       }
@@ -1707,7 +1707,7 @@
    },
    {
     "id": "NBH-10",
-    "section": "§3.4",
+    "section": "§3.2",
     "title": "Approved timekeepers only",
     "kind": "check",
     "check": "timekeepers",
@@ -1721,7 +1721,7 @@
     "sources": [
      {
       "doc": "ocg-northlake",
-      "section": "§3.4",
+      "section": "§3.2",
       "email": "mail-intake",
       "page": 1
      },
@@ -1775,6 +1775,9 @@
     "check": "vague",
     "quote": "Entries such as \"review file\", \"attention to matter\", \"call\" or \"email\" without the subject and the other party are not paid.",
     "does": "Checks that each narrative names the task, the people and the subject. A bare note such as \"phone call with client\" fails.",
+    "examples": [
+     "phone call with client"
+    ],
     "enabled": true,
     "sources": [
      {
@@ -1866,7 +1869,7 @@
    },
    {
     "id": "NBH-8",
-    "section": "§6.4",
+    "section": "§6.2",
     "title": "No clerical time",
     "kind": "check",
     "check": "clerical",
@@ -1889,7 +1892,7 @@
     "sources": [
      {
       "doc": "ocg-northlake",
-      "section": "§6.4",
+      "section": "§6.2",
       "email": "mail-intake",
       "page": 1
      }
@@ -1897,7 +1900,7 @@
    },
    {
     "id": "NBH-9",
-    "section": "§7.2",
+    "section": "§7.1",
     "title": "Travel at 50%",
     "kind": "check",
     "check": "travel",
@@ -1910,7 +1913,7 @@
     "sources": [
      {
       "doc": "ocg-northlake",
-      "section": "§7.2",
+      "section": "§7.1",
       "email": "mail-intake",
       "page": 2
      }

@@ -75,6 +75,15 @@ describe("billing the seeded day under each client's rules", () => {
         const nbh3 = ruleReports(w, w.invoice!, book(w, "northlake")).find((r) => r.rule.id === "NBH-3")!;
         expect(nbh3.summary).toBe("$1,195 → $1,075 on 5 entries");
     });
+
+    it("NBH-5 calls the rule's own example an Example, and a note only once someone typed or imported it", () => {
+        const w = manattDay();
+        const vague = (): string[] => ruleReports(w, w.invoice!, book(w, "northlake")).find((r) => r.rule.id === "NBH-5")!.touches.filter((t) => !t.entryID).map((t) => t.label);
+        const example = book(w, "northlake").rules.find((r) => r.id === "NBH-5")!.examples![0];
+        expect(vague()).toEqual([`Example: “${example}”`]);
+        w.imported = [{ id: "x1", date: day, matter: "Northlake", timekeeper: "RD", hours: 0.9, description: example, entryID: null, decision: null, linked: false, origin: "import" }];
+        expect(vague()).toEqual([`Typed note: “${example}”`]);
+    });
 });
 
 describe("matching typed notes on the seeded day", () => {

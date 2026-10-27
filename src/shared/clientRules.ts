@@ -43,10 +43,14 @@ export function ruleReports(w: Workspace, terms: InvoiceTerms, book: ClientRuleb
 function checkReport(w: Workspace, rule: ClientRule, lines: FeeLine[], name: (id: string) => string): RuleReport {
     if (rule.check === "vague") {
         const drafted = [...new Set(lines.map((l) => l.entryID))];
-        const typed = [...(w.imported ?? []).map((r) => r.description), ...(rule.examples ?? [])].filter((x, n, a) => a.indexOf(x) === n);
+        // Notes someone really typed (Add entry) or imported, then the rule's own examples that no one typed today.
+        const typed = [...new Set((w.imported ?? []).map((r) => r.description))];
+        const examples = [...new Set(rule.examples ?? [])].filter((x) => !typed.includes(x));
+        const wouldFail = (label: string) => (t: string): Touch => ({ entryID: null, label: `${label}: “${t}”`, detail: "Would fail: no subject or no other party", fail: true });
         const touches: Touch[] = [
             ...drafted.map((id) => { const v = isVague(w.entries.find((e) => e.id === id)?.description ?? ""); return { entryID: id, label: name(id), detail: v ? "Too vague: no subject or no other party" : "Names the task, the people and the subject", fail: v }; }),
-            ...typed.filter(isVague).map((t) => ({ entryID: null, label: `Typed note: “${t}”`, detail: "Would fail. Lawdie drafts the narrative from the sources instead.", fail: true })),
+            ...typed.filter(isVague).map(wouldFail("Typed note")),
+            ...examples.filter(isVague).map(wouldFail("Example")),
         ];
         const failing = touches.filter((x) => x.fail && x.entryID).length;
         return { rule, status: failing ? "fail" : drafted.length ? "pass" : "none", summary: failing ? `${plural(failing, "entry")} too vague` : `Checked, all ${drafted.length} pass`, touches };
