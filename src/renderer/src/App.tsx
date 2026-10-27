@@ -3,16 +3,17 @@ import type { AppState } from "@shared/state";
 import { NOISE_SECONDS, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
-import { ago, clock, dayLabel, duration } from "@shared/format";
+import { ago, clock, dayLabel, duration, timeBlock } from "@shared/format";
 import { viewNow } from "@shared/demo";
 import { applyFix, roundUpToTenth, splitPlan, type EntryDraft, type Fix, type PlanLine } from "@shared/rules";
 import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesContext, sameDayOf } from "./Rules";
-import { NarrativeEntry, PrivateRow, hasNarrative } from "./Narrative";
+import { NarrativeEntry, PrivateRow, SUGGESTED_TIP, flaggedTip, hasNarrative } from "./Narrative";
 import { AddEntryForm, ImportedPanel, TypedEntries } from "./Imported";
 import { ClientRulesView } from "./ClientRules";
 import { Menu } from "./Menu";
 import { ApplyRulesMenu, BillingMenu, EntryChanges, TotalsLine, inlineNarrative } from "./Billing";
-import { applyRules, linesByEntry, type AppliedLine } from "@shared/applyRules";
+import { applyRules, linesByEntry, type AppliedBill, type AppliedLine } from "@shared/applyRules";
+import { shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
 import kiwiMark from "../../../resources/brand/kiwi.png";
@@ -176,8 +177,8 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
     const day = dayKey(now);
     const mode = w.billingClient ?? "generic";
     const dayBill = useMemo(() => applyRules(w, day, mode), [w, day, mode]);
-    const allBill = useMemo(() => (dayBill.book ? applyRules(w, null, mode) : null), [w, mode, dayBill.book]);
-    const lines = useMemo(() => (allBill ? linesByEntry(allBill) : null), [allBill]);
+    const allBill = useMemo(() => applyRules(w, null, mode), [w, mode]);
+    const lines = useMemo(() => (dayBill.book ? linesByEntry(allBill) : null), [allBill, dayBill.book]);
     return (
         <>
             <Heading title={label} />
@@ -232,9 +233,22 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
                                 <span className="muted tiny mono">{duration(list.reduce((s, e) => s + secondsWithin(e, start, end), 0))} · billable {duration(list.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0))}</span>
                             </div>
                         )}
-                        {[...list.map((e) => ({ at: e.startedAt, row: <EntryRow key={e.id} entry={e} w={w} lines={lines?.get(e.id)} book={dayBill.book} onRules={onRules} /> })),
-                            ...privatesOf(k).map((x) => ({ at: x.startedAt, row: <PrivateRow key={x.key} item={x} /> }))]
-                            .sort((a, b) => (a.at < b.at ? 1 : -1)).map((r) => r.row)}
+                        {matterGroups(w, list).map((g) => (
+                            <section className="entry-group" key={g.key}>
+                                <GroupHead title={g.project?.name ?? "No matter yet"}
+                                    tip={g.project ? (g.project.client ? `Billed to ${g.project.client.replace(/\.?$/, ".")}` : "No client is set for this matter.") : "Time Lawdie could not put on a matter. It is not billed until it has one."}
+                                    total={duration(g.entries.reduce((s, e) => s + secondsWithin(e, start, end), 0))}
+                                    totalTip={g.project ? billedTip(allBill, g.entries) : "Not billed until it has a matter."} />
+                                {g.entries.map((e) => <EntryRow key={e.id} entry={e} w={w} lines={lines?.get(e.id)} book={dayBill.book} onRules={onRules} />)}
+                            </section>
+                        ))}
+                        {privatesOf(k).length > 0 && (
+                            <section className="entry-group">
+                                <GroupHead title="Personal" tip="Personal time stays on this Mac. It is never billed or synced."
+                                    total={duration(privatesOf(k).reduce((s, x) => s + (Date.parse(x.endedAt) - Date.parse(x.startedAt)) / 1000, 0))} totalTip="Not billed." />
+                                {[...privatesOf(k)].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)).map((x) => <PrivateRow key={x.key} item={x} />)}
+                            </section>
+                        )}
                     </div>
                 ))}
             </Panel>
@@ -243,30 +257,57 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
 }
 
 function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: { entry: TimeEntry; w: Workspace; lines?: AppliedLine[]; book?: ClientRulebook | null; onRules?: (book: string, rule?: string | null) => void }): ReactNode {
-    const p = w.projects.find((x) => x.id === entry.projectID);
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<string | null>(null);
     const narrative = hasNarrative(entry);
     const inline = narrative && entry.status !== "flagged";
-    const meta = (
-        <>
-            <div className="muted tiny"><MatterLabel name={p?.name} /> · {clock(entry.startedAt)}{entry.sittings && entry.sittings.length > 1 ? `–${clock(entry.endedAt)} · ${entry.sittings.length} sittings` : ""}{entry.billable ? " · billable" : " · not billed"}</div>
-            <EntryRules w={w} entry={entry} />
-        </>
-    );
+    // The matter is the group's title and the time sits in the minutes' tooltip; only a matter rulebook's check stays here.
+    const meta = <EntryRules w={w} entry={entry} />;
     // Under a client's rules: the narrative as the rules write it, and each change with its rule chip.
     const changes = book && lines ? <EntryChanges lines={lines} book={book} w={w} onRules={onRules} /> : null;
     return (
         <div className={"entry" + (narrative ? " with-why" : "") + (entry.status === "flagged" ? " flagged" : entry.status === "suggested" ? " suggested" : "")}>
             <span className="bar" />
             <div className="grow">
-                {narrative ? <NarrativeEntry entry={entry} w={w} draft={draft} setDraft={setDraft} onDetails={() => setEditing(true)} onAssign={() => setEditing(true)} meta={meta} override={inlineNarrative(lines, book)} after={changes} />
-                    : <><div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>{meta}{changes}</>}
+                {narrative ? <NarrativeEntry entry={entry} w={w} draft={draft} setDraft={setDraft} onDetails={() => setEditing(true)} meta={meta} override={inlineNarrative(lines, book)} after={changes} />
+                    : <><div className="small strong">{entry.description} <AiTag source={entry.drafted} status={entry.status} />{entry.billable === false && <span className="quiet-tag" title="Kept with the day's time. It is not billed to the client.">Not billable</span>}</div>{meta}{changes}</>}
             </div>
-            <span className="mono">{duration(entrySeconds(entry))}</span>
+            {entry.status === "suggested" && <button type="button" className="fix" title={SUGGESTED_TIP} onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>}
+            {entry.status === "flagged" && <button type="button" className="fix" title={flaggedTip(entry)} onClick={() => setEditing(true)}>Assign and edit</button>}
+            <span className="mono" title={timeBlock(entry)}>{duration(entrySeconds(entry))}</span>
             <button type="button" className="quiet" disabled={draft !== null} title={inline ? "Edit this narrative here, in the row." : "Change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}>Edit</button>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
             {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
+        </div>
+    );
+}
+
+/** A day's entries by matter, in the list's order: each matter in the order its newest entry appears, then
+ *  "No matter yet". Inside a group the entries keep their order. */
+function matterGroups(w: Workspace, list: readonly TimeEntry[]): { key: string; project: Project | null; entries: TimeEntry[] }[] {
+    const groups = new Map<string, { key: string; project: Project | null; entries: TimeEntry[] }>();
+    for (const e of list) {
+        const project = w.projects.find((p) => p.id === e.projectID) ?? null;
+        const key = project?.id ?? "none";
+        if (!groups.has(key)) groups.set(key, { key, project, entries: [] });
+        groups.get(key)!.entries.push(e);
+    }
+    return [...groups.values()].sort((a, b) => Number(!a.project) - Number(!b.project));
+}
+
+/** "4.4 h billed under Northlake rules": the group's billed hours in the bill on screen (no-charge lines left out). */
+function billedTip(bill: AppliedBill, entries: readonly TimeEntry[]): string {
+    const ids = new Set(entries.map((e) => e.id));
+    const hours = bill.lines.filter((l) => ids.has(l.entryId) && !l.noCharge).reduce((n, l) => n + l.hours, 0);
+    return `${hours.toFixed(1)} h billed ${bill.book ? `under ${shortName(bill.book)} rules` : "at standard rates"}.`;
+}
+
+/** A matter's title over its entries, with the group's time on the right. */
+function GroupHead({ title, tip, total, totalTip }: { title: string; tip: string; total: string; totalTip: string }): ReactNode {
+    return (
+        <div className="group-head">
+            <span className="group-title" title={tip}>{title}</span>
+            <span className="group-total mono" title={totalTip}>{total}</span>
         </div>
     );
 }
@@ -436,9 +477,10 @@ function DraftLine({ draft }: { draft: Draft }): ReactNode {
 }
 
 /** "✦ AI" after a description that is an AI draft kept as written. */
-function AiTag({ source }: { source: DraftSource | undefined }): ReactNode {
-    if (source === "capture") return <span className="ai-tag" title="Written from the captured activity, kept as written.">✦ From capture</span>;
-    return source ? <span className="ai-tag" title={source === "sample" ? "Sample draft, not generated from your data" : "Drafted by AI, kept as written"}>✦ AI{source === "sample" ? " · sample" : ""}</span> : null;
+function AiTag({ source, status }: { source: DraftSource | undefined; status?: TimeEntry["status"] }): ReactNode {
+    const waiting = status === "suggested" ? ` ${SUGGESTED_TIP}` : "";
+    if (source === "capture") return <span className="ai-tag" title={`Written from the captured activity, kept as written.${waiting}`}>✦ From capture</span>;
+    return source ? <span className="ai-tag" title={`${source === "sample" ? "Sample draft, not generated from your data." : "Drafted by AI, kept as written."}${waiting}`}>✦ AI{source === "sample" ? " · sample" : ""}</span> : null;
 }
 
 /** The matter something is on, in small type; "No matter" when it is on none. */

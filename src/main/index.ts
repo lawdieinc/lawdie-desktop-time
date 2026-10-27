@@ -379,6 +379,10 @@ app.whenReady().then(() => {
             const el = [...document.querySelectorAll(arg)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); el?.click();
         })()`;
         mainWindow.webContents.once("did-finish-load", () => {
+            // The person's pointer can still pass over the see-through window: the page drops real mouse events, so only
+            // the scripted steps (untrusted events) hover, click and open things in the capture.
+            void mainWindow?.webContents.executeJavaScript(`for (const t of ["mouseover", "mouseout", "mousemove", "mouseenter", "mouseleave", "mousedown", "mouseup", "click", "contextmenu", "wheel"])
+                window.addEventListener(t, (e) => { if (e.isTrusted) e.stopImmediatePropagation(); }, true);`);
             if (click) setTimeout(() => void mainWindow?.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(click)}); console.log("--click", el ? el.textContent.slice(0, 60) : "matched nothing"); el?.click(); })()`), 2500);
             steps.forEach((step, n) => setTimeout(() => void mainWindow?.webContents.executeJavaScript(run(step)), 3000 + n * 1200));
             setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 4000 + steps.length * 1200);

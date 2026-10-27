@@ -160,7 +160,7 @@ button.fix:hover { background: var(--accent); color: #fff; }
 .part.hot { background: rgba(139, 92, 42, 0.14); box-shadow: 0 0 0 2px rgba(139, 92, 42, 0.14); }
 .narr-empty { font-weight: 400; font-style: italic; }
 .narr-tags { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
-.edited-tag { padding: 1px 6px; border-radius: 999px; background: var(--raised); color: var(--muted); font-size: 10px; font-weight: 600; vertical-align: 1px; }
+.quiet-tag { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--raised); color: var(--muted); font-size: 10px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
 .narr-edit { display: flex; flex-direction: column; gap: 8px; margin: 0 0 6px; }
 .narr-edit textarea { width: 100%; font: 600 13px/1.5 var(--body); color: var(--text); padding: 9px 11px; border: 1px solid rgba(139, 92, 42, 0.45); border-radius: 8px; background: #fff; resize: vertical; user-select: text; }
 .narr-edit textarea:focus-visible { outline: 2px solid rgba(139, 92, 42, 0.35); outline-offset: 1px; }
@@ -168,10 +168,12 @@ button.primary.slim { padding: 6px 13px; font-size: 12px; border-radius: 8px; }
 button.quiet.slim { padding: 5px 10px; font-size: 11px; } button.quiet:disabled { opacity: 0.5; cursor: default; }
 .link-btn { border: 0; background: none; padding: 0; color: var(--accent); font-size: 11px; font-weight: 600; }
 .link-btn:hover { text-decoration: underline; text-underline-offset: 2px; } .link-btn:disabled { opacity: 0.5; }
-.status-line { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; flex-wrap: wrap; }
-.status-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.status-line.suggested .status-badge { background: rgba(139, 92, 42, 0.12); color: var(--accent); }
-.status-line.flagged .status-badge { background: var(--danger); color: #fff; } .status-line.flagged .tiny { color: var(--danger); }
+/* The day's entries by matter (Today): the matter as the title over its work, the group's time on the right. */
+.entry-group + .entry-group { margin-top: 10px; }
+.group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; padding: 16px 0 9px; border-bottom: 1px solid var(--line); }
+.group-title { font-family: var(--display); font-size: 16px; font-weight: 600; line-height: 1.3; color: var(--text); min-width: 0; font-variant-numeric: lining-nums; }
+.group-total { font-size: 13px; color: var(--text); white-space: nowrap; }
+.entry.with-why > button.fix { margin-top: -5px; }
 .private-row { opacity: 0.55; } .bar.private { background: var(--line); }
 /* The dropdown */
 .why { margin-top: 8px; }

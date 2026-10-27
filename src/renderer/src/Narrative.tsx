@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Evidence, NarrativePart, PrivateStretch, TimeEntry, Workspace } from "@shared/model";
-import { clock, duration } from "@shared/format";
+import { clock, duration, timeBlock } from "@shared/format";
 
 /* A time entry's narrative as Lawdie drafted it, edited in place, and one dropdown, "Why
    this entry", with the work Time Capture saw (each stretch, the sum, the rounding), why it
@@ -75,13 +75,27 @@ export const whereTime = (e: TimeEntry): string => (e.work ?? []).map((x) => (/p
 /** Entries whose dropdown is open, kept while the app runs. */
 const OPEN = new Set<string>();
 
+/** What a suggested entry's AI tag and its Confirm button say. */
+export const SUGGESTED_TIP = "Lawdie drafted this from matter history. Confirm puts it on the bill.";
+
+/** What a flagged entry's Assign button says: why it waits, and what the button does. */
+export const flaggedTip = (entry: TimeEntry): string =>
+    `Needs you: no matter found.${entry.why ? ` ${entry.why.trim().replace(/\.?$/, ".")}` : ""} Choose the matter and write the narrative for this time.`;
+
+/** The ✦ AI tag's words: who drafted the narrative, and what is still to do (a status, kept off the page). */
+function aiTip(entry: TimeEntry): string {
+    if (entry.status === "suggested") return SUGGESTED_TIP;
+    if (entry.status === "flagged") return flaggedTip(entry);
+    return entry.partsEdited ? "Drafted by Lawdie from the sources below. You edited it, and its sources are kept." : "Drafted by Lawdie from the sources below. Edit it if anything is off.";
+}
+
 /**
- * The narrative line (parts, ✦ AI, Edited), the inline editor when `draft` is set, the
- * suggested or flagged line, `meta` (matter, time, billable), and the Why dropdown.
+ * The narrative line (parts and the ✦ AI tag, whose tooltip carries the entry's status), the inline
+ * editor when `draft` is set, `meta`, the rules' changes (`after`) and the Why dropdown.
  */
-export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign, meta, readOnly = false, onSaved, override, after }: {
+export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, meta, readOnly = false, onSaved, override, after }: {
     entry: TimeEntry; w: Workspace; draft: string | null; setDraft: (d: string | null) => void;
-    onDetails?: () => void; onAssign?: () => void; meta?: ReactNode; readOnly?: boolean;
+    onDetails?: () => void; meta?: ReactNode; readOnly?: boolean;
     /** After the narrative is saved from the editor (an expanded typed row uses it to accept the edited narrative). */
     onSaved?: () => void;
     /** The narrative as a client's rules write it (codes and task times added, marked as inserted), shown instead. */
@@ -126,12 +140,11 @@ export function NarrativeEntry({ entry, w, draft, setDraft, onDetails, onAssign,
                     )) : entry.description || <span className="muted narr-empty">No narrative yet</span>)}
                     {" "}
                     <span className="narr-tags">
-                        {entry.drafted && <span className="ai-tag" title="Drafted by Lawdie from the sources below. Edit it if anything is off.">✦ AI</span>}
-                        {entry.partsEdited && <span className="edited-tag" title="You edited this narrative. Its sources are kept.">Edited</span>}
+                        {entry.drafted && <span className="ai-tag" title={aiTip(entry)}>✦ AI</span>}
+                        {entry.billable === false && <span className="quiet-tag" title="Kept with the day's time. It is not billed to the client.">Not billable</span>}
                     </span>
                 </div>
             )}
-            {!readOnly && <StatusLine entry={entry} onAssign={onAssign} />}
             {meta}
             {after}
             {hasNarrative(entry) && (
@@ -269,37 +282,15 @@ export function ImageViewer({ src, caption, onOpen, onClose }: { src: string; ca
     );
 }
 
-/** The suggested or flagged line under an entry, with its action. */
-export function StatusLine({ entry, onAssign }: { entry: TimeEntry; onAssign?: () => void }): ReactNode {
-    if (entry.status === "suggested") {
-        return (
-            <div className="status-line suggested">
-                <span className="status-badge" title={entry.why ?? "Lawdie drafted this from the matter's history. Confirm it before it bills."}>Lawdie drafted this from matter history</span>
-                <button type="button" className="fix" title="The narrative is right: keep it as a normal entry. To change it first, use Edit." onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>
-            </div>
-        );
-    }
-    if (entry.status === "flagged") {
-        return (
-            <div className="status-line flagged">
-                <span className="status-badge" title="Lawdie found no matter for this time and did not guess.">Needs you: no matter found</span>
-                {entry.why && <span className="tiny">{entry.why}</span>}
-                {onAssign && <button type="button" className="fix" title="Choose the matter and write the narrative for this time." onClick={onAssign}>Assign and edit</button>}
-            </div>
-        );
-    }
-    return null;
-}
-
 /** A personal stretch, greyed: on this Mac only, never on the bill. */
 export function PrivateRow({ item }: { item: PrivateStretch }): ReactNode {
     return (
-        <div className="entry private-row" title="Personal time. It is not billed and never leaves this Mac.">
+        <div className="entry private-row">
             <span className="bar private" />
             <div className="grow">
-                <div className="small">Personal</div>
+                <div className="small" title="Personal time. It is not billed and never leaves this Mac.">Personal</div>
             </div>
-            <span className="mono muted">{duration((Date.parse(item.endedAt) - Date.parse(item.startedAt)) / 1000)}</span>
+            <span className="mono muted" title={timeBlock(item)}>{duration((Date.parse(item.endedAt) - Date.parse(item.startedAt)) / 1000)}</span>
         </div>
     );
 }
