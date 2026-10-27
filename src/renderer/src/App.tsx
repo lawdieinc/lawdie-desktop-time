@@ -206,8 +206,8 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
             {range === "today" && w.invoice && <TotalsLine bill={dayBill} onRules={onRules} />}
             {pdfProblem && <p className="danger small">{pdfProblem}</p>}
             <div className="metrics">
-                <Metric label={range === "today" ? "Tracked today" : "Tracked"} value={duration(tracked)} detail={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`} />
-                <Metric label="Billable time" value={duration(billable)} detail={`${tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "No time kept yet"}${range === "today" && w.invoice && dayBill.lines.length ? ` · ${dayBill.totals.billedHours.toFixed(1)} h billed` : ""}`} />
+                <Metric label={range === "today" ? "Tracked today" : "Tracked"} value={cardTime(tracked)} detail={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`} />
+                <Metric label="Billable time" value={cardTime(billable)} detail={`${tracked ? `${Math.round((billable / tracked) * 100)}% of tracked` : "No time kept yet"}${range === "today" && w.invoice && dayBill.lines.length ? ` · ${dayBill.totals.billedHours.toFixed(1)} h billed` : ""}`} />
                 <Metric label="To review" value={String(pending + waiting)} detail={waiting ? `${waiting} ${waiting === 1 ? "entry" : "entries"} to confirm${pending ? `, ${pending} from desktop work` : ""}` : "Matters and stretches of desktop work"} />
             </div>
             {projects.length > 1 && (
@@ -735,7 +735,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
             <div className="metrics">
                 <Metric label="Billable value" value={dollars(total)} detail={((n) => `${duration(billable)} billable across ${n} ${n === 1 ? "matter" : "matters"}`)(open.filter((r) => r.stats.tracked > 0).length)} />
                 <Metric label="Open matters" value={String(open.length)} detail={archived.length ? `${archived.length} archived` : "Made when you keep time on a matter"} />
-                <Metric label="No matter" value={duration(none.tracked)} detail={none.entries.length ? `${none.entries.length} ${none.entries.length === 1 ? "entry" : "entries"} kept without one` : "Everything kept is on a matter"} />
+                <Metric label="No matter" value={cardTime(none.tracked)} detail={none.entries.length ? `${none.entries.length} ${none.entries.length === 1 ? "entry" : "entries"} kept without one` : "Everything kept is on a matter"} />
             </div>
             <Panel>
                 <div className="matter-row head eyebrow" aria-hidden="true"><span /><span>Matter</span><span>Tracked</span><span>Billable</span><span>Value</span><span>Review</span></div>
@@ -774,8 +774,8 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
             <Heading eyebrow={p ? `${p.client || "No client"}${p.archived ? " · archived" : ""}` : "Kept without a matter"} title={p?.name ?? "No matter"} />
             <div className="row between wrap">{rangeTabs}<span className="eyebrow">{label}</span></div>
             <div className="metrics">
-                <Metric label="Tracked" value={duration(stats.tracked)} detail={`${stats.entries.length} ${stats.entries.length === 1 ? "entry" : "entries"}`} />
-                <Metric label="Billable" value={duration(stats.billable)} detail={stats.tracked ? `${Math.round((stats.billable / stats.tracked) * 100)}% of tracked` : "Nothing kept in this range"} />
+                <Metric label="Tracked" value={cardTime(stats.tracked)} detail={`${stats.entries.length} ${stats.entries.length === 1 ? "entry" : "entries"}`} />
+                <Metric label="Billable" value={cardTime(stats.billable)} detail={stats.tracked ? `${Math.round((stats.billable / stats.tracked) * 100)}% of tracked` : "Nothing kept in this range"} />
                 <Metric label="Value" value={dollars(stats.value)} detail="At the rate each entry was kept at" />
             </div>
             {p?.insight && (
@@ -996,6 +996,8 @@ function Heading({ eyebrow, title, subtitle }: { eyebrow?: string; title: string
     return <div className="heading">{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 className="display">{title}</h2>{subtitle && <p className="muted">{subtitle}</p>}</div>;
 }
 function Panel({ children }: { children: ReactNode }): ReactNode { return <section className="panel">{children}</section>; }
+/** Time on a card: "None" when there is none, else hours and minutes ("1h 05m", "12m"), never seconds. */
+const cardTime = (secs: number): string => (secs < 30 ? "None" : duration(Math.max(60, Math.round(secs / 60) * 60)));
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }): ReactNode {
     return <section className="panel metric"><p className="muted small">{label}</p><p className="value">{value}</p><p className="muted tiny">{detail}</p></section>;
 }
