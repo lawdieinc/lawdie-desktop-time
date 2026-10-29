@@ -765,6 +765,8 @@ export function syncBatches(request: SyncRequest, maxItems = SYNC_MAX_ITEMS): Sy
     const count = Math.max(1, Math.ceil(Math.max(request.activities.length, request.entries.length, request.deleted_entry_ids.length) / maxItems));
     return Array.from({ length: count }, (_, i) => ({
         app_version: request.app_version,
+        // Every batch names the workspace: Kiwi refuses an imported entry without it.
+        ...(request.import_workspace_id ? { import_workspace_id: request.import_workspace_id } : {}),
         time_zone: request.time_zone,
         activities: request.activities.slice(i * maxItems, (i + 1) * maxItems),
         entries: request.entries.slice(i * maxItems, (i + 1) * maxItems),

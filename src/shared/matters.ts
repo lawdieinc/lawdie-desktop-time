@@ -93,6 +93,10 @@ export function applyMatters(w: Workspace, askedIDs: string[], answer: unknown):
         const name = given.get(a.id) ?? null;
         a.matter = name ? (isPersonal(name) ? PERSONAL : canonical.get(name.toLowerCase()) ?? name) : null;
         a.matterBy = "ai";
+        // The name of a Kiwi matter carries its id, so the row joins imported time on that
+        // matter and a keep links the project (the prompt offers Kiwi's matters first).
+        const remote = a.matter && !isPersonal(a.matter) ? w.feed?.matters.find((m) => m.name.toLowerCase() === a.matter!.toLowerCase()) : undefined;
+        if (remote) a.kiwiProjectID = remote.id;
         if (a.matter) named += 1;
     }
     return named;
@@ -137,12 +141,17 @@ export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[
     const pending = activities.filter((a) => a.disposition === "pending").sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
     const byKey = new Map<string, MatterGroup>();
     const rest: Activity[] = [];
+    // A name that any pending row ties to a Kiwi matter stands for that matter everywhere,
+    // so a row named by the model and one imported with the id make one group.
+    const kiwiByName = new Map<string, string>();
+    for (const a of pending) if (a.matter && a.kiwiProjectID) kiwiByName.set(a.matter.toLowerCase(), a.kiwiProjectID);
     for (const a of pending) {
         if (!a.matter) { rest.push(a); continue; }
-        const key = `${localDayOf(a.startedAt)}\n${isPersonal(a.matter) ? "personal" : a.kiwiProjectID ? `kiwi:${a.kiwiProjectID}` : a.projectID ? `local:${a.projectID}` : a.matter.toLowerCase()}`;
+        const kiwiID = a.kiwiProjectID ?? kiwiByName.get(a.matter.toLowerCase());
+        const key = `${localDayOf(a.startedAt)}\n${isPersonal(a.matter) ? "personal" : kiwiID ? `kiwi:${kiwiID}` : a.projectID ? `local:${a.projectID}` : a.matter.toLowerCase()}`;
         let g = byKey.get(key);
         if (!g) {
-            g = { id: `${a.id}:matter`, matter: a.matter, projectID: a.projectID, kiwiProjectID: a.kiwiProjectID, activityIDs: [], startedAt: a.startedAt, endedAt: a.endedAt, seconds: 0, sittings: 0, apps: [], documents: [], draft: null };
+            g = { id: `${a.id}:matter`, matter: a.matter, projectID: a.projectID, kiwiProjectID: kiwiID, activityIDs: [], startedAt: a.startedAt, endedAt: a.endedAt, seconds: 0, sittings: 0, apps: [], documents: [], draft: null };
             byKey.set(key, g);
         }
         g.activityIDs.push(a.id);

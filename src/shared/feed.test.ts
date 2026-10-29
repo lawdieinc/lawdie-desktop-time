@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accountOf, applyJoins, ensureFeed, importFeed, joinMatter, joinRequest, matchingProject, parseFeedPage, refreshReceipts, subtractIntervals, undoJoin, type FeedPage, type FeedRow } from "./feed";
-import { PERSONAL, WorkspaceError, deleteEntry, dismissActivities, emptyWorkspace, keepStretch, mergeProjects, projectNamed, prune, setMatter, syncRequest, updateProject, validate, type Activity, type SyncTarget, type Workspace } from "./model";
-import { inboxOf } from "./matters";
+import { PERSONAL, WorkspaceError, deleteEntry, dismissActivities, emptyWorkspace, keepStretch, mergeProjects, projectNamed, prune, setMatter, syncBatches, syncRequest, updateProject, validate, type Activity, type SyncTarget, type Workspace } from "./model";
+import { applyMatters, inboxOf } from "./matters";
 
 // Kiwi and browser time, brought in for review beside this computer's own (docs/kiwi-and-browser-time.md).
 
@@ -136,6 +136,8 @@ describe("keeping imported time", () => {
         expect(kiwi.activities).toEqual([]); // imported evidence is Kiwi's own; it never goes back
         expect(kiwi.entries[0]).toMatchObject({ kiwi_project_id: ACME.id, project_name: "Acme Matter", source_refs: [{ kind: "browser", id: "seg-1", intervals: [{ startedAt: iso(100), endedAt: iso(600) }] }, { kind: "browser", id: "seg-2", intervals: [{ startedAt: iso(900), endedAt: iso(1200) }] }] });
         expect(kiwi.entries[0].source_refs![0]).not.toHaveProperty("account");
+        // Batching keeps the workspace id on every batch (Kiwi refuses imported entries without it).
+        expect(syncBatches(kiwi, 1).map((b) => b.import_workspace_id)).toEqual(Array(syncBatches(kiwi, 1).length).fill(w.feed!.workspaceID));
         const crm = syncRequest(w, "0.10.0", "UTC", target("crm"));
         expect(crm.entries[0]).not.toHaveProperty("kiwi_project_id");
         expect(crm.entries[0]).not.toHaveProperty("source_refs");
@@ -190,10 +192,22 @@ describe("placing imported time on a matter", () => {
         expect(w.activities[1].projectID).toBeUndefined();
         expect(w.projects.map((p) => p.name)).toEqual(["Acme Logistics"]); // no matter made silently
         w.activities.push(local({ matter: "Acme Logistics", matterBy: "ai", startedAt: iso(1000), endedAt: iso(1300) }));
-        const { groups } = inboxOf(w.activities);
-        expect(groups.map((g) => [g.matter, g.activityIDs.length])).toEqual([["Acme Logistics", 1], ["Bolt Holdings", 1], ["Acme Logistics", 1]]);
-        w.activities[2].projectID = logistics.id; w.activities[2].kiwiProjectID = ACME.id;
+        // The local row carries only the name; the imported row ties that name to Kiwi's id, so they are one group.
         expect(inboxOf(w.activities).groups.map((g) => [g.matter, g.activityIDs.length, g.kiwiProjectID])).toEqual([["Bolt Holdings", 1, BOLT.id], ["Acme Logistics", 2, ACME.id]]);
+        // A row the model named with the imported row's name joins it, id or not.
+        w.activities.push(local({ matter: "Bolt Holdings", matterBy: "ai", startedAt: iso(1400), endedAt: iso(1700) }));
+        expect(inboxOf(w.activities).groups.map((g) => [g.matter, g.activityIDs.length, g.kiwiProjectID])).toEqual([["Bolt Holdings", 2, BOLT.id], ["Acme Logistics", 2, ACME.id]]);
+    });
+
+    it("stamps the Kiwi id when the model names a Kiwi matter, so a keep links the project", () => {
+        const w = connected();
+        w.feed!.matters = [ACME, BOLT];
+        w.activities.push(local({ id: "d1", title: "Acme supply agreement.docx" }));
+        applyMatters(w, ["d1"], { assignments: [{ activity_id: "d1", matter: "acme matter" }] });
+        expect(w.activities[0]).toMatchObject({ matter: "acme matter", matterBy: "ai", kiwiProjectID: ACME.id });
+        const entry = keepStretch(w, ["d1"], { description: "Reviewed", projectID: null, matter: "acme matter", billable: true }, NOW);
+        expect(w.projects.find((p) => p.id === entry.projectID)).toMatchObject({ kiwiProjectID: ACME.id, matterNumber: "CM-100" });
+        expect(syncRequest(w, "0.10.0", "UTC", target("kiwi")).entries[0].kiwi_project_id).toBe(ACME.id);
     });
 });
 
