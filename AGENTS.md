@@ -9,11 +9,14 @@ the wire contract land in all three repos together.
 
 - `src/shared/` — pure, no Electron: `model.ts` (workspace types, the capture state
   machine, review rules, sync payload, file validation, the v1 Swift-format migration),
-  `kiwi.ts` (the client), `format.ts`, `state.ts`. Everything here is under `model.test.ts`.
+  `kiwi.ts` (the client), `feed.ts` (Kiwi and browser time brought in: pages, receipts,
+  overlap clipping, matter links), `format.ts`, `state.ts`. Everything here is under
+  `model.test.ts` and `feed.test.ts`.
 - `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock),
   `store.ts` (the only place the workspace changes; copy → validate → save → publish),
   `capture.ts` (get-windows + powerMonitor → `observe()`), `sync.ts` (token via
-  `safeStorage`, the minute tick), `index.ts` (window, tray, IPC).
+  `safeStorage`, the minute tick), `feed.ts` (the import pass, every three minutes),
+  `index.ts` (window, tray, IPC).
 - `src/preload/` — the whole surface the window may touch (`window.lawdie`).
 - `src/renderer/` — React. One file, `App.tsx`; brand in `styles.css` (see `docs/brand.md`).
 - `resources/` fonts and brand assets; `build/` icons; `electron-builder.yml` installers.
@@ -31,8 +34,10 @@ keeps it; kept time never overlaps; rates freeze at save; the token never enters
 workspace; Kiwi never receives the in-progress
 segment or a running timer; a suggestion never overwrites a person's matter; browsers are
 not captured (`BROWSER_OWNER_IDS`, checked like an exclusion; the Lawdie browser extension
-owns web time, so it is never counted twice). Never seed
-sample entries in a real workspace.
+owns web time, so it is never counted twice; its segments come back through Kiwi, see
+below). Imported time is evidence like any other: this computer's own time wins an overlap,
+one workspace owns a source until it is reviewed, and a receipt outlives the raw row so a
+replay never brings reviewed time back. Never seed sample entries in a real workspace.
 
 ## Commands
 
@@ -104,8 +109,9 @@ One switch, "AI suggestions" (`suggestMatters`), covers all three.
 ## Kiwi and Lawdie CRM
 
 Kiwi, the CRM, or both (`SyncState.targets`, one per product, 2026-09-27; before that
-Kiwi only, flat — `normalizeSync()` reads the old shape). One-way, this computer → each
-target, over ONE device token: the Time page that mints it registers it with the other
+Kiwi only, flat — `normalizeSync()` reads the old shape). Kept time goes one way, this
+computer → each target (the one thing that comes back is Kiwi's own evidence, next
+section), over ONE device token: the Time page that mints it registers it with the other
 product too (`POST …/devices { name, token }` on both backends). Both
 answer `GET /desktop-time/hello` and `POST /desktop-time/sync` under their API base
 (`https://lawdie.co/kiwi-api`, `https://crm-api.lawdie.co/api`). The wire contract is
@@ -114,6 +120,33 @@ answer `GET /desktop-time/hello` and `POST /desktop-time/sync` under their API b
 change all three. `KiwiClient` serves both; its `product` names the destination in messages. Kiwi's
 `RUN_LIVE_DESKTOP_TIME=1 … desktopTime.live.test.ts` spawns `src/shared/kiwi.live.test.ts`
 here against its real routes.
+
+## Kiwi and browser time
+
+Opt-in (`importKiwiTime`, "Bring in browser and Kiwi time"), Kiwi only, after
+`docs/kiwi-and-browser-time.md`. Every three minutes `src/main/feed.ts` pages
+`GET /desktop-time/feed` (the Chrome extension's segments from `browser_activities`, Kiwi's
+own chat and email time from `activity_time`, and the matters the person can reach),
+claims each page before saving it (`POST /desktop-time/feed/claim` → `desktop_import_claims`:
+one workspace owns a source until it is reviewed; Kiwi's `/billing/rollup` and web Keep
+refuse a claimed row, and a draft already rolled up from one is trimmed), then
+`importFeed()` in `src/shared/feed.ts` (pure, `feed.test.ts`). An imported row is closed,
+pending activity with `origin`, `originRef`, `sourceKind`, `url` and `kiwiProjectID`; this
+computer's time wins an overlap (`clipImported()`, re-checked at keep); a receipt per source
+outlives the raw row and is reported back (`POST /desktop-time/feed/review`). Keeping
+records `sourceRefs` with the kept intervals; `syncRequest()` sends them and
+`kiwi_project_id` to Kiwi only (the CRM drops both), and Kiwi's sync reserves the sources
+for that entry before filing it. Matters: `Project` gains `kiwiProjectID`, `kiwiAccount`,
+`matterNumber`, `aliases`, `nameBy`; imported time lands on the local project that matches
+by id, then number, name, alias — never ambiguously — else waits under Kiwi's name. The AI
+round also asks `POST /desktop-time/joins` which local matters are Kiwi's: high confidence
+joins by itself (the model's name gives way to Kiwi's and stays as an alias; a person's
+name, on the project or on a row, is kept) with Undo; any other confidence waits on the
+Matters screen ("Kiwi matter links"). A workspace belongs to one Kiwi account
+(`feed.account`). Kiwi side: `backend/migrations/20261027_01_desktop_feed.sql`,
+`backend/src/modules/desktopFeed/`. Checked 2026-10-29: Kiwi's `email` time is reading
+mail inside Kiwi, not an add-in in desktop Outlook, so it never doubles this app's Outlook
+time.
 
 ## History
 
@@ -158,3 +191,6 @@ sittings say "between 12:17 and 12:33", since their time is less than the span
 on a legal matter: Kiwi's prompt offers it, a person sets it with a row's Personal button;
 `inboxOf()` lists it apart (`personal`), `keepStretch()` refuses it and `syncRequest()`
 leaves it out. "Not personal" sends an item back to review.
+2026-10-29: Kiwi and browser time come into the inbox (section above): the plan was
+reviewed and built in Codex 2026-10-26–28, then finished, tested and documented here.
+Version 0.10.0.

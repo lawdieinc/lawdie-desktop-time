@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, STRETCH_GAP_MS, clipSittings, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
@@ -507,8 +507,9 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
     const [problem, setProblem] = useState<string | null>(null);
     const start = onDay(stretch.startedAt, startText);
     const end = onDay(stretch.startedAt, endText, start);
-    const spans: Interval[] = sittings.map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt }));
-    const preview = stretchSpan(spans, start, end);
+    const spans: Interval[] = sittings.flatMap(intervals);
+    const imported = sittings.some((a) => a.origin);
+    const preview = imported ? (() => { const kept = clipSittings(spans, start, end); return kept.length ? { startedAt: kept[0].startedAt, endedAt: kept[kept.length - 1].endedAt, sittings: kept } : null; })() : stretchSpan(spans, start, end);
     const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
     const changed = startText !== timeValue(stretch.startedAt) || endText !== timeValue(stretch.endedAt);
     const save = async (): Promise<void> => {
@@ -521,7 +522,7 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
     return (
         <div className="scrim" onClick={onClose}>
             <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
-                <Heading eyebrow="From desktop activity" title="Keep time" subtitle={suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}, kept as one entry.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
+                <Heading eyebrow={imported ? "From captured activity" : "From desktop activity"} title="Keep time" subtitle={suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}, kept as one entry.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
                 <label className="field"><span className="eyebrow">Matter{suggested ? " · suggested" : ""}</span><input list="matter-names" value={matter} placeholder="Which matter is this? Leave empty for none." onChange={(e) => setMatter(e.target.value)} /></label>
                 <datalist id="matter-names">{projects.map((p) => <option key={p} value={p} />)}</datalist>
                 <label className="field"><span className="eyebrow">Description{asDrafted ? ` · drafted by AI${stretch.draft!.source === "sample" ? " (sample)" : ""}` : ""}</span><input autoFocus value={description} onChange={(e) => setDescription(e.target.value)} /></label>
@@ -531,7 +532,7 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
                     <label className="row gap check"><input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
                 </div>
                 {stretch.sittings > 1 && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
-                <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>
+                <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : imported ? "Imported time stays within the captured intervals. Any portion you leave out is treated as reviewed." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>
                 {problem && <p className="danger small">{problem}</p>}
                 <div className="row between">
                     <span className="mono accent big">{duration(previewSeconds)}</span>
@@ -558,6 +559,28 @@ function statsFor(w: Workspace, projectID: string | null, start: number, end: nu
     return { tracked, billable, value, entries };
 }
 const MATTER_RANGES = RANGES.filter((r) => r.key !== "custom");
+
+function MatterLinks({ w }: { w: Workspace }): ReactNode {
+    const [localID, setLocalID] = useState("");
+    const [remoteID, setRemoteID] = useState("");
+    if (!w.feed?.matters.length) return null;
+    const names = [...w.projects.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name })), ...[...new Set(w.activities.filter((a) => a.disposition === "pending" && a.matter && a.matter !== PERSONAL && !a.kiwiProjectID && !w.projects.some((p) => p.name === a.matter)).map((a) => a.matter!))].map((name) => ({ id: `name:${name}`, name }))];
+    return <Panel><h3>Kiwi matter links</h3>
+        {w.feed.joins.filter((j) => j.status !== "declined").map((j) => {
+            const remote = w.feed!.matters.find((m) => m.id === j.kiwi_project_id);
+            const local = names.find((p) => p.id === j.local_id)?.name ?? j.before?.name ?? j.local_id.replace(/^name:/, "");
+            return <div key={j.local_id} className="row between wrap gap" style={{ marginBottom: 12 }}>
+                <div><p className="small">{local} {j.status === "joined" ? "is linked to" : "— same as"} {remote?.name ?? "a Kiwi matter"}{j.status ? "" : "?"}</p>{j.reason && <p className="muted tiny">{j.reason}</p>}</div>
+                {j.status === "joined" ? <button className="quiet" type="button" onClick={() => void window.lawdie.undoJoin(j.local_id)}>Undo join</button> : <span className="row gap"><button className="quiet" type="button" onClick={() => void window.lawdie.declineJoin(j.local_id)}>Keep separate</button><button className="primary" type="button" onClick={() => void window.lawdie.joinMatter(j.local_id, j.kiwi_project_id)}>Join</button></span>}
+            </div>;
+        })}
+        <div className="row gap wrap">
+            <label className="field"><span className="eyebrow">Local matter</span><select value={localID} onChange={(e) => setLocalID(e.target.value)}><option value="">Choose a matter</option>{names.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+            <label className="field"><span className="eyebrow">Same as Kiwi matter</span><select value={remoteID} onChange={(e) => setRemoteID(e.target.value)}><option value="">Choose a Kiwi matter</option>{w.feed.matters.map((m) => <option key={m.id} value={m.id}>{m.name}{m.cm_number ? ` · ${m.cm_number}` : ""}</option>)}</select></label>
+            <button className="quiet" type="button" disabled={!localID || !remoteID} onClick={() => void window.lawdie.joinMatter(localID, remoteID)}>Join matters</button>
+        </div><p className="muted tiny">High-confidence matches join automatically. Other matches wait for your choice. Your chosen names are kept.</p>
+    </Panel>;
+}
 
 function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview: () => void }): ReactNode {
     const [range, setRange] = useState<RangeKey>("week");
@@ -597,6 +620,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
     return (
         <>
             <Heading eyebrow={label} title="Your matters." />
+            <MatterLinks w={w} />
             <div className="row between wrap">{rangeTabs}</div>
             <div className="metrics">
                 <Metric label="Billable value" value={money(total)} detail={`${duration(billable)} billable across ${open.filter((r) => r.stats.tracked > 0).length} matters`} />
@@ -773,6 +797,12 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 <Setting title="AI suggestions" detail="Kiwi's AI names the matter of your finished, unreviewed activity (so the inbox shows a matter's day across every app as one row), drafts a billing description for each row, and writes an insight on each matter's page. It sees titles, Office document details and on-screen text with personal details already removed, and your kept entries' descriptions and times. The activity in progress is never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
                     <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" />
                 </Setting>
+                <div className="row between wrap gap">
+                    <div><p className="small strong">Bring in browser and Kiwi time</p><p className="muted tiny">Import captured titles and page addresses from Kiwi for review here. AI suggestions also use imported titles. Pausing stops new imports; time already brought in stays assigned to this workspace.</p></div>
+                    <Toggle on={p.importKiwiTime === true} onChange={(v) => set("importKiwiTime", v)} label="Bring in browser and Kiwi time" />
+                </div>
+                {p.importKiwiTime && <div className="row between wrap gap"><p className="muted tiny">{w.feed?.lastImportedAt ? `Last imported ${ago(w.feed.lastImportedAt, now)}` : "No imports yet"}. {w.sync?.targets.some((t) => t.product === "kiwi") ? "Browser uploads arrive while Kiwi is open." : "Connect to Kiwi below to import."}</p><button className="quiet" type="button" disabled={state.feed.running} onClick={() => void window.lawdie.importNow()}>{state.feed.running ? "Importing…" : "Import now"}</button></div>}
+                {state.feed.error && <p className="danger tiny">{state.feed.error}</p>}
                 {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to get AI suggestions.</p>}
                 <Setting title="Timer idle timeout" detail="Stops a running timer at your last input after this much inactivity. Capture counts the app in front for as long as it is in front, and a call even behind other windows.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>

@@ -1,3 +1,4 @@
+import { prepareImportedKeep, validateFeedState, type FeedState, type SourceRef } from "./feed";
 import { isProduct, type Product } from "./kiwi";
 /* The workspace and the rules that change it. Pure: no Electron, no filesystem, no
    clock of its own — every function takes `now` in milliseconds — so the whole thing
@@ -18,6 +19,11 @@ export const MIN_ACTIVITY_SECONDS = 2;
 export type Project = {
     id: string;
     name: string;
+    nameBy?: "ai" | "person" | "kiwi";
+    kiwiProjectID?: string;
+    kiwiAccount?: string;
+    matterNumber?: string;
+    aliases?: string[];
     client: string;
     color: string;
     hourlyRate: number;
@@ -45,6 +51,7 @@ export type TimeEntry = {
     /** manual | timer | desktop | timer-idle | timer-suspended | timer-recovered */
     source: string;
     activityID: string | null;
+    sourceRefs?: SourceRef[];
     /** A stretch kept from several sittings: the sittings, in order, inside [startedAt, endedAt]. Only their time counts. */
     sittings?: Interval[];
     /** Every activity a stretch entry was kept from (activityID is the first). */
@@ -83,6 +90,15 @@ export type DocumentInfo = {
 export const EXCERPT_MAX = 600;
 
 export type Activity = {
+    origin?: "browser" | "kiwi";
+    originRef?: string;
+    originAccount?: string;
+    sourceKind?: "browser" | "chat" | "email";
+    kiwiProjectID?: string;
+    projectID?: string;
+    url?: string;
+    /** Imported time after overlap subtraction. Original bounds stay on the feed receipt. */
+    sittings?: Interval[];
     id: string;
     app: string;
     /** The stable id of the app: bundle id on macOS, executable path elsewhere. */
@@ -106,6 +122,7 @@ export type Activity = {
 };
 
 export type Preferences = {
+    importKiwiTime?: boolean;
     captureEnabled: boolean;
     captureTitles: boolean;
     /** Ask Word, Excel, PowerPoint and Outlook what is open: name, path, a text excerpt. */
@@ -139,6 +156,7 @@ export type SyncState = {
 };
 
 export type Workspace = {
+    feed?: FeedState;
     schemaVersion: number;
     projects: Project[];
     entries: TimeEntry[];
@@ -163,7 +181,7 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export function defaultPreferences(): Preferences {
-    return { captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
+    return { importKiwiTime: false, captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
 }
 
 export function emptyWorkspace(): Workspace {
@@ -332,22 +350,36 @@ export function stretchSpan(sittings: Interval[], start: number, end: number): {
  * another document between two sittings stay free to be kept on their own.
  */
 export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInput, now: number): TimeEntry {
+    prepareImportedKeep(w, activityIDs, now);
     const ids = [...new Set(activityIDs)];
     const picked = ids.map((id) => w.activities.find((a) => a.id === id));
     if (!ids.length || picked.some((a) => !a || a.disposition !== "pending")) throw new WorkspaceError("This activity has already been reviewed.");
-    const merged = mergeAdjacent((picked as Activity[]).map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt })));
+    const merged = mergeAdjacent((picked as Activity[]).flatMap((a) => intervals(a)));
     const start = input.startedAt ? ms(input.startedAt) : ms(merged[0].startedAt);
     const end = input.endedAt ? ms(input.endedAt) : ms(merged[merged.length - 1].endedAt);
     if (!(end > start)) throw new WorkspaceError("The end must be after the start.");
-    const span = stretchSpan(merged, start, end);
+    const imported = (picked as Activity[]).some((a) => a.origin);
+    const span = imported ? (() => { const clipped = clipSittings(merged, start, end); return clipped.length ? { startedAt: clipped[0].startedAt, endedAt: clipped[clipped.length - 1].endedAt, sittings: clipped } : null; })() : stretchSpan(merged, start, end);
     if (!span) throw new WorkspaceError("No captured time falls between those times.");
     const matter = input.matter?.trim().slice(0, MATTER_MAX) || null;
     if (isPersonal(matter)) throw new WorkspaceError("Personal time is not kept. Choose a matter, or dismiss it.");
-    const projectID = input.projectID ?? (matter ? projectNamed(w, matter).id : null);
+    const identities = [...new Set((picked as Activity[]).filter((a) => a.matter === matter && a.kiwiProjectID).map((a) => a.kiwiProjectID!))];
+    if (identities.length > 1 && !input.projectID) throw new WorkspaceError("Choose one matter; these activities belong to different Kiwi matters.");
+    const linked = identities.length === 1 ? w.projects.find((p) => p.kiwiProjectID === identities[0] && p.kiwiAccount === w.feed?.account) : undefined;
+    const projectID = input.projectID ?? linked?.id ?? (matter ? projectNamed(w, matter).id : null);
+    const chosen = project(w, projectID);
+    if (chosen && identities.length === 1 && !input.projectID) {
+        if (chosen.kiwiProjectID && chosen.kiwiProjectID !== identities[0]) throw new WorkspaceError("These are different Kiwi matters. Choose the correct matter before keeping.");
+        chosen.kiwiProjectID = identities[0]; chosen.kiwiAccount = w.feed?.account;
+        const remote = w.feed?.matters.find((m) => m.id === identities[0]);
+        if (remote?.cm_number) chosen.matterNumber = remote.cm_number;
+    }
+    const sourceRefs: SourceRef[] = (picked as Activity[]).filter((a) => a.origin).map((a) => ({ kind: a.sourceKind!, id: a.originRef!, account: a.originAccount!, intervals: clipSittings(intervals(a), start, end) }));
     const entry: TimeEntry = {
         id: uuid(), description: input.description.trim(), projectID, ...span,
         billable: input.billable, hourlyRate: project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
         ...(ids.length > 1 ? { activityIDs: ids } : {}),
+        ...(sourceRefs.length ? { sourceRefs } : {}),
         ...(input.drafted ? { drafted: input.drafted } : {}),
     };
     saveEntry(w, entry, now);
@@ -372,7 +404,9 @@ export const isPersonal = (matter: string | null | undefined): boolean => !!matt
 /** The project a matter name stands for: an open one of that name (any case), else a new one. */
 export function projectNamed(w: Workspace, name: string): Project {
     const key = name.trim().toLowerCase();
-    const found = w.projects.find((p) => !p.archived && p.name.trim().toLowerCase() === key);
+    const matches = w.projects.filter((p) => !p.archived && p.name.trim().toLowerCase() === key);
+    if (matches.length > 1) throw new WorkspaceError("More than one matter has this name. Choose its linked matter.");
+    const found = matches[0];
     if (found) return found;
     const made: Project = { id: uuid(), name: name.trim(), client: "", color: "gold", hourlyRate: 0, archived: false };
     w.projects.push(made);
@@ -399,6 +433,7 @@ export function updateProject(w: Workspace, id: string, change: { name?: string;
         if (w.projects.some((x) => x.id !== id && !x.archived && x.name.trim().toLowerCase() === name.toLowerCase())) throw new WorkspaceError(`There is already a matter called “${name}”. Merge them instead.`);
         if (name !== p.name) renameMatter(w, p.name, name);
         p.name = name;
+        p.nameBy = "person";
     }
     if (change.client !== undefined) p.client = change.client.trim().slice(0, 200);
     if (change.hourlyRate !== undefined) {
@@ -411,6 +446,10 @@ export function updateProject(w: Workspace, id: string, change: { name?: string;
 export function mergeProjects(w: Workspace, fromID: string, intoID: string): void {
     const from = project(w, fromID), into = project(w, intoID);
     if (!from || !into || fromID === intoID) throw new WorkspaceError("Choose two different matters to merge.");
+    if (from.kiwiProjectID && into.kiwiProjectID && (from.kiwiProjectID !== into.kiwiProjectID || from.kiwiAccount !== into.kiwiAccount)) throw new WorkspaceError("These are linked to different Kiwi matters. Unlink them before merging.");
+    into.aliases = [...new Set([...(into.aliases ?? []), from.name, ...(from.aliases ?? [])])];
+    into.kiwiProjectID ??= from.kiwiProjectID; into.kiwiAccount ??= from.kiwiAccount;
+    for (const a of w.activities) if (a.projectID === fromID) a.projectID = intoID;
     for (const e of w.entries) if (e.projectID === fromID) e.projectID = intoID;
     if (w.timer?.projectID === fromID) w.timer.projectID = intoID;
     renameMatter(w, from.name, into.name);
@@ -428,7 +467,7 @@ export function archiveProject(w: Workspace, id: string, archived: boolean): voi
 export function setMatter(w: Workspace, ids: string[], matter: string | null): void {
     const given = matter?.trim().slice(0, MATTER_MAX) || null;
     const name = isPersonal(given) ? PERSONAL : given;
-    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { a.matter = name; a.matterBy = "person"; }
+    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { a.matter = name; a.matterBy = "person"; delete a.kiwiProjectID; delete a.projectID; }
 }
 
 export function keepActivity(w: Workspace, id: string, input: KeepInput, now: number): TimeEntry {
@@ -700,8 +739,9 @@ export type SyncRequest = {
     app_version: string;
     /** This computer's IANA zone, so Kiwi dates drafts made from kept entries on the day they happened. */
     time_zone: string | null;
+    import_workspace_id?: string;
     activities: { id: string; app: string; bundle_id: string; title: string | null; document_name: string | null; document_path: string | null; excerpt: string | null; started_at: string; ended_at: string; seconds: number; ended_by: string; disposition: string }[];
-    entries: { id: string; description: string; project_name: string | null; client_name: string | null; started_at: string; ended_at: string; seconds: number; billable: boolean; hourly_rate: number; source: string; activity_id: string | null }[];
+    entries: { kiwi_project_id?: string; source_refs?: { kind: string; id: string; intervals: Interval[] }[]; id: string; description: string; project_name: string | null; client_name: string | null; started_at: string; ended_at: string; seconds: number; billable: boolean; hourly_rate: number; source: string; activity_id: string | null }[];
     deleted_entry_ids: string[];
 };
 
@@ -709,11 +749,12 @@ export type SyncRequest = {
 export function syncRequest(w: Workspace, appVersion: string, timeZone: string | null = localTimeZone(), target: SyncTarget | null = w.sync?.targets[0] ?? null): SyncRequest {
     return {
         app_version: appVersion,
+        ...(w.feed ? { import_workspace_id: w.feed.workspaceID } : {}),
         time_zone: timeZone,
-        activities: w.activities.filter((a) => !isPersonal(a.matter)).map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, document_name: a.document?.name ?? null, document_path: a.document?.path ?? null, excerpt: a.document?.excerpt ?? null, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
+        activities: w.activities.filter((a) => !a.origin && !isPersonal(a.matter)).map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, document_name: a.document?.name ?? null, document_path: a.document?.path ?? null, excerpt: a.document?.excerpt ?? null, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
         entries: w.entries.map((e) => {
             const p = project(w, e.projectID);
-            return { id: e.id, description: e.description, project_name: p?.name ?? null, client_name: p?.client || null, started_at: e.startedAt, ended_at: e.endedAt, seconds: Math.round(seconds(e)), billable: e.billable, hourly_rate: e.hourlyRate, source: e.source, activity_id: e.activityID };
+            return { ...(p?.kiwiProjectID && p.kiwiAccount === w.feed?.account && target?.product === "kiwi" ? { kiwi_project_id: p.kiwiProjectID } : {}), ...(e.sourceRefs?.length && target?.product === "kiwi" ? { source_refs: e.sourceRefs.map(({ kind, id, intervals }) => ({ kind, id, intervals })) } : {}), id: e.id, description: e.description, project_name: p?.name ?? null, client_name: p?.client || null, started_at: e.startedAt, ended_at: e.endedAt, seconds: Math.round(seconds(e)), billable: e.billable, hourly_rate: e.hourlyRate, source: e.source, activity_id: e.activityID };
         }),
         deleted_entry_ids: target?.deletedEntryIDs ?? [],
     };
@@ -769,6 +810,7 @@ const validIso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.p
 /** Throws on anything that would make the engine misbehave; a corrupt file is preserved, never repaired. */
 export function validate(w: Workspace): Workspace {
     const p = w.preferences;
+    validateFeedState(w);
     const ok =
         w.schemaVersion === SCHEMA_VERSION &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&

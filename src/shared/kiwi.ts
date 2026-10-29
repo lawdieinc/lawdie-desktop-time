@@ -4,6 +4,7 @@
    the caller (main/sync.ts keeps it encrypted with safeStorage); it is never part of the
    workspace. */
 
+import type { FeedPage, FeedRow, JoinProposal, joinRequest } from "./feed";
 import type { DraftsBody, InsightsBody, MattersBody } from "./matters";
 import type { SyncRequest } from "./model";
 
@@ -44,7 +45,7 @@ export const pairHint = (destination: Destination): string =>
 
 export const DEFAULT_SERVER_URL = PRODUCTS.kiwi.defaultServerURL;
 
-export type HelloResponse = { ok: boolean; device: { id: string; name: string }; user: { email: string | null } };
+export type HelloResponse = { ok: boolean; device: { id: string; name: string }; user: { email: string | null; id?: string } };
 export type SyncResponse = { ok: boolean; activities: number; entries: number; deleted: number };
 
 export type KiwiFailureCode = "invalid_server_url" | "invalid_token" | "device_revoked" | "migration_pending" | "too_large" | "http" | "transport" | "bad_response";
@@ -109,6 +110,19 @@ export class KiwiClient {
     /** What Kiwi's model makes of each matter's recent time. */
     insights(body: InsightsBody): Promise<{ insights: { id: string; summary: string; points: string[] }[] }> {
         return this.send("POST", "desktop-time/insights", body);
+    }
+
+    feed(since: string, workspaceID: string, cursor: string | null): Promise<FeedPage> {
+        return this.send("GET", `desktop-time/feed?since=${encodeURIComponent(since)}&workspace_id=${encodeURIComponent(workspaceID)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+    }
+    claimFeed(workspaceID: string, rows: FeedRow[], timeZone: string | null): Promise<{ claimed: { kind: string; id: string }[] }> {
+        return this.send("POST", "desktop-time/feed/claim", { workspace_id: workspaceID, sources: rows.map(({ kind, id }) => ({ kind, id })), time_zone: timeZone });
+    }
+    reviewFeed(workspaceID: string, receipts: { kind: string; id: string; disposition: string }[]): Promise<unknown> {
+        return this.send("POST", "desktop-time/feed/review", { workspace_id: workspaceID, receipts });
+    }
+    joins(body: NonNullable<ReturnType<typeof joinRequest>>): Promise<{ joins: JoinProposal[] }> {
+        return this.send("POST", "desktop-time/joins", body);
     }
 
     private async send<T>(method: string, path: string, body?: unknown): Promise<T> {

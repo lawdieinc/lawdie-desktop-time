@@ -1,3 +1,5 @@
+import { joinMatter, undoJoin } from "@shared/feed";
+import { Feed } from "./feed";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hostname } from "node:os";
@@ -116,9 +118,14 @@ app.whenReady().then(() => {
     const tokens = new TokenFile(join(userData, "kiwi-token.bin"));
     const sync = new Sync(store, tokens, deviceLabel);
     const matters = new Matters(store, tokens);
+    const feed = new Feed(store, tokens);
     const updater = new Updater(store);
 
     // IPC: the window asks, the store answers. Every mutation goes through store.change.
+    ipcMain.handle("importNow", () => feed.pull());
+    ipcMain.handle("joinMatter", (_e, localID: string, remoteID: string) => store.change((w) => joinMatter(w, localID, remoteID)));
+    ipcMain.handle("undoJoin", (_e, localID: string) => store.change((w) => undoJoin(w, localID)));
+    ipcMain.handle("declineJoin", (_e, localID: string) => store.change((w) => { const j = w.feed?.joins.find((j) => j.local_id === localID && !j.status); if (j) j.status = "declined"; }));
     ipcMain.handle("state", () => store.snapshot());
     ipcMain.handle("setCapture", (_e, on: boolean) => { const ok = store.change((w) => { w.preferences.captureEnabled = on; if (!on) closeActivity(w, Date.now(), "paused"); }); void capture.sample(); return ok; });
     ipcMain.handle("setPreference", (_e, key: keyof Preferences, value: Preferences[keyof Preferences]) => {
@@ -129,6 +136,7 @@ app.whenReady().then(() => {
             (w.preferences as Record<string, unknown>)[key] = value;
             if (key === "excludedOwnerIDs" && w.currentActivity && Array.isArray(value) && value.includes(w.currentActivity.ownerID)) w.currentActivity = null;
         });
+        if (ok && key === "importKiwiTime") { feed.cancel(); if (value === true) void feed.pull(); }
         if (ok && key === "suggestMatters" && value === true) void matters.suggest();
         // macOS shows its Accessibility prompt (once) when on-screen text is switched on.
         if (ok && key === "captureScreenText" && value === true && process.platform === "darwin") systemPreferences.isTrustedAccessibilityClient(true);
@@ -148,7 +156,7 @@ app.whenReady().then(() => {
     ipcMain.handle("archiveProject", (_e, id: string, archived: boolean) => store.change((w) => archiveProject(w, String(id), archived === true)));
     ipcMain.handle("clearActivity", () => { const ok = store.change((w) => { w.activities = []; w.currentActivity = null; w.preferences.captureEnabled = false; }); if (ok) store.say("Activity cleared and capture paused. Saved time entries are unchanged."); return ok; });
     ipcMain.handle("connectKiwi", (_e, destination: Destination, servers: Partial<Record<Product, string>>, token: string) => sync.connect(isDestination(destination) ? destination : "kiwi", servers ?? {}, token));
-    ipcMain.handle("disconnectKiwi", () => sync.disconnect());
+    ipcMain.handle("disconnectKiwi", () => { feed.cancel(); sync.disconnect(); });
     ipcMain.handle("syncNow", () => sync.syncNow());
     ipcMain.handle("installUpdate", () => updater.install());
     ipcMain.handle("setAutoSync", (_e, on: boolean) => store.change((w) => { if (w.sync) w.sync.autoSync = on; }));
@@ -190,6 +198,7 @@ app.whenReady().then(() => {
     capture.start();
     sync.start();
     matters.start();
+    feed.start();
     updater.start();
 
     // `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>]
@@ -209,7 +218,7 @@ app.whenReady().then(() => {
 
     app.on("second-instance", () => showWindow(store));
     app.on("activate", () => showWindow(store));
-    app.on("before-quit", () => { quitting = true; sync.stop(); matters.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); });
+    app.on("before-quit", () => { quitting = true; sync.stop(); feed.stop(); matters.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); });
 });
 
 // Closing the last window keeps the process (and capture) alive on every platform; Quit is explicit.

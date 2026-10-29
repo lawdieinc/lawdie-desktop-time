@@ -127,6 +127,17 @@ from either side; what was synced stays in Kiwi. The server defaults to
 
 Provisioning without typing: `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>] [--crm-server <url>]`.
 
+### Browser and Kiwi time, brought in
+
+Settings → **Bring in browser and Kiwi time** (off until you switch it on; Kiwi only). The
+app then asks Kiwi every few minutes for the Chrome extension's segments and Kiwi's own
+chat and email time, and they wait in the Activity inbox beside this computer's own, one
+row per matter per day. Nothing is counted twice: this computer's time wins an overlap,
+Kiwi stops drafting a row once this computer has it, and a row you dismiss never comes
+back. Kept imported time reaches Kiwi filed under its real matter. The Matters screen
+links local matters to Kiwi's: sure matches join by themselves (with Undo), the rest wait
+for a click, and a name you chose is never replaced.
+
 ## Local data and privacy
 
 The workspace is one JSON file, private to your OS account (mode 0600 where the platform
@@ -166,5 +177,5 @@ its real routes, which is how the wire contract is proven end to end.
 
 Manual timer and manual entries, projects and rates, reports and CSV, backup/restore —
 all of which the Swift version had — are the next slices. Also: launch at login, an
-updater, code signing / notarization, and Wayland capture. Sync is one-way (this computer
-→ Kiwi).
+updater, code signing / notarization, and Wayland capture. Kept time goes one way (this
+computer → Kiwi / the CRM); only Kiwi's own captured time comes back, for review here.

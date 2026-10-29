@@ -1,3 +1,4 @@
+import { accountOf } from "@shared/feed";
 /* Sync to Kiwi, Lawdie CRM or both, main-process side: one token, kept in a file
    encrypted with Electron's safeStorage (Keychain on macOS, DPAPI on Windows, the keyring
    on Linux), never in the workspace or a backup. Both products accept the same token when
@@ -63,6 +64,7 @@ export class Sync {
             for (const product of products) {
                 const c = client(product, servers[product] ?? PRODUCTS[product].defaultServerURL, trimmed);
                 const hello = await c.hello();
+                if (product === "kiwi" && this.store.workspace.feed && (!hello.user.id || this.store.workspace.feed.account !== accountOf(c.baseURL, hello.user.id))) throw new Error("This workspace has imports from another Kiwi account. Use a separate workspace for that account.");
                 if (!hello.ok) throw new KiwiFailure("bad_response", `${PRODUCTS[product].label} answered in a way this app does not understand.`);
                 targets.push({ product, serverURL: c.baseURL, deviceID: hello.device.id, deviceName: hello.device.name, accountEmail: hello.user.email ?? null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] });
             }

@@ -1,3 +1,4 @@
+import { applyJoins, joinRequest } from "@shared/feed";
 /* AI suggestions, main-process side: requests to Kiwi, which asks its own server-side
    model. In order: name the matter of new activity, draft a billing description for each
    row waiting in review, and refresh the insight of each matter whose time changed. Off
@@ -45,6 +46,12 @@ export class Matters {
         this.store.setMatterStatus(true, null);
         try {
             const client = new KiwiClient(kiwi.serverURL, token, fetch, 120_000, PRODUCTS.kiwi.label);
+            const joins = joinRequest(this.store.workspace);
+            if (joins) {
+                const account = this.store.workspace.feed?.account;
+                const answer = await client.joins(joins);
+                if (this.store.workspace.preferences.suggestMatters && this.store.workspace.feed?.account === account && this.store.workspace.sync?.targets.some((t) => t === kiwi || (t.product === "kiwi" && t.deviceID === kiwi.deviceID))) this.store.change((w) => applyJoins(w, joins, answer));
+            }
             for (let round = 0; round < 10; round++) {
                 const request = matterRequest(this.store.workspace);
                 if (!request) break;

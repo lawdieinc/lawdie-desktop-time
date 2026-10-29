@@ -19,13 +19,13 @@ export const MATTER_BATCH = 150;
 export const MATTER_EXAMPLES = 40;
 
 const ms = (iso: string) => Date.parse(iso);
-const spanSeconds = (a: { startedAt: string; endedAt: string }) => Math.max(0, (ms(a.endedAt) - ms(a.startedAt)) / 1000);
+const spanSeconds = entrySeconds;
 const localDayOf = (isoText: string): string => { const d = new Date(isoText); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
 const readable = (a: Activity) => !!(a.title || a.document || a.screenText);
 
 /** Pending activities never asked about, with something to read (title, document or on-screen text), oldest first. */
 export function unnamed(w: Workspace): Activity[] {
-    return w.activities.filter((a) => a.disposition === "pending" && a.matter === undefined && readable(a)).sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
+    return w.activities.filter((a) => a.disposition === "pending" && a.matter === undefined && !a.kiwiProjectID && readable(a)).sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
 }
 
 /** Matter names already in use: open projects and names on activity, so the model reuses them exactly. */
@@ -89,7 +89,7 @@ export function applyMatters(w: Workspace, askedIDs: string[], answer: unknown):
     const canonical = new Map(knownMatters(w).map((n) => [n.toLowerCase(), n]));
     let named = 0;
     for (const a of w.activities) {
-        if (!asked.has(a.id) || a.matterBy === "person" || a.disposition !== "pending") continue;
+        if (!asked.has(a.id) || a.matterBy === "person" || a.kiwiProjectID || a.disposition !== "pending") continue;
         const name = given.get(a.id) ?? null;
         a.matter = name ? (isPersonal(name) ? PERSONAL : canonical.get(name.toLowerCase()) ?? name) : null;
         a.matterBy = "ai";
@@ -108,6 +108,8 @@ export type MatterGroup = {
     /** Stable while pending: the day and the matter. */
     id: string;
     matter: string;
+    projectID?: string;
+    kiwiProjectID?: string;
     activityIDs: string[];
     startedAt: string;
     endedAt: string;
@@ -137,14 +139,14 @@ export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[
     const rest: Activity[] = [];
     for (const a of pending) {
         if (!a.matter) { rest.push(a); continue; }
-        const key = `${localDayOf(a.startedAt)}\n${a.matter.toLowerCase()}`;
+        const key = `${localDayOf(a.startedAt)}\n${isPersonal(a.matter) ? "personal" : a.kiwiProjectID ? `kiwi:${a.kiwiProjectID}` : a.projectID ? `local:${a.projectID}` : a.matter.toLowerCase()}`;
         let g = byKey.get(key);
         if (!g) {
-            g = { id: `${a.id}:matter`, matter: a.matter, activityIDs: [], startedAt: a.startedAt, endedAt: a.endedAt, seconds: 0, sittings: 0, apps: [], documents: [], draft: null };
+            g = { id: `${a.id}:matter`, matter: a.matter, projectID: a.projectID, kiwiProjectID: a.kiwiProjectID, activityIDs: [], startedAt: a.startedAt, endedAt: a.endedAt, seconds: 0, sittings: 0, apps: [], documents: [], draft: null };
             byKey.set(key, g);
         }
         g.activityIDs.push(a.id);
-        g.endedAt = a.endedAt;
+        if (ms(a.endedAt) > ms(g.endedAt)) g.endedAt = a.endedAt;
         g.seconds += spanSeconds(a);
         g.sittings += 1;
         g.draft ??= a.draft ?? null;

@@ -4,6 +4,7 @@ import type { Workspace } from "./model";
 export type AppState = {
     workspace: Workspace;
     syncing: boolean;
+    feed: { running: boolean; error: string | null };
     loadFailed: boolean;
     error: string | null;
     notice: string | null;

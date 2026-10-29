@@ -1,3 +1,4 @@
+import { refreshReceipts } from "@shared/feed";
 /* The one place the workspace changes. Every mutation runs on a copy, is written to disk,
    and only then becomes the live state and reaches the window — the Swift app's rule,
    kept. A failed write leaves the old state and reports the error. */
@@ -11,6 +12,7 @@ export type { AppState };
 export class Store {
     workspace: Workspace = emptyWorkspace();
     syncing = false;
+    feedStatus: AppState["feed"] = { running: false, error: null };
     loadFailed = false;
     error: string | null = null;
     notice: string | null = null;
@@ -32,7 +34,7 @@ export class Store {
     }
 
     snapshot(): AppState {
-        return { workspace: this.workspace, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
+        return { workspace: this.workspace, feed: this.feedStatus, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
     }
 
     subscribe(listener: (state: AppState) => void): () => void {
@@ -56,6 +58,7 @@ export class Store {
         const next = structuredClone(this.workspace);
         try {
             mutation(next);
+            refreshReceipts(next);
             validate(next);
             if (JSON.stringify(next) !== before) this.file.save(next);
             this.workspace = next;
@@ -67,6 +70,8 @@ export class Store {
             return false;
         }
     }
+
+    setFeedStatus(running: boolean, error: string | null): void { this.feedStatus = { running, error }; this.publish(); }
 
     setSyncing(on: boolean): void {
         this.syncing = on;

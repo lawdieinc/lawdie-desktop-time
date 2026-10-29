@@ -5,6 +5,10 @@ import type { Destination, Product } from "@shared/kiwi";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
 export const api = {
+    importNow: (): Promise<void> => ipcRenderer.invoke("importNow"),
+    joinMatter: (localID: string, kiwiID: string): Promise<boolean> => ipcRenderer.invoke("joinMatter", localID, kiwiID),
+    undoJoin: (localID: string): Promise<boolean> => ipcRenderer.invoke("undoJoin", localID),
+    declineJoin: (localID: string): Promise<boolean> => ipcRenderer.invoke("declineJoin", localID),
     getState: (): Promise<AppState> => ipcRenderer.invoke("state"),
     onState: (listener: (state: AppState) => void): (() => void) => {
         const handler = (_e: unknown, state: AppState): void => listener(state);
