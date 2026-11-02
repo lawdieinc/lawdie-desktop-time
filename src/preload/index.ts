@@ -45,6 +45,8 @@ export const api = {
     /** Resolves to what the OS now reports, which may differ if it refused. */
     setOpenAtLogin: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setOpenAtLogin", on),
     dismissMessage: (): Promise<void> => ipcRenderer.invoke("dismissMessage"),
+    /** Kept entries (by id) as a CSV file the person saves: project, date, hours, description. */
+    exportCsv: (ids: string[], name: string): Promise<boolean> => ipcRenderer.invoke("exportCsv", ids, name),
     showDataFolder: (): Promise<void> => ipcRenderer.invoke("showDataFolder"),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke("openExternal", url),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),

@@ -181,7 +181,13 @@ function Today({ w, now }: { w: Workspace; now: number }): ReactNode {
                 </Panel>
             )}
             <Panel>
-                <div className="row between"><strong>{range === "today" ? "Your day, in focus" : "Entries"}</strong><span className="eyebrow">{label}</span></div>
+                <div className="row between">
+                    <strong>{range === "today" ? "Your day, in focus" : "Entries"}</strong>
+                    <span className="row gap">
+                        <span className="eyebrow">{label}</span>
+                        <button type="button" className="quiet" disabled={entries.length === 0} title="Project, date, hours and description of each kept entry shown here" onClick={() => void window.lawdie.exportCsv(entries.map((e) => e.id), `Lawdie time ${dayKey(start || Date.parse(entries[entries.length - 1]?.startedAt ?? new Date(now).toISOString()))} to ${dayKey(end - 1)}.csv`)}>Export CSV</button>
+                    </span>
+                </div>
                 {entries.length === 0 ? (
                     <Empty title={range === "today" ? "A fresh start" : "Nothing in this range"} detail="Enable capture, work in another app, then keep what matters from the Activity inbox. Your time will take shape here." />
                 ) : [...days.entries()].map(([k, list]) => (

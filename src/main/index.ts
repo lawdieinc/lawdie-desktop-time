@@ -1,6 +1,7 @@
 import { joinMatter, undoJoin } from "@shared/feed";
 import { Feed } from "./feed";
 import { appendFileSync, writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { hostname } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, systemPreferences, Tray } from "electron";
@@ -8,6 +9,7 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
 import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
 import type { AppState } from "@shared/state";
+import { entriesCsv } from "@shared/export";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
 import { Matters, SUGGEST_ON_OPEN_MS } from "./matters";
@@ -199,6 +201,22 @@ app.whenReady().then(() => {
     ipcMain.handle("openAtLogin", () => openAtLogin());
     ipcMain.handle("setOpenAtLogin", (_e, on: boolean) => { setOpenAtLogin(on === true); return openAtLogin(); });
     ipcMain.handle("dismissMessage", () => { store.error = null; store.notice = null; store.publish(); });
+    // Kept entries as CSV, where the person chooses. Excel reads UTF-8 only with the BOM.
+    ipcMain.handle("exportCsv", async (_e, ids: string[], name: string) => {
+        const parent = BrowserWindow.getFocusedWindow() ?? mainWindow;
+        const options = { title: "Export kept time", defaultPath: join(app.getPath("documents"), String(name || "Lawdie time.csv")), filters: [{ name: "CSV", extensions: ["csv"] }] };
+        const { canceled, filePath } = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
+        if (canceled || !filePath) return false;
+        try {
+            await writeFile(filePath, "\uFEFF" + entriesCsv(store.workspace, Array.isArray(ids) ? ids.map(String) : []), "utf8");
+            store.say(`Exported to ${filePath}.`);
+            return true;
+        } catch (err) {
+            store.error = `Could not export: ${err instanceof Error ? err.message : String(err)}`;
+            store.publish();
+            return false;
+        }
+    });
     ipcMain.handle("showDataFolder", () => shell.showItemInFolder(workspacePath));
     ipcMain.handle("openExternal", (_e, url: string) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); });
     ipcMain.handle("deviceName", () => hostname());

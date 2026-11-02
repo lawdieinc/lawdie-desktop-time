@@ -10,7 +10,8 @@ the wire contract land in all three repos together.
 - `src/shared/` — pure, no Electron: `model.ts` (workspace types, the capture state
   machine, review rules, sync payload, file validation, the v1 Swift-format migration),
   `kiwi.ts` (the client), `feed.ts` (Kiwi and browser time brought in: pages, receipts,
-  overlap clipping, matter links), `format.ts`, `state.ts`. Everything here is under
+  overlap clipping, matter links), `export.ts` (kept entries as CSV: project, date, hours,
+  description; the Time screen's Export CSV, for the range shown), `format.ts`, `state.ts`. Everything here is under
   `model.test.ts` and `feed.test.ts`.
 - `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock),
   `store.ts` (the only place the workspace changes; copy → validate → save → publish),

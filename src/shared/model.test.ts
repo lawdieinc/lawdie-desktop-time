@@ -729,3 +729,26 @@ describe("text size", () => {
         expect(() => validate(w)).toThrow(WorkspaceError);
     });
 });
+
+describe("CSV export of kept time", () => {
+    it("writes project, date, hours and description, oldest first, quoting and defusing what a spreadsheet would misread", async () => {
+        const { entriesCsv, csvField } = await import("./export");
+        const w = emptyWorkspace();
+        w.projects.push({ id: "p1", name: "Smith, J v Acme", client: "", hourlyRate: 0 } as Workspace["projects"][number]);
+        const entry = (id: string, start: number, end: number, description: string, projectID: string | null): TimeEntry =>
+            ({ id, description, projectID, startedAt: iso(start), endedAt: iso(end), billable: true, hourlyRate: 0, source: "desktop", activityID: null });
+        w.entries.push(
+            entry("b", 7200, 9000, 'Reviewed "draft" lease', "p1"),
+            entry("a", 0, 5400, "=HYPERLINK(1)", null),
+            { ...entry("c", 0, 3600, "Stretch", null), sittings: [{ startedAt: iso(0), endedAt: iso(600) }, { startedAt: iso(3000), endedAt: iso(3600) }] },
+        );
+        const day = new Date(at(0)); const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+        const lines = entriesCsv(w, ["a", "b"]).trimEnd().split("\r\n");
+        expect(lines[0]).toBe("Project,Date,Hours,Description");
+        expect(lines[1]).toBe(`,${date},1.50,'=HYPERLINK(1)`);
+        expect(lines[2]).toMatch(/^"Smith, J v Acme",\d{4}-\d{2}-\d{2},0\.50,"Reviewed ""draft"" lease"$/);
+        expect(lines).toHaveLength(3);
+        expect(entriesCsv(w, ["c"]).trimEnd().split("\r\n")[1]).toBe(`,${date},0.33,Stretch`);
+        expect(csvField("-2 hours, revised")).toBe(`"'-2 hours, revised"`);
+    });
+});
