@@ -51,6 +51,10 @@ export const api = {
     /** Whether on-screen text can be read here, and (macOS) whether Accessibility is allowed. */
     screenTextStatus: (): Promise<{ supported: boolean; trusted: boolean; error: string | null }> => ipcRenderer.invoke("screenTextStatus"),
     openAccessibilitySettings: (): Promise<void> => ipcRenderer.invoke("openAccessibilitySettings"),
+    /** macOS: System Settings at Privacy & Security → Screen Recording or Accessibility. */
+    openPrivacySettings: (pane: "screen" | "accessibility"): Promise<void> => ipcRenderer.invoke("openPrivacySettings", pane),
+    /** Quit and reopen: macOS applies a new permission to a fresh process only. */
+    relaunch: (): Promise<void> => ipcRenderer.invoke("relaunch"),
 };
 
 contextBridge.exposeInMainWorld("lawdie", api);

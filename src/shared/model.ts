@@ -134,7 +134,12 @@ export type Preferences = {
     idleMinutes: number;
     retentionDays: number;
     excludedOwnerIDs: string[];
+    /** The window's zoom, for reading at a distance: 1 (standard) to TEXT_SIZES' largest. Absent is 1. */
+    textSize?: number;
 };
+
+/** The text sizes Settings offers. */
+export const TEXT_SIZES = [1, 1.15, 1.3] as const;
 
 /** One product this computer syncs to. Each has its own device row, so its own id and name. */
 export type SyncTarget = {
@@ -816,7 +821,7 @@ export function validate(w: Workspace): Workspace {
     const ok =
         w.schemaVersion === SCHEMA_VERSION &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&
-        p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) &&
+        p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) && (p.textSize == null || (TEXT_SIZES as readonly number[]).includes(p.textSize)) &&
         new Set(w.entries.map((e) => e.id)).size === w.entries.length &&
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&

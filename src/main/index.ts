@@ -3,10 +3,11 @@ import { Feed } from "./feed";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hostname } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, systemPreferences, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
 import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
+import type { AppState } from "@shared/state";
 import { Capture } from "./capture";
 import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
 import { Matters, SUGGEST_ON_OPEN_MS } from "./matters";
@@ -57,8 +58,37 @@ function createWindow(store: Store, hidden = false): BrowserWindow {
     window.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: "deny" }; });
     if (is.dev && process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
     else void window.loadFile(join(__dirname, "../renderer/index.html"));
-    window.webContents.on("did-finish-load", () => window.webContents.send("state", store.snapshot()));
+    window.webContents.on("did-finish-load", () => { applyTextSize(window, store); window.webContents.send("state", store.snapshot()); });
     return window;
+}
+
+/** Settings' text size is the window's zoom, so everything grows together, layout included. */
+function applyTextSize(window: BrowserWindow, store: Store): void {
+    if (!window.isDestroyed()) window.webContents.setZoomFactor(store.workspace.preferences.textSize ?? 1);
+}
+
+const PRIVACY_PANES = { screen: "Privacy_ScreenCapture", accessibility: "Privacy_Accessibility" } as const;
+
+/** A system notification, if the OS shows them; clicking it opens the window. */
+function notify(store: Store, title: string, body: string): void {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title, body });
+    n.on("click", () => showWindow(store));
+    n.show();
+}
+
+/**
+ * What a switched-on feature needs from macOS and does not have. An update can lose a grant
+ * while System Settings still shows it on (2026-10-23: six days of capture without titles
+ * that nobody saw), so this is checked all the time, and the window says so until it is fixed.
+ */
+function missingPermissions(store: Store, capture: Capture): AppState["missing"] {
+    const p = store.workspace.preferences;
+    if (process.platform !== "darwin" || !p.captureEnabled) return { screenRecording: false, accessibility: false };
+    return {
+        screenRecording: p.captureTitles && (capture.titlesRefused || systemPreferences.getMediaAccessStatus("screen") !== "granted"),
+        accessibility: p.captureScreenText && !systemPreferences.isTrustedAccessibilityClient(false),
+    };
 }
 
 function showWindow(store: Store): void {
@@ -67,14 +97,19 @@ function showWindow(store: Store): void {
     mainWindow.focus();
 }
 
-function buildTray(store: Store, capture: Capture): void {
+function buildTray(store: Store, capture: Capture, updater: Updater): void {
     const icon = nativeImage.createFromPath(join(process.resourcesPath ?? "", "resources/brand/tray.png"));
     const fallback = icon.isEmpty() ? nativeImage.createFromPath(join(__dirname, "../../resources/brand/tray.png")) : icon;
     tray = new Tray(fallback.resize({ width: 18, height: 18 }));
     tray.setToolTip("Lawdie Time Capture");
     const refresh = (): void => {
         const on = store.workspace.preferences.captureEnabled;
+        const { screenRecording, accessibility } = store.missing;
+        const attention = screenRecording || accessibility;
+        tray?.setToolTip(attention ? "Lawdie Time Capture: needs a permission in System Settings" : "Lawdie Time Capture");
         const menu = Menu.buildFromTemplate([
+            ...(attention ? [{ label: screenRecording ? "⚠ Allow Screen Recording…" : "⚠ Allow Accessibility…", click: () => showWindow(store) }, { type: "separator" as const }] : []),
+            ...(store.updateReady ? [{ label: `Install update ${store.updateReady} and restart`, click: () => updater.install() }, { type: "separator" as const }] : []),
             { label: on ? "Capture is on" : "Capture is paused", enabled: false },
             { label: on ? "Pause capture" : "Enable capture", click: () => { store.change((w) => { w.preferences.captureEnabled = !on; if (on) closeActivity(w, Date.now(), "paused"); }); void capture.sample(); } },
             { type: "separator" },
@@ -136,6 +171,7 @@ app.whenReady().then(() => {
             (w.preferences as Record<string, unknown>)[key] = value;
             if (key === "excludedOwnerIDs" && w.currentActivity && Array.isArray(value) && value.includes(w.currentActivity.ownerID)) w.currentActivity = null;
         });
+        if (ok && key === "textSize") for (const window of BrowserWindow.getAllWindows()) applyTextSize(window, store);
         if (ok && key === "importKiwiTime") { feed.cancel(); if (value === true) void feed.pull(); }
         if (ok && key === "suggestMatters" && value === true) void matters.suggest();
         // macOS shows its Accessibility prompt (once) when on-screen text is switched on.
@@ -172,7 +208,10 @@ app.whenReady().then(() => {
         trusted: process.platform === "darwin" ? systemPreferences.isTrustedAccessibilityClient(false) : true,
         error: capture.screen.lastError,
     }));
-    ipcMain.handle("openAccessibilitySettings", () => { if (process.platform === "darwin") void shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"); });
+    ipcMain.handle("openAccessibilitySettings", () => { if (process.platform === "darwin") void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${PRIVACY_PANES.accessibility}`); });
+    ipcMain.handle("openPrivacySettings", (_e, pane: keyof typeof PRIVACY_PANES) => { if (process.platform === "darwin" && pane in PRIVACY_PANES) void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${PRIVACY_PANES[pane]}`); });
+    // macOS applies a new grant to a fresh process only.
+    ipcMain.handle("relaunch", () => { quitting = true; app.relaunch(); app.quit(); });
 
     store.subscribe((state) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("state", state); });
 
@@ -192,7 +231,24 @@ app.whenReady().then(() => {
             setTimeout(() => void mainWindow?.webContents.capturePage().then((image) => writeFileSync(shot, image.toPNG())), 3500);
         });
     }
-    buildTray(store, capture);
+    buildTray(store, capture, updater);
+    updater.onReady = (version) => notify(store, "Update ready", `Lawdie Time Capture ${version} is ready. Open the app and press Install now; it restarts in a few seconds.`);
+    // A permission newly missing: said in the window (which opens, once a run), the tray and a notification.
+    let raised = false;
+    const checkPermissions = (): void => {
+        const before = store.missing;
+        store.setMissing(missingPermissions(store, capture));
+        const now = store.missing;
+        const lost = (now.screenRecording && !before.screenRecording) || (now.accessibility && !before.accessibility);
+        if (!lost || raised || argValue("--screenshot")) return;
+        raised = true;
+        notify(store, "Lawdie Time Capture needs a permission", now.screenRecording ? "macOS is not allowing Screen Recording, so window titles are not being captured. Open the app to fix it." : "macOS is not allowing Accessibility, so on-screen text is not being read. Open the app to fix it.");
+        showWindow(store);
+    };
+    // After capture's first lookups, which are what raise macOS's own prompt.
+    setTimeout(checkPermissions, 20_000);
+    setInterval(checkPermissions, 15_000);
+    store.subscribe(() => { if (store.missing.screenRecording || store.missing.accessibility) checkPermissions(); });
     // On-screen text left on from before, without the permission yet: macOS asks now rather than reads failing quietly.
     if (process.platform === "darwin" && store.workspace.preferences.captureScreenText && !systemPreferences.isTrustedAccessibilityClient(false)) systemPreferences.isTrustedAccessibilityClient(true);
     capture.start();

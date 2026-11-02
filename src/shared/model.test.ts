@@ -717,3 +717,15 @@ describe("calls", () => {
         expect(w.activities).toHaveLength(0);
     });
 });
+
+describe("text size", () => {
+    it("is absent in an old workspace, accepts the offered sizes and refuses anything else", () => {
+        const w = emptyWorkspace();
+        expect(w.preferences.textSize).toBeUndefined();
+        expect(() => validate(w)).not.toThrow();
+        w.preferences.textSize = 1.3;
+        expect(() => validate(w)).not.toThrow();
+        w.preferences.textSize = 4;
+        expect(() => validate(w)).toThrow(WorkspaceError);
+    });
+});

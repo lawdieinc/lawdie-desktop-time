@@ -18,6 +18,7 @@ export class Store {
     notice: string | null = null;
     matters: AppState["matters"] = { running: false, error: null };
     updateReady: string | null = null;
+    missing: AppState["missing"] = { screenRecording: false, accessibility: false };
     private listeners = new Set<(state: AppState) => void>();
 
     constructor(readonly file: WorkspaceFile, readonly appVersion: string, readonly platform: NodeJS.Platform = process.platform) {
@@ -34,7 +35,7 @@ export class Store {
     }
 
     snapshot(): AppState {
-        return { workspace: this.workspace, feed: this.feedStatus, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
+        return { workspace: this.workspace, feed: this.feedStatus, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, missing: this.missing, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
     }
 
     subscribe(listener: (state: AppState) => void): () => void {
@@ -85,6 +86,13 @@ export class Store {
 
     setUpdateReady(version: string): void {
         this.updateReady = version;
+        this.publish();
+    }
+
+    /** Publishes only on a change: it is checked every few seconds. */
+    setMissing(missing: AppState["missing"]): void {
+        if (missing.screenRecording === this.missing.screenRecording && missing.accessibility === this.missing.accessibility) return;
+        this.missing = missing;
         this.publish();
     }
 

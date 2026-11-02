@@ -194,3 +194,11 @@ leaves it out. "Not personal" sends an item back to review.
 2026-10-29: Kiwi and browser time come into the inbox (section above): the plan was
 reviewed and built in Codex 2026-10-26–28, then finished, tested and documented here.
 Version 0.10.0.
+2026-11-02: after the Oct 23 update installed unnoticed and macOS dropped Screen Recording
+for six days (no titles, no screen details): an update downloads in the background but
+installs only when the person presses Install (window callout, sidebar, tray, a
+notification; `autoInstallOnAppQuit` off). A permission a switched-on feature needs and
+lacks (`AppState.missing`, checked every 15 s in index.ts) shows a callout that cannot be
+dismissed, a sidebar line and a tray item, and once a run a notification and the window.
+Text is larger, and Settings → Display offers Standard/Large/Larger (`textSize`, the
+window's zoom), after "unreadable at distance" on a laptop.

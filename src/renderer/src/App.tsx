@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, STRETCH_GAP_MS, clipSittings, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, STRETCH_GAP_MS, clipSittings, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
@@ -58,9 +58,12 @@ export function App(): ReactNode {
                 <div className="capture-card">
                     <div className="row"><span className={"dot" + (w.preferences.captureEnabled ? " on" : "")} /> <strong>{w.preferences.captureEnabled ? "Capture is on" : "Capture is paused"}</strong></div>
                     <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}.` : "Your time. On your machine."}</p>
+                    {state.missing.screenRecording && <p className="danger small strong">Window titles are not being captured: macOS needs Screen Recording.</p>}
+                    {state.missing.accessibility && <p className="danger small strong">On-screen text is not being read: macOS needs Accessibility.</p>}
                     <button type="button" className="quiet" disabled={state.loadFailed} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>
                         {w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}
                     </button>
+                    {state.updateReady && <button type="button" className="primary" onClick={() => void window.lawdie.installUpdate()}>Install update</button>}
                 </div>
                 <div className="account">
                     <span className="avatar">L</span>
@@ -78,10 +81,21 @@ export function App(): ReactNode {
                 <div className="page">
                     {state.error && <Banner tone="danger" onClose={() => void window.lawdie.dismissMessage()}>{state.error}</Banner>}
                     {state.notice && <Banner onClose={() => void window.lawdie.dismissMessage()}>{state.notice}</Banner>}
+                    {state.missing.screenRecording && (
+                        <PermissionCallout pane="screen" title="Window titles are not being captured" what="macOS is not allowing Screen Recording for this version of Lawdie Time Capture, so your activity has app names only, without the document and email names that tell which matter it was. This often happens after an update." />
+                    )}
+                    {state.missing.accessibility && (
+                        <PermissionCallout pane="accessibility" title="On-screen text is not being read" what="macOS is not allowing Accessibility for this version of Lawdie Time Capture, so text from the window in front is not read and matters are harder to name. This often happens after an update." />
+                    )}
                     {state.updateReady && !updateLater && (
-                        <Banner onClose={() => setUpdateLater(true)}>
-                            <span className="row gap">Version {state.updateReady} is ready; it installs the next time the app restarts.<span className="grow" /><button type="button" className="primary" onClick={() => void window.lawdie.installUpdate()}>Restart now</button></span>
-                        </Banner>
+                        <section className="callout" role="status">
+                            <div className="grow">
+                                <p className="callout-title">Version {state.updateReady} is ready to install</p>
+                                <p className="muted">You are on {state.appVersion}. Installing restarts the app in a few seconds; nothing you captured is lost.{state.platform === "darwin" ? " If macOS then asks again for Screen Recording or Accessibility, allow it; this window will say so if anything is missing." : ""}</p>
+                            </div>
+                            <button type="button" className="quiet" onClick={() => setUpdateLater(true)}>Later</button>
+                            <button type="button" className="primary" onClick={() => void window.lawdie.installUpdate()}>Install now</button>
+                        </section>
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
@@ -812,6 +826,16 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 </Setting>
             </Panel>
             <Panel>
+                <strong>Display</strong>
+                <Setting title="Text size" detail="Makes everything in this window larger, for reading on a laptop or from a distance.">
+                    <div className="segmented" role="radiogroup" aria-label="Text size">
+                        {TEXT_SIZES.map((size, i) => (
+                            <button key={size} type="button" role="radio" aria-checked={(p.textSize ?? 1) === size} className={(p.textSize ?? 1) === size ? "active" : ""} onClick={() => set("textSize", size)}>{["Standard", "Large", "Larger"][i]}</button>
+                        ))}
+                    </div>
+                </Setting>
+            </Panel>
+            <Panel>
                 <strong>Apps that stay private</strong>
                 <p className="muted small">Excluded apps are skipped before any window title is read. {isMac ? "Enter a bundle identifier, such as com.apple.Safari." : "Enter the program's file name, such as chrome.exe."}</p>
                 <div className="chips">{p.excludedOwnerIDs.map((id) => <span key={id} className="chip mono">{id}<button type="button" aria-label={`Stop excluding ${id}`} onClick={() => set("excludedOwnerIDs", p.excludedOwnerIDs.filter((x) => x !== id))}>×</button></span>)}</div>
@@ -882,6 +906,27 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
 
 function Heading({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }): ReactNode {
     return <div className="heading"><p className="eyebrow">{eyebrow}</p><h2 className="display">{title}</h2>{subtitle && <p className="muted">{subtitle}</p>}</div>;
+}
+/** A permission a switched-on feature needs: stays until macOS allows it, since dismissing it would not. */
+function PermissionCallout({ pane, title, what }: { pane: "screen" | "accessibility"; title: string; what: string }): ReactNode {
+    const name = pane === "screen" ? "Screen Recording" : "Accessibility";
+    return (
+        <section className="callout danger" role="alert">
+            <div className="grow">
+                <p className="callout-title">{title}</p>
+                <p>{what}</p>
+                <ol>
+                    <li>Open System Settings → Privacy &amp; Security → {name}.</li>
+                    <li>If Lawdie Time Capture is listed, switched on or not, select it and remove it with −. That entry is an earlier version.</li>
+                    <li>Add it again with + (or reopen the app and allow it when asked), then reopen the app.</li>
+                </ol>
+            </div>
+            <div className="callout-actions">
+                <button type="button" className="primary" onClick={() => void window.lawdie.openPrivacySettings(pane)}>Open {name} settings</button>
+                <button type="button" className="quiet" onClick={() => void window.lawdie.relaunch()}>Reopen the app</button>
+            </div>
+        </section>
+    );
 }
 function Panel({ children }: { children: ReactNode }): ReactNode { return <section className="panel">{children}</section>; }
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }): ReactNode {

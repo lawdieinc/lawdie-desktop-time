@@ -130,7 +130,7 @@ export class Capture {
             }
         }
         const win = await ask({ screenRecordingPermission: false, accessibilityPermission: false });
-        if (!this.titlesRefused) this.store.say("macOS has not allowed Screen Recording for this version of Lawdie Time Capture, so capture is going on without window titles. In System Settings → Privacy & Security → Screen Recording, select Lawdie Time Capture and remove it with −, even if it is switched on (that is an earlier version), then reopen this app and allow it.");
+        // The window says so for as long as it lasts (`missing`, index.ts), not in a notice that can be dismissed or replaced.
         this.titlesRefused = true;
         return win ? { ...win, title: "" } : win;
     }
