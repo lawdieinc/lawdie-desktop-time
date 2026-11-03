@@ -47,6 +47,8 @@ export const api = {
     dismissMessage: (): Promise<void> => ipcRenderer.invoke("dismissMessage"),
     /** Kept entries (by id) as a CSV file the person saves: project, date, hours, description. */
     exportCsv: (ids: string[], name: string): Promise<boolean> => ipcRenderer.invoke("exportCsv", ids, name),
+    /** A screenshot, full size, in the system's viewer. */
+    openScreenshot: (name: string): Promise<void> => ipcRenderer.invoke("openScreenshot", name),
     showDataFolder: (): Promise<void> => ipcRenderer.invoke("showDataFolder"),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke("openExternal", url),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),

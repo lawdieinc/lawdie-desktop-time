@@ -752,3 +752,64 @@ describe("CSV export of kept time", () => {
         expect(csvField("-2 hours, revised")).toBe(`"'-2 hours, revised"`);
     });
 });
+
+describe("screenshots", () => {
+    const shooting = (): Workspace => { const w = capturing(); w.preferences.captureScreenshots = true; return w; };
+
+    it("are off unless switched on, skip a glance, then come every five minutes", async () => {
+        const { screenshotDue, addScreenshot, SCREENSHOT_EVERY_MS } = await import("./model");
+        const off = capturing();
+        observe(off, WORD, at(0), 0); observe(off, WORD, at(60), 0);
+        expect(screenshotDue(off, at(60))).toBeNull();
+
+        const w = shooting();
+        observe(w, WORD, at(0), 0);
+        observe(w, WORD, at(10), 0);
+        expect(screenshotDue(w, at(10))).toBeNull(); // a glance gets none
+        observe(w, WORD, at(20), 0);
+        const first = screenshotDue(w, at(20))!;
+        expect(first).toBe(`${w.currentActivity!.id}-${at(20)}.jpg`);
+        expect(addScreenshot(w, first)).toBe(true);
+        observe(w, WORD, at(25), 0);
+        expect(screenshotDue(w, at(25))).toBeNull();
+        const later = at(20) + SCREENSHOT_EVERY_MS;
+        expect(screenshotDue(w, later)).toBe(`${w.currentActivity!.id}-${later}.jpg`);
+    });
+
+    it("attach to the segment they show, still pending; never to reviewed time or something else", async () => {
+        const { addScreenshot } = await import("./model");
+        const w = shooting();
+        w.activities.push(activity({ id: "closed-1" }), activity({ id: "gone-1", disposition: "dismissed" }));
+        expect(addScreenshot(w, `closed-1-${at(30)}.jpg`)).toBe(true);
+        expect(w.activities[0].screenshots).toEqual([`closed-1-${at(30)}.jpg`]);
+        expect(addScreenshot(w, `gone-1-${at(30)}.jpg`)).toBe(false);
+        expect(addScreenshot(w, `missing-${at(30)}.jpg`)).toBe(false);
+        expect(addScreenshot(w, `../../etc/passwd-${at(30)}.jpg`)).toBe(false);
+    });
+
+    it("of the kept time go with the entry, dismissing drops them, and the folder keeps only what is referenced", async () => {
+        const { referencedScreenshots } = await import("./model");
+        const w = shooting();
+        const inside = `keep-1-${at(100)}.jpg`, outside = `keep-1-${at(550)}.jpg`, other = `drop-1-${at(100)}.jpg`;
+        w.activities.push(activity({ id: "keep-1", screenshots: [outside, inside] }), activity({ id: "drop-1", screenshots: [other] }));
+        const kept = keepStretch(w, ["keep-1"], { description: "Lease", projectID: null, billable: true, startedAt: iso(0), endedAt: iso(500) }, at(1000));
+        expect(kept.screenshots).toEqual([inside]);
+        dismissActivities(w, ["drop-1"]);
+        expect(w.activities.find((a) => a.id === "drop-1")!.screenshots).toBeUndefined();
+        expect([...referencedScreenshots(w)].sort()).toEqual([inside, outside].sort());
+        w.activities = [];
+        expect([...referencedScreenshots(w)]).toEqual([inside]);
+        deleteEntry(w, kept.id);
+        expect(referencedScreenshots(w).size).toBe(0);
+    });
+
+    it("never travel to Kiwi or the CRM, and a workspace naming a path instead is refused", () => {
+        const w = shooting();
+        w.activities.push(activity({ id: "sent-1", screenshots: [`sent-1-${at(100)}.jpg`] }));
+        w.entries.push(entry({ screenshots: [`sent-1-${at(100)}.jpg`] }));
+        expect(JSON.stringify(syncRequest(w, "test"))).not.toContain(".jpg");
+        expect(() => validate(w)).not.toThrow();
+        w.activities[0].screenshots = ["../workspace.json"];
+        expect(() => validate(w)).toThrow(WorkspaceError);
+    });
+});

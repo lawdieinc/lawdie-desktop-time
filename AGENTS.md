@@ -63,6 +63,21 @@ automation (osascript / PowerShell COM), opt-in, throttled, timeboxed; the three
 NAME/PATH/TEXT protocol is parsed by `parseProbeOutput()`, which is what the tests
 cover. Real Office is exercised by hand.
 
+## Screenshots
+
+Opt-in (`captureScreenshots`, off by default; 2026-11-03, to see what time was when
+reviewing it). `src/main/screenshots.ts` captures the one window in front through
+`desktopCapturer` (macOS: the Screen Recording permission titles need; `missing` covers
+it), a 1440×900 JPEG in `screenshots/` beside the workspace, served to the window as
+`lawdie-shot://shot/<name>`. The rules are pure in `model.ts` and tested:
+`screenshotDue()` (none for a segment under 20 s, then every 5 minutes, at most 48),
+`addScreenshot()` (only to the segment in progress or a pending one), `keepStretch()`
+copies those inside the kept time to the entry, dismissing drops them, and
+`referencedScreenshots()` is what `collect()` keeps (hourly; anything else is deleted). A
+name is `<activity id>-<epoch ms>.jpg` and is validated, so it is never a path. Never of a
+browser, a private app, this app or a call behind the window in front. Never synced and
+never sent to the AI: `syncRequest()` and the matter requests list their fields.
+
 ## On-screen text
 
 `src/main/screenText.ts` reads some of the text the window in front shows, for apps other
@@ -203,3 +218,5 @@ lacks (`AppState.missing`, checked every 15 s in index.ts) shows a callout that 
 dismissed, a sidebar line and a tray item, and once a run a notification and the window.
 Text is larger, and Settings → Display offers Standard/Large/Larger (`textSize`, the
 window's zoom), after "unreadable at distance" on a laptop.
+2026-11-03: screenshots, opt-in and local only, kept with entries (see Screenshots). The
+"no screenshots" promise in Settings now reads "unless you switch them on".

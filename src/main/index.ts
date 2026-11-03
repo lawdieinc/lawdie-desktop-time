@@ -4,10 +4,10 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { hostname } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, systemPreferences, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
-import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
+import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, referencedScreenshots, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
 import type { AppState } from "@shared/state";
 import { entriesCsv } from "@shared/export";
 import { Capture } from "./capture";
@@ -15,6 +15,7 @@ import { launchedAtLogin, openAtLogin, setOpenAtLogin } from "./login";
 import { Matters, SUGGEST_ON_OPEN_MS } from "./matters";
 import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
+import { Screenshots, SHOT_SCHEME } from "./screenshots";
 import { Updater } from "./updater";
 import { acquireLock, WorkspaceFile } from "./workspace";
 
@@ -32,6 +33,9 @@ if (argValue("--screenshot")) {
     app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
     app.commandLine.appendSwitch("disable-renderer-backgrounding");
 }
+
+// Screenshots load in the window from this scheme; it must be registered before the app is ready.
+protocol.registerSchemesAsPrivileged([{ scheme: SHOT_SCHEME, privileges: { standard: true, secure: true } }]);
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -88,7 +92,7 @@ function missingPermissions(store: Store, capture: Capture): AppState["missing"]
     const p = store.workspace.preferences;
     if (process.platform !== "darwin" || !p.captureEnabled) return { screenRecording: false, accessibility: false };
     return {
-        screenRecording: p.captureTitles && (capture.titlesRefused || systemPreferences.getMediaAccessStatus("screen") !== "granted"),
+        screenRecording: (p.captureTitles && capture.titlesRefused) || ((p.captureTitles || p.captureScreenshots === true) && systemPreferences.getMediaAccessStatus("screen") !== "granted"),
         accessibility: p.captureScreenText && !systemPreferences.isTrustedAccessibilityClient(false),
     };
 }
@@ -141,7 +145,13 @@ app.whenReady().then(() => {
     }
 
     const store = new Store(new WorkspaceFile(workspacePath), app.getVersion());
-    const capture = new Capture(store);
+    const shots = new Screenshots(join(workspacePath, "..", "screenshots"));
+    shots.serve();
+    const capture = new Capture(store, shots);
+    // Files nothing refers to any more (dismissed, pruned, cleared, an entry deleted): at launch, then hourly.
+    const collectShots = (): void => { if (!store.loadFailed) shots.collect(referencedScreenshots(store.workspace)); };
+    setTimeout(collectShots, 60_000);
+    setInterval(collectShots, 60 * 60_000);
     // Office probe failures go to a log beside the workspace: the one place to look when
     // "Read Office document details" is on and nothing arrives (a denied permission, a
     // modal dialog in Office, a timeout).
@@ -217,6 +227,7 @@ app.whenReady().then(() => {
             return false;
         }
     });
+    ipcMain.handle("openScreenshot", (_e, name: string) => { const file = shots.file(String(name)); if (file) void shell.openPath(file); });
     ipcMain.handle("showDataFolder", () => shell.showItemInFolder(workspacePath));
     ipcMain.handle("openExternal", (_e, url: string) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); });
     ipcMain.handle("deviceName", () => hostname());

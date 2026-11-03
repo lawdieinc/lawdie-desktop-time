@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, STRETCH_GAP_MS, clipSittings, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
@@ -82,7 +82,7 @@ export function App(): ReactNode {
                     {state.error && <Banner tone="danger" onClose={() => void window.lawdie.dismissMessage()}>{state.error}</Banner>}
                     {state.notice && <Banner onClose={() => void window.lawdie.dismissMessage()}>{state.notice}</Banner>}
                     {state.missing.screenRecording && (
-                        <PermissionCallout pane="screen" title="Window titles are not being captured" what="macOS is not allowing Screen Recording for this version of Lawdie Time Capture, so your activity has app names only, without the document and email names that tell which matter it was. This often happens after an update." />
+                        <PermissionCallout pane="screen" title={w.preferences.captureScreenshots && !w.preferences.captureTitles ? "Screenshots are not being taken" : w.preferences.captureScreenshots ? "Window titles and screenshots are not being captured" : "Window titles are not being captured"} what={w.preferences.captureTitles ? "macOS is not allowing Screen Recording for this version of Lawdie Time Capture, so your activity has app names only, without the document and email names that tell which matter it was. This often happens after an update." : "macOS is not allowing Screen Recording for this version of Lawdie Time Capture, so no screenshots are being taken. This often happens after an update."} />
                     )}
                     {state.missing.accessibility && (
                         <PermissionCallout pane="accessibility" title="On-screen text is not being read" what="macOS is not allowing Accessibility for this version of Lawdie Time Capture, so text from the window in front is not read and matters are harder to name. This often happens after an update." />
@@ -213,6 +213,7 @@ function EntryRow({ entry, w }: { entry: TimeEntry; w: Workspace }): ReactNode {
             <span className="bar" />
             <div className="grow">
                 <div className="small strong">{entry.description} <AiTag source={entry.drafted} /></div>
+                <Shots names={entry.screenshots} />
                 <div className="muted tiny"><MatterLabel name={p?.name} /> · {entry.sittings && entry.sittings.length > 1 ? `${spanLabel(entry.startedAt, entry.endedAt, entry.sittings.length)} · ${entry.sittings.length} sittings` : clock(entry.startedAt)}{entry.billable ? " · billable" : ""}</div>
             </div>
             <span className="mono">{duration(entrySeconds(entry))}</span>
@@ -266,7 +267,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     <span className="big-icon">{w.preferences.captureEnabled ? "∿" : "‖"}</span>
                     <div className="grow">
                         <strong>{w.preferences.captureEnabled ? "Desktop capture is active" : "Capture is paused"}</strong>
-                        <p className="muted small">{current ? `Currently in ${current.app} · ${duration((Date.now() - Date.parse(current.startedAt)) / 1000)}` : w.preferences.captureScreenText ? "App names and durations, and some on-screen text from the apps you work in. No screenshots or keystrokes; browsers are left to the browser extension." : "App names and durations only by default. No screenshots, keystrokes, or page contents."}</p>
+                        <p className="muted small">{current ? `Currently in ${current.app} · ${duration((Date.now() - Date.parse(current.startedAt)) / 1000)}` : w.preferences.captureScreenshots ? "App names and durations, and a screenshot of the window you work in now and then, kept on this computer only. No keystrokes; browsers are left to the browser extension." : w.preferences.captureScreenText ? "App names and durations, and some on-screen text from the apps you work in. No screenshots or keystrokes; browsers are left to the browser extension." : "App names and durations only by default. No screenshots, keystrokes, or page contents."}</p>
                     </div>
                 </div>
             </Panel>
@@ -293,7 +294,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
-                            <MatterRow key={r.group.id} group={r.group} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
+                            <MatterRow key={r.group.id} group={r.group} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
                                 onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: r.group.draft?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
                         ) : ((st) => (
                             <div key={st.id}>
@@ -302,6 +303,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                     <div className="grow">
                                         <div className="small strong">{st.name}</div>
                                         {st.draft && <DraftLine draft={st.draft} />}
+                                        <Shots names={st.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} />
                                         <div className="muted tiny meta">
                                             <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedLabel(st.endedBy)}`}{st.document?.path ? ` · ${st.document.path}` : ""}</span>
                                             {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
@@ -342,6 +344,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                     <span className="app-icon">▭</span>
                                     <div className="grow">
                                         <div className="small strong">{e.description} <AiTag source={e.drafted} /></div>
+                                        <Shots names={e.screenshots} />
                                         <div className="muted tiny meta">
                                             <span><MatterLabel name={w.projects.find((x) => x.id === e.projectID)?.name} /> · {first ? `${first.app} · ` : ""}{dayLabel(e.startedAt)} {clock(e.startedAt)}–{clock(e.endedAt)}{e.billable ? " · billable" : " · not billable"}</span>
                                             {spans.length > 1 && <SittingsToggle label={`${spans.length} sittings`} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
@@ -363,6 +366,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                         <div className="grow">
                             <div className="small strong">{a.document?.name || a.title || a.app}</div>
                             <div className="muted tiny"><MatterLabel name={a.matter} /> · {a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {endedLabel(a.endedBy)}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
+                            <Shots names={a.screenshots} />
                             {(a.screenText || a.document?.excerpt) && <div className="tiny screen-text" title="What was read from the window">{(a.screenText ?? a.document?.excerpt ?? "").replace(/\n/g, " · ").slice(0, 220)}</div>}
                         </div>
                         <span className="mono">{duration((Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000)}</span>
@@ -382,6 +386,23 @@ const ENDED_BY: Record<string, string> = {
 };
 const endedLabel = (by: string | undefined): string => (by ? ENDED_BY[by] ?? by : "");
 
+/** Screenshots of a row's time, oldest first: at most `max`, spread evenly; one opens full size in the system's viewer. */
+function Shots({ names, max = 6 }: { names: string[] | undefined; max?: number }): ReactNode {
+    if (!names?.length) return null;
+    const sorted = [...names].sort((a, b) => screenshotTime(a) - screenshotTime(b));
+    const shown = sorted.length <= max ? sorted : Array.from({ length: max }, (_, i) => sorted[Math.round((i * (sorted.length - 1)) / (max - 1))]);
+    return (
+        <div className="shots">
+            {shown.map((n) => (
+                <button key={n} type="button" className="shot" title={`Screenshot at ${clock(new Date(screenshotTime(n)).toISOString())}. Open full size`} onClick={() => void window.lawdie.openScreenshot(n)}>
+                    <img src={`lawdie-shot://shot/${n}`} alt={`Screenshot at ${clock(new Date(screenshotTime(n)).toISOString())}`} loading="lazy" draggable={false} />
+                </button>
+            ))}
+            {sorted.length > shown.length && <span className="tiny muted">{sorted.length} screenshots</span>}
+        </div>
+    );
+}
+
 /** An AI-drafted billing description, under the row it was drafted for. */
 function DraftLine({ draft }: { draft: Draft }): ReactNode {
     return <div className="draft-line" title={draft.source === "sample" ? "Sample draft, not generated from your data" : "Drafted by AI from what was captured"}><span aria-hidden="true">✦</span> {draft.text}</div>;
@@ -398,7 +419,7 @@ function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
 }
 
 /** One matter's day: every app and document it was in, as one row to keep. */
-function MatterRow({ group: g, open, onToggle, onKeep }: { group: MatterGroup; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+function MatterRow({ group: g, shots, open, onToggle, onKeep }: { group: MatterGroup; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
     return (
         <div>
             <div className="activity">
@@ -406,6 +427,7 @@ function MatterRow({ group: g, open, onToggle, onKeep }: { group: MatterGroup; o
                 <div className="grow">
                     <div className="small strong">{g.matter}</div>
                     {g.draft && <DraftLine draft={g.draft} />}
+                    <Shots names={shots} />
                     <div className="muted tiny meta">
                         <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</span>
                         <SittingsToggle label={`${g.documents.length} ${g.documents.length === 1 ? "item" : "items"}`} open={open} onClick={onToggle} />
@@ -799,6 +821,9 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 <Setting title="Include window titles" detail={isMac ? "Optional context such as document names. Titles may contain sensitive information. macOS asks for Screen Recording permission the first time." : "Optional context such as document names. Titles may contain sensitive information."}>
                     <Toggle on={p.captureTitles} onChange={(v) => set("captureTitles", v)} label="Include window titles" />
                 </Setting>
+                <Setting title="Take screenshots" detail={`A picture of the window you are working in, once you have been in it 20 seconds and then every 5 minutes, so you can see what the time was when you review it. Screenshots show whatever is on that window, client documents included. They stay on this ${label}: never synced to Kiwi or Lawdie CRM and never sent to the AI. Those of time you dismiss are deleted; those of time you keep stay with the entry until you delete it. Never of browsers, private apps or this app.${isMac ? " macOS asks for Screen Recording permission." : ""}`}>
+                    <Toggle on={p.captureScreenshots === true} onChange={(v) => set("captureScreenshots", v)} label="Take screenshots" />
+                </Setting>
                 <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and its first few lines (Outlook: the sender and subject). Kiwi or Lawdie CRM uses these to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
                     <Toggle on={p.captureDocuments} onChange={(v) => set("captureDocuments", v)} label="Read Office document details" />
                 </Setting>
@@ -852,7 +877,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
             </Panel>
             <Panel>
                 <strong>Your data belongs here</strong>
-                <p className="muted small">No telemetry, screenshots, keystroke recording, or local network service. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
+                <p className="muted small">No telemetry, keystroke recording, or local network service, and no screenshots unless you switch them on above; they never leave this {label}. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
                 <p className="mono tiny muted">{state.workspacePath}</p>
                 <div className="row gap">
                     <button type="button" className="quiet" onClick={() => void window.lawdie.showDataFolder()}>Show data folder</button>

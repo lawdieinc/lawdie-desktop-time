@@ -58,6 +58,8 @@ export type TimeEntry = {
     activityIDs?: string[];
     /** The description is an AI draft, kept as written. */
     drafted?: DraftSource;
+    /** Screenshots of the activity it was kept from, inside its time. On this computer only; never synced. */
+    screenshots?: string[];
 };
 
 export type Interval = { startedAt: string; endedAt: string };
@@ -108,6 +110,8 @@ export type Activity = {
     document?: DocumentInfo | null;
     /** Text the window showed, read through the OS accessibility system, with "Read on-screen text" on. */
     screenText?: string | null;
+    /** Screenshot files of the window (names, in the screenshots folder beside the workspace), with "Take screenshots" on. Never synced. */
+    screenshots?: string[];
     startedAt: string;
     endedAt: string;
     endedBy: string;
@@ -134,6 +138,8 @@ export type Preferences = {
     idleMinutes: number;
     retentionDays: number;
     excludedOwnerIDs: string[];
+    /** A screenshot of the window in front now and then, kept on this computer only. Absent is off. */
+    captureScreenshots?: boolean;
     /** The window's zoom, for reading at a distance: 1 (standard) to TEXT_SIZES' largest. Absent is 1. */
     textSize?: number;
 };
@@ -186,7 +192,7 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export function defaultPreferences(): Preferences {
-    return { importKiwiTime: false, captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
+    return { importKiwiTime: false, captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, captureScreenshots: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
 }
 
 export function emptyWorkspace(): Workspace {
@@ -379,6 +385,8 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
         const remote = w.feed?.matters.find((m) => m.id === identities[0]);
         if (remote?.cm_number) chosen.matterNumber = remote.cm_number;
     }
+    // The screenshots inside the kept time stay with the entry; the rest go when their activity does.
+    const shots = (picked as Activity[]).flatMap((a) => a.screenshots ?? []).filter((n) => { const t = screenshotTime(n); return t >= start && t <= end; }).sort((a, b) => screenshotTime(a) - screenshotTime(b));
     const sourceRefs: SourceRef[] = (picked as Activity[]).filter((a) => a.origin).map((a) => ({ kind: a.sourceKind!, id: a.originRef!, account: a.originAccount!, intervals: clipSittings(intervals(a), start, end) }));
     const entry: TimeEntry = {
         id: uuid(), description: input.description.trim(), projectID, ...span,
@@ -386,6 +394,7 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
         ...(ids.length > 1 ? { activityIDs: ids } : {}),
         ...(sourceRefs.length ? { sourceRefs } : {}),
         ...(input.drafted ? { drafted: input.drafted } : {}),
+        ...(shots.length ? { screenshots: shots } : {}),
     };
     saveEntry(w, entry, now);
     for (const a of picked as Activity[]) {
@@ -484,7 +493,8 @@ export function dismissActivity(w: Workspace, id: string): void {
 }
 
 export function dismissActivities(w: Workspace, ids: string[]): void {
-    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") a.disposition = "dismissed";
+    // A dismissed activity's screenshots go with it: nothing refers to them any more, so the files are deleted.
+    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { a.disposition = "dismissed"; delete a.screenshots; }
 }
 
 /** Removes an entry, reopens the activity it came from, and remembers the deletion for Kiwi. */
@@ -634,6 +644,49 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         // The first text read stands for the segment: scrolling is not other work.
         if (screenText && !w.currentActivity.screenText) w.currentActivity.screenText = screenText;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Screenshots: opt-in, on this computer only (src/main/screenshots.ts takes and serves them)
+// ---------------------------------------------------------------------------
+
+/** The first screenshot of a segment once it has lasted this long (a glance gets none), then one every SCREENSHOT_EVERY_MS. */
+export const SCREENSHOT_SETTLE_MS = 20_000;
+export const SCREENSHOT_EVERY_MS = 5 * 60_000;
+/** At most this many per segment (over four hours at one every five minutes). */
+export const SCREENSHOTS_MAX = 48;
+/** "<activity id>-<epoch ms>.jpg": no dots or slashes in the id, so a name is never a path. */
+const SHOT_NAME = /^[A-Za-z0-9-]{1,64}-\d{13}\.jpg$/;
+export const isScreenshotName = (name: unknown): name is string => typeof name === "string" && SHOT_NAME.test(name);
+export const screenshotTime = (name: string): number => Number(name.slice(-17, -4));
+const shotsValid = (shots: unknown, max: number): boolean => shots == null || (Array.isArray(shots) && shots.length <= max && shots.every(isScreenshotName));
+
+/** The file name of the screenshot to take now of the segment in progress, or null when none is due. Call after observe(). */
+export function screenshotDue(w: Workspace, now: number): string | null {
+    const a = w.currentActivity;
+    if (!w.preferences.captureEnabled || !w.preferences.captureScreenshots || !a || a.origin) return null;
+    const shots = a.screenshots ?? [];
+    if (shots.length >= SCREENSHOTS_MAX) return null;
+    const due = shots.length ? screenshotTime(shots[shots.length - 1]) + SCREENSHOT_EVERY_MS : ms(a.startedAt) + SCREENSHOT_SETTLE_MS;
+    return now >= due ? `${a.id}-${now}.jpg` : null;
+}
+
+/** Attach a screenshot just taken to its segment: still in progress, or closed and still waiting for review. False when it is gone (the file is then collected). */
+export function addScreenshot(w: Workspace, name: string): boolean {
+    if (!isScreenshotName(name)) return false;
+    const id = name.slice(0, -18);
+    const a = w.currentActivity?.id === id ? w.currentActivity : w.activities.find((x) => x.id === id && x.disposition === "pending");
+    if (!a || (a.screenshots ?? []).length >= SCREENSHOTS_MAX) return false;
+    a.screenshots = [...(a.screenshots ?? []), name];
+    return true;
+}
+
+/** Every screenshot something still shows; any other file in the folder is deleted. */
+export function referencedScreenshots(w: Workspace): Set<string> {
+    const names = new Set<string>();
+    for (const a of [...w.activities, ...(w.currentActivity ? [w.currentActivity] : [])]) for (const n of a.screenshots ?? []) names.add(n);
+    for (const e of w.entries) for (const n of e.screenshots ?? []) names.add(n);
+    return names;
 }
 
 export function closeActivity(w: Workspace, at: number, reason: string): void {
@@ -826,8 +879,8 @@ export function validate(w: Workspace): Workspace {
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
-        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample")) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample") && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20)) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));

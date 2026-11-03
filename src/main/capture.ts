@@ -6,10 +6,11 @@
 
 import { powerMonitor, systemPreferences } from "electron";
 import { activeCall, callApp, type CallApp } from "@shared/calls";
-import { closeActivity, isBrowser, isExcluded, observe, prune, screenRecordingAttempt, stopTimer, type Observation } from "@shared/model";
+import { addScreenshot, closeActivity, isBrowser, isExcluded, observe, prune, screenRecordingAttempt, screenshotDue, stopTimer, type Observation } from "@shared/model";
 import { MicrophoneProbe } from "./calls";
 import { OfficeProbe, officeApp } from "./office";
 import { ScreenTextReader } from "./screenText";
+import type { Screenshots } from "./screenshots";
 import type { Store } from "./store";
 
 export const SAMPLE_MS = 5_000;
@@ -43,7 +44,7 @@ export class Capture {
     readonly screen = new ScreenTextReader();
     readonly mic = new MicrophoneProbe();
 
-    constructor(private readonly store: Store) {}
+    constructor(private readonly store: Store, private readonly shots: Screenshots) {}
 
     start(): void {
         this.timer = setInterval(() => void this.tick(), SAMPLE_MS);
@@ -70,6 +71,8 @@ export class Capture {
         try {
             const prefs = this.store.workspace.preferences;
             let foreground: Observation = null;
+            /** The window in front, when it is what is observed (not a call behind it): the one a screenshot may be of. */
+            let front: ForegroundWindow | undefined;
             if (prefs.captureEnabled && !this.suspended) {
                 // A call in progress gets the time wherever the focus is (src/shared/calls.ts).
                 const call = activeCall(await this.mic.recording());
@@ -81,6 +84,7 @@ export class Capture {
                         foreground = await this.callWindow(call, prefs.captureTitles);
                     } else if (win) {
                         const ownerID = ownerOf(win);
+                        front = win;
                         foreground = { app: win.owner.name || ownerID, ownerID, title: prefs.captureTitles ? (win.title ?? "").slice(0, 300) : null, isSelf: win.owner.processId === process.pid };
                         // Office document details are asked for only when switched on, only for
                         // the app in front, and never for an excluded app (observe() checks
@@ -104,6 +108,10 @@ export class Capture {
             const hadTimer = this.store.workspace.timer !== null;
             const ok = this.store.change((w) => observe(w, foreground, now, idle, this.suspended));
             if (ok && hadTimer && this.store.workspace.timer === null) this.store.say("Timer stopped at your last active moment. Your time is saved; restart when you're ready.");
+            // observe() has already refused a private app, a browser and this app (no segment
+            // in progress, so nothing is due); a call behind the window in front is not pictured.
+            const shot = ok && front ? screenshotDue(this.store.workspace, now) : null;
+            if (front && shot && (await this.shots.take(front.id, shot))) this.store.change((w) => { addScreenshot(w, shot); });
         } finally {
             this.sampling = false;
         }

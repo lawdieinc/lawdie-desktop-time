@@ -132,3 +132,8 @@ input[type="date"] { font: inherit; font-size: 13px; padding: 6px 8px; border: 1
 .callout ol { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
 .callout-actions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
 .callout.danger { border-color: rgba(176, 65, 62, 0.4); background: rgba(176, 65, 62, 0.06); } .callout.danger .callout-title { color: var(--danger); }
+/* Screenshots under a row: small, clickable, full size in the system's viewer. */
+.shots { display: flex; align-items: center; gap: 6px; margin: 6px 0 4px; flex-wrap: wrap; }
+.shot { padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); overflow: hidden; width: 96px; height: 60px; flex-shrink: 0; }
+.shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+.shot:hover { border-color: rgba(139, 92, 42, 0.5); }
