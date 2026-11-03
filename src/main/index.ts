@@ -4,7 +4,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { hostname } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, protocol, shell, systemPreferences, Tray } from "electron";
+import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
 import { archiveProject, closeActivity, deleteEntry, dismissActivities, keepStretch, mergeProjects, referencedScreenshots, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
@@ -261,6 +261,9 @@ app.whenReady().then(() => {
         });
     }
     buildTray(store, capture, updater);
+    // Installing on macOS closes every window BEFORE before-quit; a window that hides on
+    // close would cancel that quit and leave the old version running, hidden. This comes first.
+    nativeUpdater.on("before-quit-for-update", () => { quitting = true; });
     updater.onReady = (version) => notify(store, "Update ready", `Lawdie Time Capture ${version} is ready. Open the app and press Install now; it restarts in a few seconds.`);
     // A permission newly missing: said in the window (which opens, once a run), the tray and a notification.
     let raised = false;
