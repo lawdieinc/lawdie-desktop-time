@@ -14,6 +14,8 @@ export type CallApp = { key: string; name: string };
 /** macOS bundle id prefixes: a call app's audio often runs in a helper (com.microsoft.teams2.helper…). */
 const MAC_CALL_APPS: [string, CallApp][] = [
     ["com.microsoft.teams", { key: "teams", name: "Microsoft Teams" }],
+    // RingCentral Meetings is a Zoom build under Zoom's prefix: it must come before Zoom.
+    ["us.zoom.ringcentral", { key: "ringcentral", name: "RingCentral" }],
     ["us.zoom.", { key: "zoom", name: "Zoom" }],
     ["cisco-systems.spark", { key: "webex", name: "Webex" }],
     ["com.cisco.webex", { key: "webex", name: "Webex" }],
@@ -21,6 +23,7 @@ const MAC_CALL_APPS: [string, CallApp][] = [
     ["com.tinyspeck.slackmacgap", { key: "slack", name: "Slack" }],
     ["com.apple.facetime", { key: "facetime", name: "FaceTime" }],
     ["com.skype.", { key: "skype", name: "Skype" }],
+    // The RingCentral app (com.ringcentral.glip, audio in its .helper) and RingCentral for Mac (the phone).
     ["com.ringcentral.", { key: "ringcentral", name: "RingCentral" }],
     ["com.goto.", { key: "goto", name: "GoTo Meeting" }],
 ];
@@ -37,6 +40,7 @@ const WIN_CALL_APPS: Record<string, CallApp> = {
     "slack.exe": { key: "slack", name: "Slack" },
     "skype.exe": { key: "skype", name: "Skype" },
     "ringcentral.exe": { key: "ringcentral", name: "RingCentral" },
+    "ringcentralmeetings.exe": { key: "ringcentral", name: "RingCentral" },
     "g2mcomm.exe": { key: "goto", name: "GoTo Meeting" },
 };
 

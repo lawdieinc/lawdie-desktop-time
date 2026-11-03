@@ -686,6 +686,12 @@ describe("calls", () => {
         expect(callApp("ms-teams.exe")?.key).toBe("teams");
         expect(callApp("com.microsoft.Word")).toBeNull();
         expect(callApp("com.apple.VoiceMemos")).toBeNull(); // recording is not a call
+        expect(callApp("com.ringcentral.glip")?.key).toBe("ringcentral");
+        expect(callApp("com.ringcentral.glip.helper")?.key).toBe("ringcentral");
+        expect(callApp("com.ringcentral.ringcentralformac")?.key).toBe("ringcentral");
+        expect(callApp("us.zoom.ringcentral")?.key).toBe("ringcentral"); // RingCentral Meetings, not Zoom
+        expect(callApp("C:\\Users\\adam\\AppData\\Local\\Programs\\RingCentral\\RingCentral.exe")?.key).toBe("ringcentral");
+        expect(callApp("RingCentralMeetings.exe")?.key).toBe("ringcentral");
     });
     it("a call is a call app recording; anything else recording is not", () => {
         expect(activeCall(["com.apple.VoiceMemos"])).toBeNull();
