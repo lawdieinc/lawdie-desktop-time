@@ -220,3 +220,5 @@ Text is larger, and Settings → Display offers Standard/Large/Larger (`textSize
 window's zoom), after "unreadable at distance" on a laptop.
 2026-11-03: screenshots, opt-in and local only, kept with entries (see Screenshots). The
 "no screenshots" promise in Settings now reads "unless you switch them on".
+RingCentral Meetings (a Zoom build, `us.zoom.ringcentral`) counts as RingCentral. Version 0.11.0
+(0.10.0 was never tagged; its changes ship here).
