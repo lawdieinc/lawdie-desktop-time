@@ -400,7 +400,11 @@ button.primary.big-button { padding: 13px 22px; font-size: 14px; border-radius: 
 @media (prefers-reduced-motion: reduce) { .link-line.active, .link-narr { animation: none; } .link-row, .link-card { transition: none; } }
 /* Settings → Billing and the Invoice sheet (2026-11-04). */
 textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; user-select: text; font: inherit; color: inherit; resize: vertical; min-height: 40px; }
-.billing-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 12px; } .billing-form .field.short { flex: 0 0 130px; }
+.billing-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 12px; } .field.short { flex: 0 0 150px; }
 .logo-preview { height: 48px; max-width: 180px; object-fit: contain; border-radius: 6px; background: #fff; border: 1px solid var(--line); padding: 4px; }
 .logo-preview.none { display: inline-flex; align-items: center; justify-content: center; width: 96px; }
 .settings-tabs { align-self: flex-start; }
+/* Rules made in the app: the Add rule button on the section label, the rule sheet. */
+.section-label .add-rule { font-family: var(--body); font-size: 13px; letter-spacing: 0; text-transform: none; margin-left: auto; } .section-label:has(.add-rule)::after { order: 1; margin-right: 14px; }
+.rule-sheet { gap: 14px; } .rule-head button.icon { font-size: 14px; }
+.empty .primary { align-self: center; margin-top: 8px; }

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Evidence, Workspace } from "@shared/model";
+import type { ClientRule, Evidence, Workspace } from "@shared/model";
 import { ruleReports, type RuleReport } from "@shared/clientRules";
 import { bookOf, money, rulebooksOf, shortName, termsOf } from "@shared/invoice";
 import { applyRules } from "@shared/applyRules";
 import { ImageViewer, SourceIcon } from "./Narrative";
+import { RuleSheet, RulebookSheet } from "./RuleEditor";
 
 /* A client's billing rules: the client, its guidelines and where they came from, then one card
    per rule with the client's words, what Lawdie does, what it does to today's entries, a switch,
@@ -27,21 +28,33 @@ const initialed = (name: string | undefined): string => { const p = (name ?? "")
 const dayOf = (iso: string | undefined): string => (iso ? new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" }) : "");
 
 export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Workspace; bookKey: string | null; focusRule: string | null; day: string | null; onBack: () => void }): ReactNode {
-    const book = bookOf(w, bookKey) ?? bookOf(w, w.billingClient) ?? rulebooksOf(w)[0] ?? null;
+    // The rulebook shown: the one asked for, else the one applied, else the first; a person can switch among them here.
+    const [chosen, setChosen] = useState<string | null>(bookKey);
+    const books = rulebooksOf(w);
+    const book = bookOf(w, chosen) ?? bookOf(w, bookKey) ?? bookOf(w, w.billingClient) ?? books[0] ?? null;
     const [filter, setFilter] = useState<Filter>("all");
     const [shot, setShot] = useState<{ src: string; caption: string; id: string } | null>(null);
     const [problem, setProblem] = useState<string | null>(null);
+    // Making and changing rules in the app: the rulebook sheet (new, or this one's details) and the rule sheet (new, or one rule).
+    const [bookSheet, setBookSheet] = useState<"new" | "edit" | null>(null);
+    const [ruleSheet, setRuleSheet] = useState<ClientRule | "new" | null>(null);
     const list = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (!focusRule) return;
         const card = list.current?.querySelector<HTMLElement>(`[data-rule="${CSS.escape(focusRule)}"]`);
         card?.scrollIntoView({ block: "center" });
     }, [focusRule, book?.key]);
+    const bookSheetNode = bookSheet && <RulebookSheet book={bookSheet === "edit" ? book : null} onClose={() => setBookSheet(null)} onSaved={(key) => { setBookSheet(null); setChosen(key); }} />;
     if (!book) {
         return (
             <>
                 <button type="button" className="link-btn back-link" title="Back to Time, where you were." onClick={onBack}>‹ Back to Time</button>
-                <div className="empty"><strong>No client rules</strong><p className="muted small">This workspace has no client's billing rules.</p></div>
+                <div className="empty">
+                    <strong>No client rules yet</strong>
+                    <p className="muted small">A client's billing rules (its outside counsel guidelines, one card per rule) shape the bill: rates, increments, no-charge work, how tasks are listed. Make a rulebook for a client, then add its rules.</p>
+                    <button type="button" className="primary" title="Make a rulebook for a client, then add its rules." onClick={() => setBookSheet("new")}>New rulebook</button>
+                </div>
+                {bookSheetNode}
             </>
         );
     }
@@ -88,7 +101,15 @@ export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Wor
         <div className="rules-page">
             <button type="button" className="link-btn back-link" title="Back to Time, where you were, with these rules still applied." onClick={onBack}>‹ Back to Time</button>
             <header className="rules-hero">
-                <p className="eyebrow">Client rules</p>
+                <div className="row between wrap gap">
+                    <p className="eyebrow">Client rules</p>
+                    <span className="row gap">
+                        {books.length > 1 && <select value={book.key} aria-label="Rulebook" title="Which client's rules to show." onChange={(e) => setChosen(e.target.value)}>{books.map((b) => <option key={b.key} value={b.key}>{b.client}</option>)}</select>}
+                        <button type="button" className="quiet" title="Change the client's name, the guidelines' title or the effective date." onClick={() => setBookSheet("edit")}>Edit rulebook</button>
+                        <button type="button" className="quiet" title="Make a rulebook for another client." onClick={() => setBookSheet("new")}>New rulebook</button>
+                        <button type="button" className="quiet danger" title="Delete this rulebook and every rule in it. A bill that applied it goes back to generic." onClick={() => { if (confirm(`Delete ${book.client}'s rulebook and its ${book.rules.length} ${book.rules.length === 1 ? "rule" : "rules"}?`)) void window.lawdie.removeRulebook(book.key).then((ok) => { if (ok) setChosen(null); }); }}>Delete</button>
+                    </span>
+                </div>
                 <h2 className="display rules-client">{book.client}</h2>
                 <p className="rules-guide">{book.title}{book.effective ? ` · Effective ${book.effective}` : ""}</p>
                 {bill.lines.length > 0 && (
@@ -132,8 +153,9 @@ export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Wor
                 })}
             </div>
             <section className="rules-section" ref={list}>
-                <p className="section-label"><span>Rules</span></p>
+                <p className="section-label"><span>Rules</span><button type="button" className="quiet add-rule" title="Add a rule to this rulebook: its kind, the client's words, what Lawdie does." onClick={() => setRuleSheet("new")}>Add rule</button></p>
                 <div className="rule-cards">
+                    {!book.rules.length && <div className="empty"><strong>No rules yet</strong><p className="muted small">Add the client's rules one at a time: tenth-hour increments, a rate cap, no charge for internal conferences, one task per entry, and the rest.</p></div>}
                     {shown.map((r) => (
                         <article key={r.rule.id} data-rule={r.rule.id} className={"rule-card" + (r.rule.enabled ? "" : " off") + (r.rule.id === focusRule ? " focus" : "")}>
                             <div className="rule-head">
@@ -145,8 +167,10 @@ export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Wor
                                 <button type="button" role="switch" aria-checked={r.rule.enabled} aria-label={`${r.rule.id} on`} className={"toggle" + (r.rule.enabled ? " on" : "")}
                                     title={r.rule.enabled ? "On: Lawdie applies this rule to the Time page, the time sheet and the invoice. Click to switch it off." : "Off: left out. Click to switch it on."}
                                     onClick={() => void window.lawdie.setClientRule(book.key, r.rule.id, !r.rule.enabled)}><span /></button>
+                                <button type="button" className="icon" aria-label={`Edit ${r.rule.id}`} title="Change this rule." onClick={() => setRuleSheet(r.rule)}>✎</button>
+                                <button type="button" className="icon" aria-label={`Delete ${r.rule.id}`} title="Delete this rule from the rulebook." onClick={() => { if (confirm(`Delete rule ${r.rule.id}, “${r.rule.title}”?`)) void window.lawdie.removeClientRule(book.key, r.rule.id); }}>×</button>
                             </div>
-                            <blockquote className="rule-quote">“{r.rule.quote}”</blockquote>
+                            {r.rule.quote && <blockquote className="rule-quote">“{r.rule.quote}”</blockquote>}
                             <p className="rule-does">{r.rule.does}</p>
                             {r.rule.enabled && r.touches.length > 0 && (
                                 <div className="rule-today">
@@ -176,6 +200,8 @@ export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Wor
                 </div>
             </section>
             {shot && <ImageViewer src={shot.src} caption={shot.caption} onOpen={() => void open(shot.id, "screenshot")} onClose={() => setShot(null)} />}
+            {bookSheetNode}
+            {ruleSheet && <RuleSheet w={w} book={book} rule={ruleSheet === "new" ? null : ruleSheet} onClose={() => setRuleSheet(null)} />}
         </div>
     );
 }

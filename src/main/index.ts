@@ -17,6 +17,7 @@ import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
 import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
 import { LOGO_MIN_PX, logoCandidates, siteURL } from "@shared/logo";
+import { addRulebook, removeClientRule, removeRulebook, saveClientRule, updateRulebook, type ClientRuleInput, type RulebookInput } from "@shared/clientRulebooks";
 import { demoNow } from "@shared/demo";
 import type { AppState } from "@shared/state";
 import { entriesCsv } from "@shared/export";
@@ -353,6 +354,12 @@ app.whenReady().then(() => {
         if (legacy && (bookKey === "client" || w.clientRulebooks?.[0]?.key === bookKey)) legacy.enabled = enabled === true;
     }));
     // Apply a client's rulebook to the day, or none (generic billing).
+    // Rulebooks and rules made in the app (src/shared/clientRulebooks.ts).
+    ipcMain.handle("addRulebook", (_e, input: RulebookInput) => { let key = ""; const ok = store.change((w) => { key = addRulebook(w, input); }); return ok ? key : null; });
+    ipcMain.handle("updateRulebook", (_e, key: string, input: Partial<RulebookInput>) => store.change((w) => updateRulebook(w, String(key), input)));
+    ipcMain.handle("removeRulebook", (_e, key: string) => store.change((w) => removeRulebook(w, String(key))));
+    ipcMain.handle("saveClientRule", (_e, key: string, input: ClientRuleInput) => { let id = ""; const ok = store.change((w) => { id = saveClientRule(w, String(key), input); }); return ok ? id : null; });
+    ipcMain.handle("removeClientRule", (_e, key: string, id: string) => store.change((w) => removeClientRule(w, String(key), String(id))));
     ipcMain.handle("setBillingClient", (_e, key: string | null) => store.change((w) => {
         w.billingClient = key && rulebooksOf(w).some((b) => b.key === key) ? key : null;
     }));

@@ -17,6 +17,10 @@
 
 import type { Activity, Workspace } from "./model";
 import { tasksOf, type Task } from "./narrative";
+import { ruleSetOf } from "./clientRulebooks";
+
+/** "Northlake Behavioral Health, Inc." and "northlake behavioral health" are the same client. */
+const plain = (s: string): string => s.toLowerCase().replace(/,?\s+(inc|llc|l\.l\.c|llp|ltd|corp|corporation|co|p\.?c)\.?$/i, "").trim();
 
 export type Person = {
     name: string;
@@ -164,8 +168,11 @@ export const FIRM_RULES = "firm";
 /** The rule set for a matter: its client's (by client id, else by name), with the firm's standard after it. */
 export function rulebookFor(w: Workspace, ctx: MatterContext | null | undefined, clientName?: string | null): RuleSet | null {
     const books = w.rulebooks ?? [];
+    const name = (ctx?.client ?? clientName ?? "").trim().toLowerCase();
     const client = books.find((b) => b.clientId !== FIRM_RULES && ctx?.clientId && b.clientId === ctx.clientId)
-        ?? books.find((b) => { const n = (ctx?.client ?? clientName ?? "").trim().toLowerCase(); return b.clientId !== FIRM_RULES && !!n && b.client.trim().toLowerCase() === n; })
+        ?? books.find((b) => b.clientId !== FIRM_RULES && !!name && b.client.trim().toLowerCase() === name)
+        // No exported rule set for the client: the rules made in the app for it (a bill-time rulebook) check the entry.
+        ?? (() => { const made = (w.clientRulebooks ?? []).find((b) => !!name && (b.client.trim().toLowerCase() === name || plain(b.client) === plain(name))); return made ? ruleSetOf(made) : null; })()
         ?? null;
     const firm = books.find((b) => b.clientId === FIRM_RULES) ?? null;
     if (!client || !firm) return client ?? firm;

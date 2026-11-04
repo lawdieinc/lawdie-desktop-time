@@ -4,7 +4,7 @@
    entry, which pass, fail, or have nothing to check today. */
 
 import { billFor, feeLines, money, ruleEffects, totals, type FeeLine, type LineEffect } from "./invoice";
-import type { ClientRule, ClientRulebook, InvoiceTerms, Workspace } from "./model";
+import { seconds, type ClientRule, type ClientRulebook, type InvoiceTerms, type Workspace } from "./model";
 
 export type RuleStatus = "changes" | "pass" | "fail" | "none";
 /** One entry a rule touches: a short name for it, and what the rule did or found. */
@@ -92,7 +92,8 @@ function changeReport(w: Workspace, terms: InvoiceTerms, book: ClientRulebook, r
     if (rule.kind === "tenths") {
         const touches = [...new Set(std.map((l) => l.entryID))].map((id) => {
             const e = w.entries.find((x) => x.id === id)!;
-            const minutes = (e.work ?? []).reduce((n, x) => n + x.minutes, 0);
+            // What capture recorded for it, stretch by stretch; an entry kept without that breakdown has its own span.
+            const minutes = (e.work ?? []).reduce((n, x) => n + x.minutes, 0) || Math.round(seconds(e) / 60);
             const recorded = minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
             return { entryID: id, label: name(id), detail: `${recorded} → ${h(std.find((l) => l.entryID === id)!.stdHours)}` };
         });

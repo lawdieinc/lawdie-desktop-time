@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { AppState } from "@shared/state";
 import type { BillingSetup, EntryChange, KeepInput, KeepLine, Preferences, ProjectChange } from "@shared/model";
 import type { BillScope } from "@shared/invoice";
+import type { ClientRuleInput, RulebookInput } from "@shared/clientRulebooks";
 import type { Destination, Product } from "@shared/kiwi";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
@@ -99,6 +100,13 @@ export const api = {
     setClientRule: (bookKey: string, id: string, enabled: boolean): Promise<boolean> => ipcRenderer.invoke("setClientRule", bookKey, id, enabled),
     /** Apply a client's rulebook to the day by its key, or null for generic billing. */
     setBillingClient: (key: string | null): Promise<boolean> => ipcRenderer.invoke("setBillingClient", key),
+    /** Rulebooks and rules made in the app: the new rulebook's key, or null when refused. */
+    addRulebook: (input: RulebookInput): Promise<string | null> => ipcRenderer.invoke("addRulebook", input),
+    updateRulebook: (key: string, input: Partial<RulebookInput>): Promise<boolean> => ipcRenderer.invoke("updateRulebook", key, input),
+    removeRulebook: (key: string): Promise<boolean> => ipcRenderer.invoke("removeRulebook", key),
+    /** The saved rule's id, or null when refused. */
+    saveClientRule: (key: string, input: ClientRuleInput): Promise<string | null> => ipcRenderer.invoke("saveClientRule", key, input),
+    removeClientRule: (key: string, id: string): Promise<boolean> => ipcRenderer.invoke("removeClientRule", key, id),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),
     /** Whether on-screen text can be read here, and (macOS) whether Accessibility is allowed. */
     screenTextStatus: (): Promise<{ supported: boolean; trusted: boolean; error: string | null }> => ipcRenderer.invoke("screenTextStatus"),

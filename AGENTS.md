@@ -159,9 +159,19 @@ takes `nextInvoiceNumber()` and `invoiceIssued()` moves the counter once the PDF
 logo comes from the firm's website (`src/shared/logo.ts` orders the page's apple-touch-icon,
 og:image, sized icons and the well-known paths; `fetchLogo` in index.ts keeps the first that
 decodes at 48 px or wider, as `billing-logo.png` beside the workspace) or from a chosen file.
-Not built yet: rejecting a bill, custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
-client rules made in the app (only the feed and the seed bring them), live Outlook/Teams
-sources (evidence comes from the seed).
+Client rules are made in the app too (`src/shared/clientRulebooks.ts`, the same day): the
+Client rules page (reached from the Time page's "Client rules…" when no client has rules,
+else Apply client rules → Open … rules) makes a rulebook per client (`addRulebook`, key from the
+client's name) and adds, changes or deletes rules of the ten kinds (`saveClientRule`: what each
+kind needs is checked, ids run NBH-1, NBH-2 from the client's initials, `describeRule()` says
+what a rule does when the person wrote nothing). `RuleEditor.tsx` holds the two sheets. A
+rulebook made here also checks entries in the Keep sheet: `ruleSetOf()` maps the kinds an entry
+can be checked for on its own (tenths, split, codePrefix, noCharge A105, the vague, clerical,
+travel and research checks) to keep-time rules, and `rulebookFor()` falls back to it when the
+client has no exported rule set. The Invoice sheet defaults to the matter's client's rulebook.
+Not built yet: rules proposed by a model from an uploaded guidelines document (needs a Kiwi
+route), rejecting a bill, custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
+live Outlook/Teams sources (evidence comes from the seed).
 
 ## Kiwi and Lawdie CRM
 
@@ -291,3 +301,5 @@ shown"; the logo fetched from the firm's website. Tested: an invoice PDF made fr
 workspace through the sheet (`billing.test.ts` covers the model). The 0.12.0 Install path was
 proved on this Mac the same day: a signed local 0.12.0 updated to a signed local 0.12.1 from a
 local server in 3 s (ShipIt log); 0.11.0 hung because the fix shipped after its tag.
+Same day: client rules made in the app (rulebook and rule sheets on the Client rules page; a
+rulebook made here also checks entries at keep). Settings in four tabs.

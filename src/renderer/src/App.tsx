@@ -162,7 +162,7 @@ function rangeBounds(key: RangeKey, now: number, from: string, to: string): { st
     return { start: f, end: Math.max(t, f + 86_400_000), label: `${new Date(f).toLocaleDateString([], { month: "short", day: "numeric" })} – ${new Date(t - 1).toLocaleDateString([], { month: "short", day: "numeric" })}` };
 }
 
-function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book: string, rule?: string | null) => void }): ReactNode {
+function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book: string | null, rule?: string | null) => void }): ReactNode {
     const [range, setRange] = useState<RangeKey>("today");
     const [from, setFrom] = useState(dayKey(now - 6 * 86_400_000));
     const [to, setTo] = useState(dayKey(now));
@@ -276,7 +276,7 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
     );
 }
 
-function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: { entry: TimeEntry; w: Workspace; lines?: AppliedLine[]; book?: ClientRulebook | null; onRules?: (book: string, rule?: string | null) => void }): ReactNode {
+function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: { entry: TimeEntry; w: Workspace; lines?: AppliedLine[]; book?: ClientRulebook | null; onRules?: (book: string | null, rule?: string | null) => void }): ReactNode {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<string | null>(null);
     const narrative = hasNarrative(entry);

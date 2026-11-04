@@ -10,12 +10,13 @@ import { ContextMenu, Menu } from "./Menu";
    same lines the PDFs and the DOCX print. Right-click a chip or the totals line to open the
    client's rules. */
 
-type OpenRules = (book: string, rule?: string | null) => void;
+type OpenRules = (book: string | null, rule?: string | null) => void;
 
 /** "Apply client rules ▾": Generic, or one of the clients whose rules the workspace carries. */
 export function ApplyRulesMenu({ w, onRules }: { w: Workspace; onRules: OpenRules }): ReactNode {
     const books = rulebooksOf(w);
-    if (!books.length) return null;
+    // No client has rules yet: the page where a rulebook is made.
+    if (!books.length) return <button type="button" className="quiet" title="A client's billing rules shape the bill. Make a rulebook for a client and add its rules." onClick={() => onRules(null)}>Client rules…</button>;
     const current = books.find((b) => b.key === w.billingClient) ?? null;
     return (
         <Menu label={current ? `${shortName(current)} rules` : "Apply client rules"} active={!!current}
@@ -192,7 +193,10 @@ export function InvoiceSheet({ w, kind, day, onClose }: { w: Workspace; kind: "i
     const [from, setFrom] = useState(firstOf(prevMonth(month)));
     const [to, setTo] = useState(lastOf(prevMonth(month)));
     const books = rulebooksOf(w);
-    const [mode, setMode] = useState<string>(w.billingClient && books.some((b) => b.key === w.billingClient) ? w.billingClient : "generic");
+    // The client's own rulebook is the default when the matter's client has one; else what the Time page applies.
+    const own = (pid: string): string | null => { const c = w.projects.find((p) => p.id === pid)?.client.trim().toLowerCase(); return (c && books.find((b) => b.client.trim().toLowerCase() === c)?.key) ?? null; };
+    const [mode, setMode] = useState<string>(own(projectID) ?? (w.billingClient && books.some((b) => b.key === w.billingClient) ? w.billingClient : "generic"));
+    const pickMatter = (id: string): void => { setProjectID(id); const o = own(id); if (o) setMode(o); };
     const [busy, setBusy] = useState<string | null>(null);
     const [problem, setProblem] = useState<string | null>(null);
     const scope: BillScope = period === "this" ? { projectID, from: firstOf(month), to: lastOf(month) } : period === "last" ? { projectID, from: firstOf(prevMonth(month)), to: lastOf(prevMonth(month)) } : { projectID, from, to };
@@ -212,7 +216,7 @@ export function InvoiceSheet({ w, kind, day, onClose }: { w: Workspace; kind: "i
                 {matters.length === 0 ? <p className="muted small">Nothing to bill yet: keep time on a matter first.</p> : (
                     <>
                         <label className="field"><span className="eyebrow">Matter</span>
-                            <select value={projectID} title="The matter this bill is for." onChange={(e) => setProjectID(e.target.value)}>{matters.map((p) => <option key={p.id} value={p.id}>{p.matterNumber ? `${p.matterNumber} · ` : ""}{p.name}{p.client ? ` (${p.client})` : ""}</option>)}</select>
+                            <select value={projectID} title="The matter this bill is for." onChange={(e) => pickMatter(e.target.value)}>{matters.map((p) => <option key={p.id} value={p.id}>{p.matterNumber ? `${p.matterNumber} · ` : ""}{p.name}{p.client ? ` (${p.client})` : ""}</option>)}</select>
                         </label>
                         <div className="row gap wrap">
                             <div className="field"><span className="eyebrow">Period</span>
