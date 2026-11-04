@@ -4,7 +4,7 @@ import {
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
-import { PERSONAL, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { duration } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
@@ -24,6 +24,57 @@ function capturing(): Workspace {
 }
 const activity = (over: Partial<Activity> = {}): Activity => ({ id: "a-" + Math.random(), app: "Word", ownerID: "com.microsoft.Word", title: null, startedAt: iso(0), endedAt: iso(600), endedBy: "switched", disposition: "pending", ...over });
 const entry = (over: Partial<TimeEntry> = {}): TimeEntry => ({ id: "e-" + Math.random(), description: "Work", projectID: null, startedAt: iso(0), endedAt: iso(600), billable: false, hourlyRate: 0, source: "manual", activityID: null, ...over });
+
+describe("where the time went, and idle", () => {
+    const CHROME = { app: "Google Chrome", ownerID: "com.google.Chrome", title: "Secret page" };
+    it("names the app switched to, and the browser by name only", () => {
+        const w = capturing();
+        w.preferences.captureTitles = true;
+        observe(w, WORD, at(0), 0); observe(w, WORD, at(30), 0);
+        observe(w, PREVIEW, at(35), 0); observe(w, PREVIEW, at(60), 0);
+        observe(w, CHROME, at(65), 0);
+        expect(w.activities.map((a) => [a.endedBy, a.endedTo])).toEqual([["switched", "Preview"], ["browser", "Google Chrome"]]);
+        expect(JSON.stringify(w.activities)).not.toContain("Secret page");
+        expect(endedText(w.activities[0])).toBe("switched to Preview");
+        expect(endedText(w.activities[1])).toBe("went to Google Chrome");
+        expect(endedText({ endedBy: "switched", endedAt: iso(0) })).toBe("switched apps");
+    });
+    it("names the site from browser time brought in from Kiwi that began as it ended", () => {
+        const word = activity({ endedAt: iso(600), endedBy: "browser", endedTo: "Google Chrome" });
+        const page = activity({ origin: "browser", url: "https://www.courtlistener.com/opinion/123/", startedAt: iso(603), endedAt: iso(900) });
+        expect(endedText(word, [word, page])).toBe("went to Google Chrome · courtlistener.com");
+        expect(endedText(word, [word, { ...page, startedAt: iso(1200) }])).toBe("went to Google Chrome");
+    });
+    it(`flags ${IDLE_FLAG_SECONDS / 60} minutes without input, keeps the time, and never on a call`, () => {
+        const w = capturing();
+        for (let t = 0; t <= 1200; t += 5) observe(w, WORD, at(t), t < 100 ? 0 : t - 100);
+        expect(w.currentActivity?.idle).toEqual([{ startedAt: iso(100), endedAt: iso(1200) }]);
+        observe(w, WORD, at(1205), 0);
+        observe(w, PREVIEW, at(1210), 0);
+        expect(seconds(w.activities[0])).toBe(1210);
+        expect(idleSeconds(w.activities)).toBe(1100);
+        // Nine minutes is not idle.
+        const v = capturing();
+        for (let t = 0; t <= 600; t += 5) observe(v, WORD, at(t), Math.min(t, 540));
+        expect(v.currentActivity?.idle).toBeUndefined();
+        // A call: no input is listening.
+        const c = capturing();
+        for (let t = 0; t <= 1200; t += 5) observe(c, { app: "Zoom", ownerID: "us.zoom.xos", title: null, call: true }, at(t), t);
+        expect(c.currentActivity?.idle).toBeUndefined();
+    });
+    it("leaves idle time out at keep only when asked", () => {
+        const w = emptyWorkspace();
+        const a = activity({ startedAt: iso(0), endedAt: iso(3600), idle: [{ startedAt: iso(1200), endedAt: iso(2400) }] });
+        const b = activity({ startedAt: iso(0), endedAt: iso(3600), idle: a.idle });
+        w.activities.push(a);
+        const kept = keepActivity(w, a.id, { description: "Draft", projectID: null, billable: true, leaveOutIdle: true }, at(4000));
+        expect(seconds(kept)).toBe(2400);
+        expect(kept.sittings).toEqual([{ startedAt: iso(0), endedAt: iso(1200) }, { startedAt: iso(2400), endedAt: iso(3600) }]);
+        const v = emptyWorkspace();
+        v.activities.push(b);
+        expect(seconds(keepActivity(v, b.id, { description: "Draft", projectID: null, billable: true }, at(4000)))).toBe(3600);
+    });
+});
 
 describe("capture", () => {
     it("requires opt-in, and titles require a separate opt-in", () => {

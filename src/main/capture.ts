@@ -82,10 +82,11 @@ export class Capture {
                     const win = await this.foreground(prefs.captureTitles).catch((err) => { if (!call) throw err; });
                     if (call && (!win || callApp(ownerOf(win))?.key !== call.app.key)) {
                         foreground = await this.callWindow(call, prefs.captureTitles);
+                        if (foreground) foreground.call = true;
                     } else if (win) {
                         const ownerID = ownerOf(win);
                         front = win;
-                        foreground = { app: win.owner.name || ownerID, ownerID, title: prefs.captureTitles ? (win.title ?? "").slice(0, 300) : null, isSelf: win.owner.processId === process.pid };
+                        foreground = { app: win.owner.name || ownerID, ownerID, title: prefs.captureTitles ? (win.title ?? "").slice(0, 300) : null, isSelf: win.owner.processId === process.pid, call: !!call };
                         // Office document details are asked for only when switched on, only for
                         // the app in front, and never for an excluded app (observe() checks
                         // exclusions before using anything, but the ask itself is avoided too).

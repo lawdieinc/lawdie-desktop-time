@@ -106,6 +106,7 @@ input[type="date"] { font: inherit; font-size: 13px; padding: 6px 8px; border: 1
 .app-icon.matter-icon { background: rgba(139, 92, 42, 0.1); color: var(--accent); font-family: var(--display); }
 .matter-status { padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .matter-label { color: var(--accent); font-weight: 600; } .matter-label.none { color: var(--muted); font-weight: 400; font-style: italic; }
+.idle-tag { color: var(--danger); }
 /* The Matters page: one row per matter, numbers in columns. */
 .matter-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 90px 90px 100px 110px; gap: 16px; align-items: center; width: 100%; padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; }
 .matter-row:last-child { border-bottom: 0; } .matter-row:hover:not(.head) { background: rgba(139, 92, 42, 0.03); }

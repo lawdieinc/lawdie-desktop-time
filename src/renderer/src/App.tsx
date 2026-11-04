@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { NOISE_SECONDS, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, NOISE_SECONDS, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
@@ -294,7 +294,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
-                            <MatterRow key={r.group.id} group={r.group} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
+                            <MatterRow key={r.group.id} group={r.group} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
                                 onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: r.group.draft?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
                         ) : ((st) => (
                             <div key={st.id}>
@@ -305,7 +305,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                         {st.draft && <DraftLine draft={st.draft} />}
                                         <Shots names={st.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} />
                                         <div className="muted tiny meta">
-                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedLabel(st.endedBy)}`}{st.document?.path ? ` · ${st.document.path}` : ""}</span>
+                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
                                             {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
                                         </div>
                                     </div>
@@ -315,7 +315,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                     <button type="button" className="primary" onClick={() => setReviewing({ stretch: st, matter: null, description: st.draft?.text ?? st.document?.name ?? st.name })}>Keep time</button>
                                 </div>
                                 {open[st.id] && st.sittings > 1 && (
-                                    <Sittings items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
+                                    <Sittings all={w.activities} items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
                                 )}
                             </div>
                         ))(r.stretch))}
@@ -365,7 +365,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                         <span className="app-icon">▭</span>
                         <div className="grow">
                             <div className="small strong">{a.document?.name || a.title || a.app}</div>
-                            <div className="muted tiny"><MatterLabel name={a.matter} /> · {a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {endedLabel(a.endedBy)}{a.document?.path ? ` · ${a.document.path}` : ""}</div>
+                            <div className="muted tiny"><MatterLabel name={a.matter} /> · {a.app} · {dayLabel(a.startedAt)} {clock(a.startedAt)} · {endedText(a, w.activities)}{a.document?.path ? ` · ${a.document.path}` : ""}<IdleTag seconds={idleSeconds([a])} /></div>
                             <Shots names={a.screenshots} />
                             {(a.screenText || a.document?.excerpt) && <div className="tiny screen-text" title="What was read from the window">{(a.screenText ?? a.document?.excerpt ?? "").replace(/\n/g, " · ").slice(0, 220)}</div>}
                         </div>
@@ -379,12 +379,10 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
     );
 }
 
-/** How a sitting ended, in words. */
-const ENDED_BY: Record<string, string> = {
-    switched: "switched apps", idle: "went idle", suspended: "the computer slept", gap: "lost track", paused: "paused capture",
-    quit: "quit the app", excluded: "opened a private app", browser: "went to the browser", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down",
-};
-const endedLabel = (by: string | undefined): string => (by ? ENDED_BY[by] ?? by : "");
+/** "· 14m idle" after a row whose time includes flagged idle time; nothing otherwise. */
+function IdleTag({ seconds }: { seconds: number }): ReactNode {
+    return seconds >= 60 ? <span className="idle-tag" title={`No mouse or keyboard input for ${IDLE_FLAG_SECONDS / 60} minutes or more. Counted unless you leave it out when keeping.`}> · {duration(seconds)} idle</span> : null;
+}
 
 /** Screenshots of a row's time, oldest first: at most `max`, spread evenly; one opens full size in the system's viewer. */
 function Shots({ names, max = 6 }: { names: string[] | undefined; max?: number }): ReactNode {
@@ -419,7 +417,7 @@ function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
 }
 
 /** One matter's day: every app and document it was in, as one row to keep. */
-function MatterRow({ group: g, shots, open, onToggle, onKeep }: { group: MatterGroup; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+function MatterRow({ group: g, idle, shots, open, onToggle, onKeep }: { group: MatterGroup; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
     return (
         <div>
             <div className="activity">
@@ -429,7 +427,7 @@ function MatterRow({ group: g, shots, open, onToggle, onKeep }: { group: MatterG
                     {g.draft && <DraftLine draft={g.draft} />}
                     <Shots names={shots} />
                     <div className="muted tiny meta">
-                        <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</span>
+                        <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}<IdleTag seconds={idle} /></span>
                         <SittingsToggle label={`${g.documents.length} ${g.documents.length === 1 ? "item" : "items"}`} open={open} onClick={onToggle} />
                     </div>
                 </div>
@@ -506,7 +504,7 @@ function SittingsToggle({ label, open, onClick }: { label: string; open: boolean
 /** The sittings inside a stretch or a kept entry as a timeline: each sitting on the rail,
  *  the time away between two of them named, and, while a stretch is still under review,
  *  a Dismiss on each that drops it from the stretch. */
-function Sittings({ items, onDismiss }: { items: (Interval & { id?: string; endedBy?: string })[]; onDismiss?: (id: string) => void }): ReactNode {
+function Sittings({ items, all, onDismiss }: { items: (Interval & { id?: string; endedBy?: string; endedTo?: string })[]; all?: readonly Activity[]; onDismiss?: (id: string) => void }): ReactNode {
     return (
         <div className="sittings">
             {items.map((i, n) => {
@@ -518,7 +516,7 @@ function Sittings({ items, onDismiss }: { items: (Interval & { id?: string; ende
                         <div className="sitting">
                             <span className="sitting-dot" aria-hidden="true" />
                             <span className="small">{clock(i.startedAt)}–{clock(i.endedAt)}</span>
-                            {i.endedBy && <span className="tiny muted">{endedLabel(i.endedBy)}</span>}
+                            {i.endedBy && <span className="tiny muted">{endedText(i, all)}</span>}
                             <span className="grow" />
                             <span className="mono small">{duration((Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000)}</span>
                             {onDismiss && i.id && <button type="button" className="link sitting-dismiss" onClick={() => onDismiss(i.id as string)}>Dismiss</button>}
@@ -547,17 +545,22 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
     const [startText, setStartText] = useState(timeValue(stretch.startedAt));
     const [endText, setEndText] = useState(timeValue(stretch.endedAt));
     const [problem, setProblem] = useState<string | null>(null);
+    const [leaveOutIdle, setLeaveOutIdle] = useState(false);
     const start = onDay(stretch.startedAt, startText);
     const end = onDay(stretch.startedAt, endText, start);
     const spans: Interval[] = sittings.flatMap(intervals);
     const imported = sittings.some((a) => a.origin);
-    const preview = imported ? (() => { const kept = clipSittings(spans, start, end); return kept.length ? { startedAt: kept[0].startedAt, endedAt: kept[kept.length - 1].endedAt, sittings: kept } : null; })() : stretchSpan(spans, start, end);
+    const span = imported ? (() => { const kept = clipSittings(spans, start, end); return kept.length ? { startedAt: kept[0].startedAt, endedAt: kept[kept.length - 1].endedAt, sittings: kept } : null; })() : stretchSpan(spans, start, end);
+    const idleList = sittings.flatMap((a) => a.idle ?? []);
+    const idle = span ? idleList.reduce((n, i) => n + intervals(span).reduce((m, s) => m + Math.max(0, Math.min(Date.parse(i.endedAt), Date.parse(s.endedAt)) - Math.max(Date.parse(i.startedAt), Date.parse(s.startedAt))) / 1000, 0), 0) : 0;
+    const left = span && leaveOutIdle && idle > 0 ? subtractIntervals(intervals(span), idleList) : null;
+    const preview = left ? (left.length ? { startedAt: left[0].startedAt, endedAt: left[left.length - 1].endedAt, sittings: left } : null) : span;
     const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
     const changed = startText !== timeValue(stretch.startedAt) || endText !== timeValue(stretch.endedAt);
     const save = async (): Promise<void> => {
         if (!description.trim()) { setProblem("Add a description."); return; }
-        if (!preview) { setProblem("No captured time falls between those times."); return; }
-        const input = { description, projectID: null, matter: matter.trim() || null, billable, ...(asDrafted ? { drafted: stretch.draft!.source } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}) };
+        if (!preview) { setProblem(span ? "All of this time was idle. Dismiss it instead." : "No captured time falls between those times."); return; }
+        const input = { description, projectID: null, matter: matter.trim() || null, billable, ...(asDrafted ? { drafted: stretch.draft!.source } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}), ...(leaveOutIdle && idle > 0 ? { leaveOutIdle: true } : {}) };
         if (await window.lawdie.keepActivity(stretch.activityIDs, input)) onClose();
         else setProblem("That could not be saved. It may overlap time you already kept.");
     };
@@ -573,7 +576,8 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
                     <label className="field"><span className="eyebrow">End</span><input type="time" value={endText} onChange={(e) => setEndText(e.target.value)} /></label>
                     <label className="row gap check"><input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
                 </div>
-                {stretch.sittings > 1 && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
+                {idle >= 60 && <label className="row gap check"><input type="checkbox" checked={leaveOutIdle} onChange={(e) => setLeaveOutIdle(e.target.checked)} /> Leave out {duration(idle)} idle (no mouse or keyboard for {IDLE_FLAG_SECONDS / 60} minutes or more)</label>}
+                {(stretch.sittings > 1 || (left?.length ?? 0) > 1) && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
                 <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : imported ? "Imported time stays within the captured intervals. Any portion you leave out is treated as reviewed." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>
                 {problem && <p className="danger small">{problem}</p>}
                 <div className="row between">

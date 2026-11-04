@@ -30,7 +30,9 @@ read; a segment is bounded by wall-clock observations and never spans an unobser
 (`GAP_SECONDS`); only the window in front counts, for as long as it is in front, input or
 not (sleep and the lock screen end it), and the one exception is a call — a call app
 recording from the microphone (`src/shared/calls.ts`) gets the time wherever the focus is;
-idle stops only a running timer, at the last input; raw activity is evidence until a person
+idle stops only a running timer, at the last input; ten minutes without input
+(`IDLE_FLAG_SECONDS`) is flagged on the segment (`idle`), never on a call, and is counted
+unless the person leaves it out at keep (`leaveOutIdle`); raw activity is evidence until a person
 keeps it; kept time never overlaps; rates freeze at save; the token never enters the
 workspace; Kiwi never receives the in-progress
 segment or a running timer; a suggestion never overwrites a person's matter; browsers are
@@ -222,3 +224,9 @@ window's zoom), after "unreadable at distance" on a laptop.
 "no screenshots" promise in Settings now reads "unless you switch them on".
 RingCentral Meetings (a Zoom build, `us.zoom.ringcentral`) counts as RingCentral. Version 0.11.0
 (0.10.0 was never tagged; its changes ship here).
+2026-11-04, after the beta user's review: a sitting says where the time went next
+(`endedTo`, the app's name: "switched to Outlook", "went to Google Chrome", never a title
+inside the browser), and the site when Kiwi's browser time began as it ended
+(`siteAfter()`/`endedText()`). Ten minutes without mouse or keyboard input is flagged
+"idle" on the row (fixed, no setting; a call is never idle) and the Keep sheet offers
+"Leave out … idle".

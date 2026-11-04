@@ -15,6 +15,12 @@ export const APP_ID = "co.lawdie.timecapture.desktop";
 /** A stalled process or a sleep must never inflate a timer or a segment. */
 export const GAP_SECONDS = 45;
 export const MIN_ACTIVITY_SECONDS = 2;
+/**
+ * No mouse or keyboard input for this long is flagged as idle on the segment in front
+ * (2026-11-04, the beta user: "flag as idle" after 10 minutes). Flagged, not removed:
+ * reading a contract is still work, so the person decides at keep. A call is never idle.
+ */
+export const IDLE_FLAG_SECONDS = 10 * 60;
 
 export type Project = {
     id: string;
@@ -115,6 +121,10 @@ export type Activity = {
     startedAt: string;
     endedAt: string;
     endedBy: string;
+    /** The app switched to when it ended (endedBy "switched" or "browser"): a name, never a title. */
+    endedTo?: string;
+    /** Stretches of no mouse or keyboard input of IDLE_FLAG_SECONDS or more, inside it. Never on a call. */
+    idle?: Interval[];
     disposition: "pending" | "kept" | "dismissed";
     /** The matter this was work on: suggested by the model (src/shared/matters.ts) or set by
      *  the person. Absent until asked; null when it is not work on any matter. */
@@ -332,7 +342,24 @@ export type KeepInput = {
     /** The span the person settled on before keeping, when they changed it. */
     startedAt?: string;
     endedAt?: string;
+    /** Leave the flagged idle time out of the entry. */
+    leaveOutIdle?: boolean;
 };
+
+/** Spans minus the spans to take out, in order. */
+export function subtractIntervals(list: Interval[], out: Interval[]): Interval[] {
+    let pieces = list.map((i) => ({ start: ms(i.startedAt), end: ms(i.endedAt) }));
+    for (const o of out) {
+        const os = ms(o.startedAt), oe = ms(o.endedAt);
+        pieces = pieces.flatMap((p) => (oe <= p.start || os >= p.end ? [p] : [{ start: p.start, end: os }, { start: oe, end: p.end }].filter((x) => x.end > x.start)));
+    }
+    return pieces.map((p) => ({ startedAt: iso(p.start), endedAt: iso(p.end) }));
+}
+
+/** Seconds of flagged idle time among activities, inside [start, end] when given. */
+export function idleSeconds(activities: readonly Pick<Activity, "idle">[], start = -Infinity, end = Infinity): number {
+    return activities.flatMap((a) => a.idle ?? []).reduce((n, i) => n + Math.max(0, Math.min(ms(i.endedAt), end) - Math.max(ms(i.startedAt), start)) / 1000, 0);
+}
 
 /** The parts of the sittings inside [start, end]. */
 export function clipSittings(list: Interval[], start: number, end: number): Interval[] {
@@ -370,8 +397,16 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     const end = input.endedAt ? ms(input.endedAt) : ms(merged[merged.length - 1].endedAt);
     if (!(end > start)) throw new WorkspaceError("The end must be after the start.");
     const imported = (picked as Activity[]).some((a) => a.origin);
-    const span = imported ? (() => { const clipped = clipSittings(merged, start, end); return clipped.length ? { startedAt: clipped[0].startedAt, endedAt: clipped[clipped.length - 1].endedAt, sittings: clipped } : null; })() : stretchSpan(merged, start, end);
+    let span: { startedAt: string; endedAt: string; sittings?: Interval[] } | null = imported ? (() => { const clipped = clipSittings(merged, start, end); return clipped.length ? { startedAt: clipped[0].startedAt, endedAt: clipped[clipped.length - 1].endedAt, sittings: clipped } : null; })() : stretchSpan(merged, start, end);
     if (!span) throw new WorkspaceError("No captured time falls between those times.");
+    if (input.leaveOutIdle) {
+        const idle = (picked as Activity[]).flatMap((a) => a.idle ?? []);
+        if (idle.length) {
+            const left = subtractIntervals(intervals(span), idle);
+            if (!left.length) throw new WorkspaceError("All of this time was idle. Dismiss it instead.");
+            span = { startedAt: left[0].startedAt, endedAt: left[left.length - 1].endedAt, ...(left.length > 1 ? { sittings: left } : {}) };
+        }
+    }
     const matter = input.matter?.trim().slice(0, MATTER_MAX) || null;
     if (isPersonal(matter)) throw new WorkspaceError("Personal time is not kept. Choose a matter, or dismiss it.");
     const identities = [...new Set((picked as Activity[]).filter((a) => a.matter === matter && a.kiwiProjectID).map((a) => a.kiwiProjectID!))];
@@ -511,7 +546,8 @@ export function deleteEntry(w: Workspace, id: string): void {
 // Capture
 // ---------------------------------------------------------------------------
 
-export type Observation = { app: string; ownerID: string; title: string | null; document?: DocumentInfo | null; screenText?: string | null; isSelf?: boolean } | null;
+/** `call`: a call is going on (in front or behind), so no input is not idle. */
+export type Observation = { app: string; ownerID: string; title: string | null; document?: DocumentInfo | null; screenText?: string | null; isSelf?: boolean; call?: boolean } | null;
 
 export const SCREEN_TEXT_MAX = 600;
 
@@ -607,7 +643,7 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
     }
     // Switching to this app is a switch like any other; only a private app is "excluded".
     if (foreground.isSelf || foreground.ownerID === APP_ID) {
-        closeActivity(w, now, "switched");
+        closeActivity(w, now, "switched", foreground.app);
         return;
     }
     if (isExcluded(w.preferences, foreground.ownerID)) {
@@ -616,7 +652,8 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
     }
     // Checked before anything about the window is used, as an exclusion is.
     if (isBrowser(foreground.ownerID)) {
-        closeActivity(w, now, "browser");
+        // The browser's name only: nothing inside it is read (the extension has the pages).
+        closeActivity(w, now, "browser", foreground.app);
         return;
     }
     const safeTitle = w.preferences.captureTitles ? foreground.title : null;
@@ -629,11 +666,11 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         // A blank title ("", titles on) in the same app is the OS not saying, not a new
         // window: Finder flickered "Downloads" → "" → "Downloads" every sample and cut a
         // minute into 5-second pieces (2026-10-23). Titles off (null) is not blank.
-        else if (current.ownerID !== foreground.ownerID || (current.title !== safeTitle && current.title !== "" && safeTitle !== "")) closeActivity(w, now, "switched");
+        else if (current.ownerID !== foreground.ownerID || (current.title !== safeTitle && current.title !== "" && safeTitle !== "")) closeActivity(w, now, "switched", foreground.app);
         // A different document in the same app is different work. A segment that only now
         // learns its document keeps going, and a probe that failed this once (null) does not
         // end a segment that already knows its document.
-        else if (document && current.document && !sameDocument(current.document, document)) closeActivity(w, now, "switched");
+        else if (document && current.document && !sameDocument(current.document, document)) closeActivity(w, now, "switched", foreground.app);
     }
     if (!w.currentActivity) {
         w.currentActivity = { id: uuid(), app: foreground.app, ownerID: foreground.ownerID, title: safeTitle, document, ...(screenText ? { screenText } : {}), startedAt: iso(now), endedAt: iso(now), endedBy: "switched", disposition: "pending" };
@@ -644,6 +681,18 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         // The first text read stands for the segment: scrolling is not other work.
         if (screenText && !w.currentActivity.screenText) w.currentActivity.screenText = screenText;
     }
+    if (!foreground.call && idleSeconds >= IDLE_FLAG_SECONDS) flagIdle(w.currentActivity, now - idleSeconds * 1000, now);
+}
+
+/** No input since `from`: one idle span per stretch without input, inside the segment. */
+function flagIdle(a: Activity, from: number, now: number): void {
+    const start = iso(Math.max(from, ms(a.startedAt)));
+    if (!(now > ms(start))) return;
+    const list = (a.idle ??= []);
+    const last = list[list.length - 1];
+    // The same quiet stretch, sampled again: it began at the same last input.
+    if (last && Math.abs(ms(last.startedAt) - ms(start)) < 2_000) last.endedAt = iso(now);
+    else list.push({ startedAt: start, endedAt: iso(now) });
 }
 
 // ---------------------------------------------------------------------------
@@ -689,13 +738,42 @@ export function referencedScreenshots(w: Workspace): Set<string> {
     return names;
 }
 
-export function closeActivity(w: Workspace, at: number, reason: string): void {
+/** How a sitting ended, in words. */
+const ENDED_BY: Record<string, string> = {
+    switched: "switched apps", idle: "went idle", suspended: "the computer slept", gap: "lost track", paused: "paused capture",
+    quit: "quit the app", excluded: "opened a private app", browser: "went to the browser", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down",
+};
+
+/** The site of the browser time (brought in from Kiwi) that began as this ended, if any. */
+export function siteAfter(activities: readonly Activity[], endedAt: string): string | null {
+    const end = ms(endedAt);
+    const next = activities.filter((a) => a.origin === "browser" && a.url && ms(a.startedAt) >= end - 10_000 && ms(a.startedAt) <= end + 120_000)
+        .sort((x, y) => Math.abs(ms(x.startedAt) - end) - Math.abs(ms(y.startedAt) - end))[0];
+    if (!next?.url) return null;
+    try { return new URL(next.url).hostname.replace(/^www\./, "") || null; } catch { return null; }
+}
+
+/** "switched to Outlook", "went to Chrome · courtlistener.com": where the time went next, as far as it is known. */
+export function endedText(a: { endedBy?: string; endedTo?: string; endedAt: string }, activities: readonly Activity[] = []): string {
+    const by = a.endedBy;
+    if (!by) return "";
+    if (by === "switched" && a.endedTo) return `switched to ${a.endedTo}`;
+    if (by === "browser") {
+        const site = siteAfter(activities, a.endedAt);
+        return `went to ${a.endedTo ?? "the browser"}${site ? ` · ${site}` : ""}`;
+    }
+    return ENDED_BY[by] ?? by;
+}
+
+export function closeActivity(w: Workspace, at: number, reason: string, to?: string): void {
     const current = w.currentActivity;
     if (!current) return;
     w.currentActivity = null;
     const end = Math.max(ms(current.startedAt), Math.min(at, ms(current.endedAt) + 15_000));
     // A title that stayed blank is no title, as stored and as sent.
-    const closed: Activity = { ...current, title: current.title || null, endedAt: iso(end), endedBy: reason };
+    const idle = current.idle?.map((i) => ({ startedAt: i.startedAt, endedAt: iso(Math.min(ms(i.endedAt), end)) })).filter((i) => ms(i.endedAt) > ms(i.startedAt));
+    const closed: Activity = { ...current, title: current.title || null, endedAt: iso(end), endedBy: reason, ...(to ? { endedTo: to.slice(0, 200) } : {}) };
+    if (idle?.length) closed.idle = idle; else delete closed.idle;
     if (seconds(closed) >= MIN_ACTIVITY_SECONDS) w.activities.push(closed);
 }
 
@@ -740,6 +818,8 @@ export type Stretch = {
     seconds: number;
     sittings: number;
     endedBy: string;
+    /** The app its last sitting switched to. */
+    endedTo?: string;
     /** The first AI draft among its sittings. */
     draft: Draft | null;
 };
@@ -766,11 +846,12 @@ export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP
             last.seconds += spanSeconds(a);
             last.sittings += 1;
             last.endedBy = a.endedBy;
+            last.endedTo = a.endedTo;
             last.draft ??= a.draft ?? null;
             continue;
         }
         const mail = isMail(a.ownerID);
-        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: mail ? a.app : a.document?.name ?? a.title ?? a.app, document: mail ? null : a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy, draft: a.draft ?? null };
+        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: mail ? a.app : a.document?.name ?? a.title ?? a.app, document: mail ? null : a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy, ...(a.endedTo ? { endedTo: a.endedTo } : {}), draft: a.draft ?? null };
         open.set(key, fresh);
         all.push(fresh);
     }
@@ -880,7 +961,7 @@ export function validate(w: Workspace): Workspace {
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample") && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20)) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));
