@@ -133,6 +133,8 @@ export type Activity = {
     matterBy?: "ai" | "person";
     /** A billing description drafted by a model for the work this is part of; a person keeps or edits it. */
     draft?: Draft | null;
+    /** The description the person gave it in review, before keeping: wins over the draft, and is never drafted over. */
+    description?: string;
 };
 
 export type Preferences = {
@@ -491,6 +493,21 @@ export function updateProject(w: Workspace, id: string, change: { name?: string;
     }
 }
 
+/**
+ * Rename a matter from a review row: its project when it has one (as updateProject, so
+ * kept entries follow), else every activity named after it. Personal is not renamed, and
+ * nothing is renamed to it.
+ */
+export function renameMatterNamed(w: Workspace, from: string, to: string): void {
+    const name = to.trim().slice(0, MATTER_MAX);
+    if (!name) throw new WorkspaceError("Give the matter a name.");
+    if (isPersonal(from) || isPersonal(name)) throw new WorkspaceError("Personal is not renamed. Use the Personal button instead.");
+    const key = from.trim().toLowerCase();
+    const p = w.projects.find((x) => !x.archived && x.name.trim().toLowerCase() === key);
+    if (p) updateProject(w, p.id, { name });
+    else renameMatter(w, from, name);
+}
+
 /** One matter becomes another: its entries move (times and rates untouched), its activity takes the other's name, and it is gone. */
 export function mergeProjects(w: Workspace, fromID: string, intoID: string): void {
     const from = project(w, fromID), into = project(w, intoID);
@@ -510,6 +527,20 @@ export function archiveProject(w: Workspace, id: string, archived: boolean): voi
     if (!p) throw new WorkspaceError("That matter no longer exists.");
     if (!archived && w.projects.some((x) => x.id !== id && !x.archived && x.name.trim().toLowerCase() === p.name.trim().toLowerCase())) throw new WorkspaceError(`There is already an open matter called “${p.name}”. Merge them instead.`);
     p.archived = archived;
+}
+
+/** The person's own description of pending activities, before keeping them; empty clears it. */
+export function describeActivities(w: Workspace, ids: string[], text: string): void {
+    const given = text.replace(/\s+/g, " ").trim().slice(0, DRAFT_MAX);
+    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { if (given) a.description = given; else delete a.description; }
+}
+
+/** What a row of these activities is called: the person's description, else the AI draft. */
+export function descriptionOf(activities: readonly (Pick<Activity, "description" | "draft"> | undefined)[]): { text: string; by: "person" | DraftSource } | null {
+    const own = activities.find((a) => a?.description)?.description;
+    if (own) return { text: own, by: "person" };
+    const draft = activities.find((a) => a?.draft)?.draft;
+    return draft ? { text: draft.text, by: draft.source } : null;
 }
 
 /** The person names (or clears) the matter of pending activities. */
@@ -961,7 +992,7 @@ export function validate(w: Workspace): Workspace {
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample") && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20)) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));

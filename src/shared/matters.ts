@@ -208,13 +208,14 @@ export function reviewRows(activities: readonly Activity[]): ReviewRow[] {
  * The rows that need a draft: something to read, and more than a quarter of their time
  * not yet covered by one (a row that grew since it was drafted is drafted again whole).
  * `skip` holds "id:sittings" for rows already asked this session and not answered.
+ * A row the person has described in review is never drafted.
  * Examples are the descriptions the person wrote themselves, so drafts follow their wording.
  */
 export function draftRequest(w: Workspace, skip: ReadonlySet<string> = new Set()): { rows: ReviewRow[]; body: DraftsBody } | null {
     const byID = new Map(w.activities.map((a) => [a.id, a]));
     const need = reviewRows(w.activities).filter((r) => {
         const acts = r.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a);
-        const undrafted = acts.filter((a) => !a.draft).reduce((n, a) => n + spanSeconds(a), 0);
+        const undrafted = acts.some((a) => a.description) ? 0 : acts.filter((a) => !a.draft).reduce((n, a) => n + spanSeconds(a), 0);
         return !skip.has(`${r.id}:${r.activityIDs.length}`) && undrafted > r.seconds * 0.25 && acts.some(readable);
     }).slice(0, DRAFT_BATCH);
     if (!need.length) return null;

@@ -4,7 +4,7 @@ import {
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
-import { IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { renameMatterNamed, describeActivities, descriptionOf, IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { duration } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
@@ -73,6 +73,38 @@ describe("where the time went, and idle", () => {
         const v = emptyWorkspace();
         v.activities.push(b);
         expect(seconds(keepActivity(v, b.id, { description: "Draft", projectID: null, billable: true }, at(4000)))).toBe(3600);
+    });
+});
+
+describe("describing a row before keeping it", () => {
+    it("renames a matter from its row: the project when there is one, else its activity", () => {
+        const w = emptyWorkspace();
+        const a = activity({ matter: "Whitfeld", matterBy: "ai" });
+        w.activities.push(a);
+        renameMatterNamed(w, "Whitfeld", "Whitfield v. Acme");
+        expect([a.matter, a.matterBy]).toEqual(["Whitfield v. Acme", "person"]);
+        w.projects.push({ id: "p1", name: "Whitfield v. Acme", client: "", color: "gold", hourlyRate: 0, archived: false });
+        renameMatterNamed(w, "whitfield v. acme", "Whitfield v. Acme Corp");
+        expect([w.projects[0].name, a.matter]).toEqual(["Whitfield v. Acme Corp", "Whitfield v. Acme Corp"]);
+        expect(() => renameMatterNamed(w, "Whitfield v. Acme Corp", "personal")).toThrow(WorkspaceError);
+    });
+    it("the person's description wins over the draft, is never drafted over, and clears", () => {
+        const w = emptyWorkspace();
+        const a = activity({ title: "Whitfield motion.docx", draft: { text: "Drafted motion", source: "kiwi" } });
+        const b = activity({ title: "Old", disposition: "kept" });
+        w.activities.push(a, b);
+        expect(descriptionOf([a])).toEqual({ text: "Drafted motion", by: "kiwi" });
+        describeActivities(w, [a.id, b.id], "  Revised   motion to dismiss ");
+        expect(a.description).toBe("Revised motion to dismiss");
+        expect(b.description).toBeUndefined();
+        expect(descriptionOf([a])).toEqual({ text: "Revised motion to dismiss", by: "person" });
+        delete a.draft;
+        w.preferences.captureTitles = true;
+        expect(draftRequest(w)).toBeNull();
+        expect(() => validate(w)).not.toThrow();
+        describeActivities(w, [a.id], " ");
+        expect(a.description).toBeUndefined();
+        expect(draftRequest(w)?.rows.length).toBe(1);
     });
 });
 

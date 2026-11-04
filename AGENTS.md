@@ -229,4 +229,7 @@ RingCentral Meetings (a Zoom build, `us.zoom.ringcentral`) counts as RingCentral
 inside the browser), and the site when Kiwi's browser time began as it ended
 (`siteAfter()`/`endedText()`). Ten minutes without mouse or keyboard input is flagged
 "idle" on the row (fixed, no setting; a call is never idle) and the Keep sheet offers
-"Leave out … idle".
+"Leave out … idle". A review row can be renamed in place (pencil; `describeActivities()`, the
+activity's `description`): the person's text wins over the AI draft, is never drafted
+over, and is what the Keep sheet starts from. A matter row's name renames the matter
+everywhere (`renameMatterNamed()`: its project if it has one, else its activity).

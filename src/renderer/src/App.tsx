@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { IDLE_FLAG_SECONDS, NOISE_SECONDS, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, NOISE_SECONDS, descriptionOf, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
@@ -294,31 +294,33 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
-                            <MatterRow key={r.group.id} group={r.group} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
-                                onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: r.group.draft?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
-                        ) : ((st) => (
+                            <MatterRow key={r.group.id} group={r.group} described={descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
+                                onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
+                        ) : ((st, own) => (
                             <div key={st.id}>
                                 <div className="activity">
                                     <span className="app-icon">▭</span>
                                     <div className="grow">
-                                        <div className="small strong">{st.name}</div>
-                                        {st.draft && <DraftLine draft={st.draft} />}
+                                        <Editable initial={own?.text ?? st.name} onSave={(text) => void window.lawdie.describeActivities(st.activityIDs, text)}>
+                                            <div className="small strong">{own?.by === "person" ? own.text : st.name}</div>
+                                        </Editable>
+                                        {st.draft && own?.by !== "person" && <DraftLine draft={st.draft} />}
                                         <Shots names={st.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} />
                                         <div className="muted tiny meta">
-                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
+                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{own?.by === "person" && st.name !== own.text ? ` · ${st.name}` : ""}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
                                             {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
                                         </div>
                                     </div>
                                     <span className="mono">{duration(st.seconds)}</span>
                                     <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(st.activityIDs, PERSONAL)}>Personal</button>
                                     <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
-                                    <button type="button" className="primary" onClick={() => setReviewing({ stretch: st, matter: null, description: st.draft?.text ?? st.document?.name ?? st.name })}>Keep time</button>
+                                    <button type="button" className="primary" onClick={() => setReviewing({ stretch: st, matter: null, description: own?.text ?? st.document?.name ?? st.name })}>Keep time</button>
                                 </div>
                                 {open[st.id] && st.sittings > 1 && (
                                     <Sittings all={w.activities} items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
                                 )}
                             </div>
-                        ))(r.stretch))}
+                        ))(r.stretch, descriptionOf(r.stretch.activityIDs.map((id) => byID.get(id)))))}
                         {personal.length > 0 && <PersonalRow groups={personal} open={!!open.personal} onToggle={() => toggle("personal")} />}
                         {short.length > 0 && (
                             <div className="activity">
@@ -401,6 +403,28 @@ function Shots({ names, max = 6 }: { names: string[] | undefined; max?: number }
     );
 }
 
+/**
+ * Text with a pencil beside it: the pencil (or a click on the text) turns it into a field;
+ * Enter or leaving the field saves, Escape cancels. Saving the text unchanged saves nothing.
+ */
+function Editable({ initial, placeholder, title = "Rename: the description this is kept as", onSave, children }: { initial: string; placeholder?: string; title?: string; onSave: (text: string) => void; children: ReactNode }): ReactNode {
+    const [editing, setEditing] = useState(false);
+    const [text, setText] = useState(initial);
+    const begin = (): void => { setText(initial); setEditing(true); };
+    const finish = (save: boolean): void => { setEditing(false); if (save && text.trim() !== initial.trim()) onSave(text.trim()); };
+    if (editing) return (
+        <input className="inline-edit" autoFocus value={text} placeholder={placeholder} maxLength={500} aria-label="Description"
+            onChange={(e) => setText(e.target.value)} onBlur={() => finish(true)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } }} />
+    );
+    return (
+        <div className="editable">
+            {children && <div className="editable-text" onClick={begin}>{children}</div>}
+            <button type="button" className="pencil" title={title} aria-label={title} onClick={begin}>✎{children ? "" : <span> Describe</span>}</button>
+        </div>
+    );
+}
+
 /** An AI-drafted billing description, under the row it was drafted for. */
 function DraftLine({ draft }: { draft: Draft }): ReactNode {
     return <div className="draft-line" title={draft.source === "sample" ? "Sample draft, not generated from your data" : "Drafted by AI from what was captured"}><span aria-hidden="true">✦</span> {draft.text}</div>;
@@ -417,14 +441,18 @@ function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
 }
 
 /** One matter's day: every app and document it was in, as one row to keep. */
-function MatterRow({ group: g, idle, shots, open, onToggle, onKeep }: { group: MatterGroup; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+function MatterRow({ group: g, described, idle, shots, open, onToggle, onKeep }: { group: MatterGroup; described: ReturnType<typeof descriptionOf>; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
     return (
         <div>
             <div className="activity">
                 <span className="app-icon matter-icon" aria-hidden="true">§</span>
                 <div className="grow">
-                    <div className="small strong">{g.matter}</div>
-                    {g.draft && <DraftLine draft={g.draft} />}
+                    <Editable initial={g.matter} title="Rename this matter, everywhere it appears" onSave={(name) => { if (name) void window.lawdie.renameMatter(g.matter, name); }}>
+                        <div className="small strong">{g.matter}</div>
+                    </Editable>
+                    <Editable initial={described?.text ?? ""} placeholder="Describe this work" onSave={(text) => void window.lawdie.describeActivities(g.activityIDs, text)}>
+                        {described?.by === "person" ? <div className="draft-line own">{described.text}</div> : g.draft ? <DraftLine draft={g.draft} /> : null}
+                    </Editable>
                     <Shots names={shots} />
                     <div className="muted tiny meta">
                         <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}<IdleTag seconds={idle} /></span>

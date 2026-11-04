@@ -26,6 +26,10 @@ export const api = {
     keepActivity: (ids: string | string[], input: KeepInput): Promise<boolean> => ipcRenderer.invoke("keepActivity", ids, input),
     dismissActivity: (ids: string | string[]): Promise<boolean> => ipcRenderer.invoke("dismissActivity", ids),
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
+    /** The person's description of pending activities, before keeping; "" clears it. */
+    describeActivities: (ids: string[], text: string): Promise<boolean> => ipcRenderer.invoke("describeActivities", ids, text),
+    /** A matter renamed from a review row: its project if it has one, else the activity named after it. */
+    renameMatter: (from: string, to: string): Promise<boolean> => ipcRenderer.invoke("renameMatter", from, to),
     /** The person names (or, with null, clears) the matter of pending activities. */
     setMatter: (ids: string[], matter: string | null): Promise<boolean> => ipcRenderer.invoke("setMatter", ids, matter),
     /** From the button: now. Otherwise (opening Activity): only if the last run was over ten minutes ago. */
