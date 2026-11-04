@@ -1049,9 +1049,17 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
 
 // ---------------------------------------------------------------------------
 
+type SettingsTab = "capture" | "billing" | "sync" | "data";
+const SETTINGS_TABS: { key: SettingsTab; label: string; tip: string }[] = [
+    { key: "capture", label: "Capture", tip: "What is captured, how long it is kept, and the apps that stay private." },
+    { key: "billing", label: "Billing", tip: "The firm's details on every invoice and time sheet, and the logo." },
+    { key: "sync", label: "Sync", tip: "Kiwi and Lawdie CRM." },
+    { key: "data", label: "Display & data", tip: "Text size, and where your data lives." },
+];
 function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
     const w = state.workspace, p = w.preferences;
     const [excluded, setExcluded] = useState("");
+    const [tab, setTab] = useState<SettingsTab>("capture");
     const [office, setOffice] = useState<{ supported: boolean; errors: Record<string, string> } | null>(null);
     useEffect(() => {
         if (!p.captureDocuments) return undefined;
@@ -1081,7 +1089,10 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
     return (
         <>
             <Heading title="Settings" />
-            <Panel>
+            <div className="segmented settings-tabs" role="tablist" aria-label="Settings">
+                {SETTINGS_TABS.map((t) => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "active" : ""} title={t.tip} onClick={() => setTab(t.key)}>{t.label}</button>)}
+            </div>
+            {tab === "capture" && <Panel>
                 <strong>Desktop capture</strong>
                 <Setting title="Capture app activity" detail="Records the foreground app and duration across your desktop. Start and stop at any time. Browsers are left to the Lawdie browser extension, so web time is never counted twice.">
                     <Toggle on={p.captureEnabled} onChange={(v) => void window.lawdie.setCapture(v)} label="Capture app activity" tip={{ on: "Stop recording app activity.", off: "Start recording app activity." }} />
@@ -1134,9 +1145,9 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                 <Setting title="Activity retention" detail="Older raw activity is removed automatically. Saved time entries are kept.">
                     <select value={p.retentionDays} title="Choose how long raw activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
                 </Setting>
-            </Panel>
-            <BillingSettings w={w} />
-            <Panel>
+            </Panel>}
+            {tab === "billing" && <BillingSettings w={w} />}
+            {tab === "data" && <Panel>
                 <strong>Display</strong>
                 <Setting title="Text size" detail="Makes everything in this window larger, for reading on a laptop or from a distance.">
                     <div className="segmented" role="radiogroup" aria-label="Text size">
@@ -1145,8 +1156,8 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                         ))}
                     </div>
                 </Setting>
-            </Panel>
-            <Panel>
+            </Panel>}
+            {tab === "capture" && <Panel>
                 <strong>Apps that stay private</strong>
                 <p className="muted small">Excluded apps are skipped before any window title is read. {isMac ? "Enter a bundle identifier, such as com.apple.Safari." : "Enter the program's file name, such as chrome.exe."}</p>
                 <div className="chips">{p.excludedOwnerIDs.map((id) => <span key={id} className="chip mono">{id}<button type="button" aria-label={`Stop excluding ${id}`} title={`Stop excluding ${id}.`} onClick={() => set("excludedOwnerIDs", p.excludedOwnerIDs.filter((x) => x !== id))}>×</button></span>)}</div>
@@ -1154,8 +1165,8 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <input value={excluded} title={isMac ? "Type an app's bundle identifier to keep it private." : "Type a program's file name to keep it private."} onChange={(e) => setExcluded(e.target.value)} placeholder={isMac ? "com.example.private-app" : "private-app.exe"} />
                     <button type="submit" className="quiet" title="Skip this app when capture runs.">Exclude</button>
                 </form>
-            </Panel>
-            <Panel>
+            </Panel>}
+            {tab === "data" && <Panel>
                 <strong>Your data belongs here</strong>
                 <p className="muted small">No telemetry, keystroke recording, or local network service, and no screenshots unless you switch them on above; they never leave this {label}. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
                 <p className="mono tiny muted">{state.workspacePath}</p>
@@ -1164,8 +1175,8 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <span className="grow" />
                     <button type="button" className="quiet danger" title="Delete all captured activity. Saved time entries stay." onClick={() => { if (confirm("Clear all captured desktop activity? Saved time entries are kept and capture is paused.")) void window.lawdie.clearActivity(); }}>Clear activity…</button>
                 </div>
-            </Panel>
-            <Panel>
+            </Panel>}
+            {tab === "sync" && <Panel>
                 <div className="row between">
                     <strong>Sync to Kiwi or Lawdie CRM</strong>
                     <span className="row gap small"><span className={"dot" + (w.sync ? (w.sync.targets.some((t) => t.lastError) ? " bad" : " on") : "")} />{w.sync ? "Connected" : "Not connected"}</span>
@@ -1208,7 +1219,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                         ))}
                     </>
                 )}
-            </Panel>
+            </Panel>}
         </>
     );
 }

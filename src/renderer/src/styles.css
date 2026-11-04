@@ -403,3 +403,4 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 .billing-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 12px; } .billing-form .field.short { flex: 0 0 130px; }
 .logo-preview { height: 48px; max-width: 180px; object-fit: contain; border-radius: 6px; background: #fff; border: 1px solid var(--line); padding: 4px; }
 .logo-preview.none { display: inline-flex; align-items: center; justify-content: center; width: 96px; }
+.settings-tabs { align-self: flex-start; }
