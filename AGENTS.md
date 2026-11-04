@@ -240,4 +240,4 @@ buttons become Keep separate / Add to entry) and under the entry in Kept ("New s
 Add to entry (`mergeIntoEntry()`): the entry is deleted, so the destinations are told, and
 its sittings come back with the new ones as one row (`mergeKey`) to be kept again. Keep
 separate (`separateFrom`) is never asked again. The Keep sheet keeps the captured bounds
-exactly unless the times are edited (`keepBounds()`).
+exactly unless the times are edited (`keepBounds()`). Version 0.12.0.
