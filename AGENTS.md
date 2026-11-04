@@ -232,4 +232,12 @@ inside the browser), and the site when Kiwi's browser time began as it ended
 "Leave out … idle". A review row can be renamed in place (pencil; `describeActivities()`, the
 activity's `description`): the person's text wins over the AI draft, is never drafted
 over, and is what the Keep sheet starts from. A matter row's name renames the matter
-everywhere (`renameMatterNamed()`: its project if it has one, else its activity).
+everywhere (`renameMatterNamed()`: its project if it has one, else its activity). New time
+that starts within 24 hours (`MERGE_WINDOW_MS`) of a kept desktop entry on the same
+matter, or with no matter the same document in the same app (`keptMatch()`), is asked
+about in two places: on its row in To review ("Add this to your kept entry …?", the row's
+buttons become Keep separate / Add to entry) and under the entry in Kept ("New since").
+Add to entry (`mergeIntoEntry()`): the entry is deleted, so the destinations are told, and
+its sittings come back with the new ones as one row (`mergeKey`) to be kept again. Keep
+separate (`separateFrom`) is never asked again. The Keep sheet keeps the captured bounds
+exactly unless the times are edited (`keepBounds()`).

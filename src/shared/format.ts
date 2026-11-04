@@ -21,6 +21,29 @@ export function dayLabel(iso: string, now = new Date()): string {
     return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
+/** "09:05": a time as an <input type="time"> shows it, in local time. */
+export const timeValue = (isoText: string): string => { const d = new Date(isoText); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+
+/** "HH:MM" on the local day of `dayIso`; a day later when that is not after `notBefore`. */
+export function onDay(dayIso: string, hhmm: string, notBefore: number | null = null): number {
+    const [h, m] = hhmm.split(":").map(Number);
+    const d = new Date(dayIso); d.setHours(h, m, 0, 0);
+    if (notBefore !== null && d.getTime() <= notBefore) d.setDate(d.getDate() + 1);
+    return d.getTime();
+}
+
+/**
+ * The span the Keep sheet keeps. Untouched, the captured bounds exactly (to the second,
+ * and across days: a row merged with a kept entry can run past midnight); edited, the start
+ * on the start's day and the end on the end's day, a day later if it would not be after the start.
+ */
+export function keepBounds(span: { startedAt: string; endedAt: string }, startText: string, endText: string): { start: number; end: number; changed: boolean } {
+    const changed = startText !== timeValue(span.startedAt) || endText !== timeValue(span.endedAt);
+    if (!changed) return { start: Date.parse(span.startedAt), end: Date.parse(span.endedAt), changed };
+    const start = onDay(span.startedAt, startText);
+    return { start, end: onDay(span.endedAt, endText, start), changed };
+}
+
 export function ago(iso: string | null, now = Date.now()): string {
     if (!iso) return "never";
     const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));

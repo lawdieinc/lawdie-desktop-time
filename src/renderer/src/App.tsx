@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { IDLE_FLAG_SECONDS, NOISE_SECONDS, descriptionOf, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, NOISE_SECONDS, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
-import { ago, clock, dayLabel, duration, spanLabel } from "@shared/format";
+import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeValue } from "@shared/format";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 import kiwiMark from "../../../resources/brand/kiwi.png";
 
@@ -249,6 +249,17 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
     // Matters and stretches are one list, so the newest work is on top whether or not it has a matter yet.
     const pendingRows = useMemo(() => sortBy([...groups.map((g) => ({ group: g })), ...stretches.map((st) => ({ stretch: st }))], sort,
         (r) => "group" in r ? { at: r.group.endedAt, seconds: r.group.seconds, name: r.group.matter } : { at: r.stretch.endedAt, seconds: r.stretch.seconds, name: r.stretch.name }), [groups, stretches, sort]);
+    /** Each review row that looks like more of a kept entry (by its first activity), and each such entry's waiting rows. */
+    const { matches, waiting } = useMemo(() => {
+        const matches = new Map<string, TimeEntry>(), waiting = new Map<string, string[][]>();
+        for (const ids of pendingRows.map((r) => ("group" in r ? r.group.activityIDs : r.stretch.activityIDs))) {
+            const m = keptMatch(w, ids);
+            if (!m) continue;
+            matches.set(ids[0], m);
+            waiting.set(m.id, [...(waiting.get(m.id) ?? []), ids]);
+        }
+        return { matches, waiting };
+    }, [w, pendingRows]);
     const kept = useMemo(() => sortBy(w.entries.filter((e) => e.activityID), sort, (e) => ({ at: e.endedAt, seconds: entrySeconds(e), name: e.description })), [w.entries, sort]);
     const raw = useMemo(() => sortBy(w.activities.filter((a) => filter === "all" || a.disposition === filter), sort, (a) => ({ at: a.endedAt, seconds: (Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000, name: a.document?.name || a.title || a.app })), [w.activities, filter, sort]);
     const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
@@ -294,7 +305,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
-                            <MatterRow key={r.group.id} group={r.group} described={descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
+                            <MatterRow key={r.group.id} group={r.group} match={matches.get(r.group.activityIDs[0]) ?? null} merged={r.group.activityIDs.some((id) => byID.get(id)?.mergeKey)} described={descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
                                 onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
                         ) : ((st, own) => (
                             <div key={st.id}>
@@ -310,11 +321,14 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                             <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{own?.by === "person" && st.name !== own.text ? ` · ${st.name}` : ""}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
                                             {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
                                         </div>
+                                        <MergeLine match={matches.get(st.activityIDs[0]) ?? null} merged={st.activityIDs.some((id) => byID.get(id)?.mergeKey)} />
                                     </div>
                                     <span className="mono">{duration(st.seconds)}</span>
-                                    <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(st.activityIDs, PERSONAL)}>Personal</button>
-                                    <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
-                                    <button type="button" className="primary" onClick={() => setReviewing({ stretch: st, matter: null, description: own?.text ?? st.document?.name ?? st.name })}>Keep time</button>
+                                    {matches.get(st.activityIDs[0]) ? <MergeButtons ids={st.activityIDs} match={matches.get(st.activityIDs[0])!} /> : <>
+                                        <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(st.activityIDs, PERSONAL)}>Personal</button>
+                                        <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
+                                        <button type="button" className="primary" onClick={() => setReviewing({ stretch: st, matter: null, description: own?.text ?? st.document?.name ?? st.name })}>Keep time</button>
+                                    </>}
                                 </div>
                                 {open[st.id] && st.sittings > 1 && (
                                     <Sittings all={w.activities} items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
@@ -357,6 +371,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                     <button type="button" className="quiet" onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
                                 </div>
                                 {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
+                                {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entryID={e.id} byID={byID} />}
                             </div>
                         );
                     })
@@ -377,6 +392,51 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                 ))}
             </Panel>
             {reviewing && <KeepSheet key={reviewing.stretch.id} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onClose={() => setReviewing(null)} />}
+        </>
+    );
+}
+
+/** Under a review row that looks like more of a kept entry: the question, naming the entry. The row's buttons become Separate / Add to entry. Once merged: that it must be kept again. */
+function MergeLine({ match, merged }: { match: TimeEntry | null; merged: boolean }): ReactNode {
+    if (merged) return <div className="merge-note tiny">↺ Added to a kept entry · keep it again to put it back on your timesheet</div>;
+    if (!match) return null;
+    return <div className="merge-note tiny">↔ Add this to your kept entry <strong>“{match.description}”</strong> ({clock(match.startedAt)}–{clock(match.endedAt)}, {duration(entrySeconds(match))})?</div>;
+}
+
+/**
+ * Under a kept entry: the new activity since, that looks like more of it, each with Add (the
+ * entry comes back to review with it, to be kept again as one) and Separate.
+ */
+function NewSince({ rows, entryID, byID }: { rows: string[][]; entryID: string; byID: Map<string, Activity> }): ReactNode {
+    return (
+        <div className="new-since">
+            <div className="eyebrow">New since</div>
+            {rows.map((ids) => {
+                const acts = ids.map((id) => byID.get(id)).filter((a): a is Activity => !!a).sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+                if (!acts.length) return null;
+                const first = acts[0], last = acts[acts.length - 1];
+                const apps = [...new Set(acts.map((a) => a.app))].join(", ");
+                const name = first.description ?? first.document?.name ?? first.title ?? first.app;
+                return (
+                    <div className="sitting" key={ids[0]}>
+                        <span className="sitting-dot new" aria-hidden="true" />
+                        <span className="grow"><span className="small">{name}</span> <span className="tiny muted">· {apps} · {dayLabel(first.startedAt)} {spanLabel(first.startedAt, last.endedAt, acts.length)}</span></span>
+                        <span className="mono small">{duration(acts.reduce((n, a) => n + entrySeconds(a), 0))}</span>
+                        <button type="button" className="link sitting-dismiss" title="The new time is other work: it stays in review on its own" onClick={() => void window.lawdie.keepSeparate(ids, entryID)}>Separate</button>
+                        <button type="button" className="link sitting-dismiss add" title="This entry comes back to review with the new time, to be kept again as one" onClick={() => void window.lawdie.mergeIntoEntry(ids, entryID)}>Add to entry</button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+/** The row's buttons while its kept-entry question is open. */
+function MergeButtons({ ids, match }: { ids: string[]; match: TimeEntry }): ReactNode {
+    return (
+        <>
+            <button type="button" className="quiet" title="This is other work: review it on its own, and never suggest this entry for it again" onClick={() => void window.lawdie.keepSeparate(ids, match.id)}>Keep separate</button>
+            <button type="button" className="primary" title="The kept entry comes back to review with this time, to be kept again as one" onClick={() => void window.lawdie.mergeIntoEntry(ids, match.id)}>Add to entry</button>
         </>
     );
 }
@@ -441,7 +501,7 @@ function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
 }
 
 /** One matter's day: every app and document it was in, as one row to keep. */
-function MatterRow({ group: g, described, idle, shots, open, onToggle, onKeep }: { group: MatterGroup; described: ReturnType<typeof descriptionOf>; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+function MatterRow({ group: g, match, merged, described, idle, shots, open, onToggle, onKeep }: { group: MatterGroup; match: TimeEntry | null; merged: boolean; described: ReturnType<typeof descriptionOf>; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
     return (
         <div>
             <div className="activity">
@@ -458,11 +518,14 @@ function MatterRow({ group: g, described, idle, shots, open, onToggle, onKeep }:
                         <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}<IdleTag seconds={idle} /></span>
                         <SittingsToggle label={`${g.documents.length} ${g.documents.length === 1 ? "item" : "items"}`} open={open} onClick={onToggle} />
                     </div>
+                    <MergeLine match={match} merged={merged} />
                 </div>
                 <span className="mono">{duration(g.seconds)}</span>
-                <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(g.activityIDs, PERSONAL)}>Personal</button>
-                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(g.activityIDs)}>Dismiss</button>
-                <button type="button" className="primary" onClick={onKeep}>Keep time</button>
+                {match ? <MergeButtons ids={g.activityIDs} match={match} /> : <>
+                    <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(g.activityIDs, PERSONAL)}>Personal</button>
+                    <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(g.activityIDs)}>Dismiss</button>
+                    <button type="button" className="primary" onClick={onKeep}>Keep time</button>
+                </>}
             </div>
             {open && (
                 <div className="sittings">
@@ -557,13 +620,6 @@ function Sittings({ items, all, onDismiss }: { items: (Interval & { id?: string;
 }
 
 /** "HH:MM" in local time, and back onto the stretch's day (an end before the start rolls to the next day). */
-const timeValue = (isoText: string): string => { const d = new Date(isoText); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
-const onDay = (dayIso: string, hhmm: string, notBefore: number | null = null): number => {
-    const [h, m] = hhmm.split(":").map(Number);
-    const d = new Date(dayIso); d.setHours(h, m, 0, 0);
-    if (notBefore !== null && d.getTime() <= notBefore) d.setDate(d.getDate() + 1);
-    return d.getTime();
-};
 
 function KeepSheet({ stretch, matter: suggested, initialDescription, projects, sittings, onClose }: { stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; onClose: () => void }): ReactNode {
     const [description, setDescription] = useState(initialDescription);
@@ -574,8 +630,7 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
     const [endText, setEndText] = useState(timeValue(stretch.endedAt));
     const [problem, setProblem] = useState<string | null>(null);
     const [leaveOutIdle, setLeaveOutIdle] = useState(false);
-    const start = onDay(stretch.startedAt, startText);
-    const end = onDay(stretch.startedAt, endText, start);
+    const { start, end, changed } = keepBounds(stretch, startText, endText);
     const spans: Interval[] = sittings.flatMap(intervals);
     const imported = sittings.some((a) => a.origin);
     const span = imported ? (() => { const kept = clipSittings(spans, start, end); return kept.length ? { startedAt: kept[0].startedAt, endedAt: kept[kept.length - 1].endedAt, sittings: kept } : null; })() : stretchSpan(spans, start, end);
@@ -584,7 +639,6 @@ function KeepSheet({ stretch, matter: suggested, initialDescription, projects, s
     const left = span && leaveOutIdle && idle > 0 ? subtractIntervals(intervals(span), idleList) : null;
     const preview = left ? (left.length ? { startedAt: left[0].startedAt, endedAt: left[left.length - 1].endedAt, sittings: left } : null) : span;
     const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
-    const changed = startText !== timeValue(stretch.startedAt) || endText !== timeValue(stretch.endedAt);
     const save = async (): Promise<void> => {
         if (!description.trim()) { setProblem("Add a description."); return; }
         if (!preview) { setProblem(span ? "All of this time was idle. Dismiss it instead." : "No captured time falls between those times."); return; }

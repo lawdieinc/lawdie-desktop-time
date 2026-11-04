@@ -7,7 +7,7 @@ import { hostname } from "node:os";
 import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, type Destination, type Product } from "@shared/kiwi";
-import { archiveProject, closeActivity, deleteEntry, dismissActivities, describeActivities, keepStretch, mergeProjects, referencedScreenshots, renameMatterNamed, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
+import { archiveProject, closeActivity, deleteEntry, dismissActivities, describeActivities, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, referencedScreenshots, renameMatterNamed, setMatter, updateProject, type KeepInput, type Preferences } from "@shared/model";
 import type { AppState } from "@shared/state";
 import { entriesCsv } from "@shared/export";
 import { Capture } from "./capture";
@@ -194,6 +194,8 @@ app.whenReady().then(() => {
     ipcMain.handle("dismissActivity", (_e, ids: string | string[]) => store.change((w) => dismissActivities(w, Array.isArray(ids) ? ids : [ids])));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
     ipcMain.handle("describeActivities", (_e, ids: string[], text: string) => store.change((w) => describeActivities(w, Array.isArray(ids) ? ids : [], typeof text === "string" ? text : "")));
+    ipcMain.handle("mergeIntoEntry", (_e, ids: string[], entryID: string) => store.change((w) => mergeIntoEntry(w, Array.isArray(ids) ? ids : [], String(entryID))));
+    ipcMain.handle("keepSeparate", (_e, ids: string[], entryID: string) => store.change((w) => keepSeparate(w, Array.isArray(ids) ? ids : [], String(entryID))));
     ipcMain.handle("renameMatter", (_e, from: string, to: string) => store.change((w) => renameMatterNamed(w, String(from), String(to))));
     ipcMain.handle("setMatter", (_e, ids: string[], matter: string | null) => store.change((w) => setMatter(w, Array.isArray(ids) ? ids : [], typeof matter === "string" ? matter : null)));
     ipcMain.handle("suggestMatters", (_e, fromButton: boolean) => matters.suggest(fromButton === true ? 0 : SUGGEST_ON_OPEN_MS));

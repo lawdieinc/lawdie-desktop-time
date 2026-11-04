@@ -135,6 +135,10 @@ export type Activity = {
     draft?: Draft | null;
     /** The description the person gave it in review, before keeping: wins over the draft, and is never drafted over. */
     description?: string;
+    /** Merged with a kept entry (that entry's id, now deleted): reviewed as one row with its sittings, and kept again. */
+    mergeKey?: string;
+    /** Kept entries the person said this is not more of: never offered again. */
+    separateFrom?: string[];
 };
 
 export type Preferences = {
@@ -543,6 +547,60 @@ export function descriptionOf(activities: readonly (Pick<Activity, "description"
     return draft ? { text: draft.text, by: draft.source } : null;
 }
 
+/** New time this soon after a kept entry, on the same work, is offered to merge into it. */
+export const MERGE_WINDOW_MS = 24 * 3_600_000;
+
+const workKey = (a: Activity): string => `${a.ownerID}\n${a.document?.name ?? a.title ?? ""}`;
+
+/**
+ * The kept entry a review row looks like more of: kept from desktop activity (so its time
+ * can go back to review), ended at most MERGE_WINDOW_MS before the row starts, and on the
+ * same matter — or, for a row without one, the same document or title in the same app.
+ * Never one the person kept separate, and never for a row already merged. The latest wins.
+ */
+export function keptMatch(w: Workspace, activityIDs: readonly string[]): TimeEntry | null {
+    const rows = activityIDs.map((id) => w.activities.find((a) => a.id === id)).filter((a): a is Activity => !!a && a.disposition === "pending");
+    if (!rows.length || rows.some((a) => a.mergeKey) || rows.some((a) => isPersonal(a.matter))) return null;
+    const start = Math.min(...rows.map((a) => ms(a.startedAt)));
+    const declined = new Set(rows.flatMap((a) => a.separateFrom ?? []));
+    const matter = rows.find((a) => a.matter)?.matter?.trim().toLowerCase() ?? null;
+    const keys = new Set(rows.map(workKey));
+    const candidates = w.entries.filter((e) => {
+        if (e.source !== "desktop" || declined.has(e.id) || ms(e.endedAt) > start || start - ms(e.endedAt) > MERGE_WINDOW_MS) return false;
+        const from = [e.activityID, ...(e.activityIDs ?? [])].filter((id): id is string => !!id).map((id) => w.activities.find((a) => a.id === id));
+        if (!from.length || from.some((a) => !a || a.disposition !== "kept")) return false;
+        const name = project(w, e.projectID)?.name.trim().toLowerCase() ?? null;
+        return matter ? name === matter : (from as Activity[]).some((a) => keys.has(workKey(a)));
+    });
+    return candidates.sort((x, y) => ms(y.endedAt) - ms(x.endedAt))[0] ?? null;
+}
+
+/**
+ * Merge new time into a kept entry: the entry is deleted (Kiwi and the CRM are told), its
+ * sittings go back to review with the new ones as one row, carrying its matter and
+ * description, to be kept again.
+ */
+export function mergeIntoEntry(w: Workspace, activityIDs: readonly string[], entryID: string): void {
+    const entry = w.entries.find((e) => e.id === entryID);
+    if (!entry || entry.source !== "desktop") throw new WorkspaceError("That entry is no longer there to merge into.");
+    const fresh = w.activities.filter((a) => activityIDs.includes(a.id) && a.disposition === "pending");
+    if (!fresh.length) throw new WorkspaceError("This activity has already been reviewed.");
+    const matter = project(w, entry.projectID)?.name ?? null;
+    const from = new Set([entry.activityID, ...(entry.activityIDs ?? [])]);
+    deleteEntry(w, entryID);
+    for (const a of w.activities) {
+        if (!(from.has(a.id) || activityIDs.includes(a.id)) || a.disposition !== "pending") continue;
+        a.mergeKey = entryID;
+        a.description = entry.description.slice(0, DRAFT_MAX);
+        if (matter) { a.matter = matter; a.matterBy = "person"; }
+    }
+}
+
+/** The person says this time is not more of that entry. */
+export function keepSeparate(w: Workspace, activityIDs: readonly string[], entryID: string): void {
+    for (const a of w.activities) if (activityIDs.includes(a.id) && a.disposition === "pending" && !(a.separateFrom ?? []).includes(entryID)) a.separateFrom = [...(a.separateFrom ?? []), entryID].slice(-20);
+}
+
 /** The person names (or clears) the matter of pending activities. */
 export function setMatter(w: Workspace, ids: string[], matter: string | null): void {
     const given = matter?.trim().slice(0, MATTER_MAX) || null;
@@ -869,9 +927,9 @@ export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP
     const open = new Map<string, Stretch>();
     const all: Stretch[] = [];
     for (const a of pending) {
-        const key = stretchKey(a);
+        const key = a.mergeKey ? `merge:${a.mergeKey}` : stretchKey(a);
         const last = open.get(key);
-        if (last && ms(a.startedAt) - ms(last.endedAt) <= gapMs && localDayOf(a.startedAt) === localDayOf(last.startedAt)) {
+        if (last && (a.mergeKey || (ms(a.startedAt) - ms(last.endedAt) <= gapMs && localDayOf(a.startedAt) === localDayOf(last.startedAt)))) {
             last.activityIDs.push(a.id);
             last.endedAt = a.endedAt;
             last.seconds += spanSeconds(a);
@@ -992,7 +1050,7 @@ export function validate(w: Workspace): Workspace {
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample") && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20)) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));

@@ -111,6 +111,11 @@ input[type="date"] { font: inherit; font-size: 13px; padding: 6px 8px; border: 1
 .activity:hover .pencil, .pencil:focus-visible { opacity: 1; } .pencil:hover { color: var(--accent); }
 .inline-edit { width: 100%; font: inherit; font-size: 14px; padding: 4px 8px; margin: 1px 0; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface, #fff); color: var(--text); }
 .draft-line.own { font-style: normal; }
+.merge-note { margin-top: 6px; color: var(--accent); }
+.new-since { margin: -4px 0 10px 57px; padding: 6px 14px 4px 0; border-bottom: 1px solid var(--line); }
+.new-since > .eyebrow { color: var(--accent); padding: 2px 0 0 22px; }
+.sitting-dot.new { background: var(--bg); border: 2px solid var(--accent); }
+.sitting-dismiss.add { color: var(--accent); font-weight: 600; }
 .idle-tag { color: var(--danger); }
 /* The Matters page: one row per matter, numbers in columns. */
 .matter-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 90px 90px 100px 110px; gap: 16px; align-items: center; width: 100%; padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; }

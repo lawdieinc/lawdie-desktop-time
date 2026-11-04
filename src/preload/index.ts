@@ -28,6 +28,9 @@ export const api = {
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
     /** The person's description of pending activities, before keeping; "" clears it. */
     describeActivities: (ids: string[], text: string): Promise<boolean> => ipcRenderer.invoke("describeActivities", ids, text),
+    /** New time merged into a kept entry, which goes back to review with it; or kept apart from it for good. */
+    mergeIntoEntry: (ids: string[], entryID: string): Promise<boolean> => ipcRenderer.invoke("mergeIntoEntry", ids, entryID),
+    keepSeparate: (ids: string[], entryID: string): Promise<boolean> => ipcRenderer.invoke("keepSeparate", ids, entryID),
     /** A matter renamed from a review row: its project if it has one, else the activity named after it. */
     renameMatter: (from: string, to: string): Promise<boolean> => ipcRenderer.invoke("renameMatter", from, to),
     /** The person names (or, with null, clears) the matter of pending activities. */

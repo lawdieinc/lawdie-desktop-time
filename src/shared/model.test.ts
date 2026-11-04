@@ -4,8 +4,8 @@ import {
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
-import { renameMatterNamed, describeActivities, descriptionOf, IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
-import { duration } from "./format";
+import { keepSeparate, keptMatch, mergeIntoEntry, renameMatterNamed, describeActivities, descriptionOf, IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { duration, keepBounds } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
 
@@ -73,6 +73,75 @@ describe("where the time went, and idle", () => {
         const v = emptyWorkspace();
         v.activities.push(b);
         expect(seconds(keepActivity(v, b.id, { description: "Draft", projectID: null, billable: true }, at(4000)))).toBe(3600);
+    });
+});
+
+describe("new time on work already kept", () => {
+    const H = 3600;
+    function kept(): { w: Workspace; entry: TimeEntry; later: Activity } {
+        const w = emptyWorkspace();
+        w.sync = { autoSync: true, targets: [{ product: "kiwi", serverURL: "https://k", deviceID: "d", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] }] };
+        const first = activity({ id: "first", matter: "Whitfield", startedAt: iso(0), endedAt: iso(H) });
+        w.activities.push(first);
+        const entry = keepActivity(w, first.id, { description: "Motion to dismiss", projectID: null, matter: "Whitfield", billable: true }, at(H + 1));
+        const later = activity({ id: "later", matter: "whitfield", startedAt: iso(5 * H), endedAt: iso(6 * H) });
+        w.activities.push(later);
+        return { w, entry, later };
+    }
+    it("offers the kept entry on the same matter within 24 hours, not after, not another matter, not a manual entry", () => {
+        const { w, entry, later } = kept();
+        expect(keptMatch(w, [later.id])?.id).toBe(entry.id);
+        const late = activity({ matter: "Whitfield", startedAt: iso(H + 24 * H + 60), endedAt: iso(26 * H) });
+        const other = activity({ matter: "Acme", startedAt: iso(5 * H), endedAt: iso(6 * H) });
+        w.activities.push(late, other);
+        expect(keptMatch(w, [late.id])).toBeNull();
+        expect(keptMatch(w, [other.id])).toBeNull();
+        w.entries[0].source = "manual";
+        expect(keptMatch(w, [later.id])).toBeNull();
+    });
+    it("without a matter, matches the same document in the same app", () => {
+        const w = emptyWorkspace();
+        const a = activity({ title: "Lease.pdf", ownerID: "com.apple.Preview", startedAt: iso(0), endedAt: iso(600) });
+        w.activities.push(a);
+        const e = keepActivity(w, a.id, { description: "Lease review", projectID: null, billable: true }, at(700));
+        const same = activity({ title: "Lease.pdf", ownerID: "com.apple.Preview", startedAt: iso(H), endedAt: iso(2 * H) });
+        const elsewhere = activity({ title: "Lease.pdf", ownerID: "com.microsoft.Word", startedAt: iso(H), endedAt: iso(2 * H) });
+        w.activities.push(same, elsewhere);
+        expect(keptMatch(w, [same.id])?.id).toBe(e.id);
+        expect(keptMatch(w, [elsewhere.id])).toBeNull();
+    });
+    it("merging takes the entry off the timesheet, tells the destinations, and reviews both as one row to keep again", () => {
+        const { w, entry, later } = kept();
+        mergeIntoEntry(w, [later.id], entry.id);
+        expect(w.entries).toEqual([]);
+        expect(w.sync!.targets[0].deletedEntryIDs).toEqual([entry.id]);
+        const { groups } = inboxOf(w.activities);
+        expect(groups.map((g) => g.activityIDs.sort())).toEqual([["first", "later"]]);
+        expect(w.activities.every((a) => a.description === "Motion to dismiss" && a.matter === "Whitfield")).toBe(true);
+        expect(keptMatch(w, ["first", "later"])).toBeNull();
+        const again = keepStretch(w, ["first", "later"], { description: "Motion to dismiss", projectID: null, matter: "Whitfield", billable: true }, at(7 * H));
+        expect(seconds(again)).toBe(2 * H);
+        expect(again.sittings?.length).toBe(2);
+    });
+    it("keep separate is remembered for that entry", () => {
+        const { w, entry, later } = kept();
+        keepSeparate(w, [later.id], entry.id);
+        expect(keptMatch(w, [later.id])).toBeNull();
+        expect(() => validate(w)).not.toThrow();
+    });
+});
+
+describe("the Keep sheet's span", () => {
+    const local = (d: number, h: number, m: number, sec = 0) => new Date(2026, 10, d, h, m, sec).getTime();
+    const span = (a: number, b: number) => ({ startedAt: new Date(a).toISOString(), endedAt: new Date(b).toISOString() });
+    it("untouched, keeps the captured bounds to the second, across midnight and past a day", () => {
+        const s = span(local(4, 9, 0, 30), local(5, 9, 30, 15));
+        expect(keepBounds(s, "09:00", "09:30")).toEqual({ start: local(4, 9, 0, 30), end: local(5, 9, 30, 15), changed: false });
+    });
+    it("edited, puts the end on the end's day, a day later if it would not be after the start", () => {
+        expect(keepBounds(span(local(4, 9, 0), local(5, 9, 30)), "08:45", "10:00")).toEqual({ start: local(4, 8, 45), end: local(5, 10, 0), changed: true });
+        expect(keepBounds(span(local(4, 9, 0), local(4, 10, 0)), "09:00", "10:15")).toEqual({ start: local(4, 9, 0), end: local(4, 10, 15), changed: true });
+        expect(keepBounds(span(local(4, 23, 0), local(4, 23, 50)), "23:00", "00:30")).toEqual({ start: local(4, 23, 0), end: local(5, 0, 30), changed: true });
     });
 });
 

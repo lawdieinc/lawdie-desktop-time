@@ -148,7 +148,8 @@ export function inboxOf(activities: readonly Activity[]): { groups: MatterGroup[
     for (const a of pending) {
         if (!a.matter) { rest.push(a); continue; }
         const kiwiID = a.kiwiProjectID ?? kiwiByName.get(a.matter.toLowerCase());
-        const key = `${localDayOf(a.startedAt)}\n${isPersonal(a.matter) ? "personal" : kiwiID ? `kiwi:${kiwiID}` : a.projectID ? `local:${a.projectID}` : a.matter.toLowerCase()}`;
+        // Time merged with a kept entry is one row, whatever the days.
+        const key = a.mergeKey ? `merge:${a.mergeKey}` : `${localDayOf(a.startedAt)}\n${isPersonal(a.matter) ? "personal" : kiwiID ? `kiwi:${kiwiID}` : a.projectID ? `local:${a.projectID}` : a.matter.toLowerCase()}`;
         let g = byKey.get(key);
         if (!g) {
             g = { id: `${a.id}:matter`, matter: a.matter, projectID: a.projectID, kiwiProjectID: kiwiID, activityIDs: [], startedAt: a.startedAt, endedAt: a.endedAt, seconds: 0, sittings: 0, apps: [], documents: [], draft: null };
