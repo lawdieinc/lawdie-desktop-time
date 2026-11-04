@@ -46,6 +46,10 @@ export type Project = {
     /** The matter's number, client and people, and what its documents are called: what the
      *  local drafter (src/shared/narrative.ts) and the billing rules need to read capture. */
     context?: MatterContext | null;
+    /** The invoice's "Bill to" lines for this matter (the client's billing contact and address); the client's name alone without them. */
+    billTo?: string[];
+    /** The UTBMS code set the client bills this matter under; the rules read it when `context` has none. */
+    codeSet?: "project" | "counseling" | "litigation";
 };
 
 export type MatterInsight = { summary: string; points: string[]; generatedAt: string; source: "kiwi" | "sample" };
@@ -142,6 +146,28 @@ export type InvoiceTerms = {
     /** Who to ask about the invoice. */
     contact?: string | null;
 };
+
+/** The firm's side of every invoice and time sheet, set once in Settings → Billing (2026-11-04; before it only a demo
+ *  seed's `invoice` carried them). `termsFor()` in invoice.ts joins it with a matter into the InvoiceTerms a bill prints. */
+export type BillingSetup = {
+    firm: { name: string; address: string[] };
+    /** The firm's logo as a PNG beside the workspace (`billing-logo.png`): fetched from the firm's website or chosen as a file. */
+    logo?: string | null;
+    timekeeper: { name: string; title: string };
+    /** Payment terms as printed ("Net 30"). */
+    terms?: string;
+    /** Where and how to pay, as lines; placeholders print without them. */
+    remit?: string[];
+    contact?: string;
+    footer?: string;
+    /** Where PDFs and DOCX files are saved; asked for each time without one. */
+    folder?: string;
+    /** The next invoice's number is `${prefix}${next}` ("2026-" + 12 → 2026-012); `next` moves on when an invoice is made. */
+    invoicePrefix?: string;
+    nextInvoice?: number;
+};
+export const BILLING_LINE_MAX = 200;
+export const BILLING_LINES_MAX = 8;
 
 export type EntryTask = { stretch?: number | null; text: string; task?: string | null; activity?: string | null; hours?: number | null };
 
@@ -386,8 +412,11 @@ export type Workspace = {
     privateStretches?: PrivateStretch[];
     /** Rows imported from the firm's time system, each matched to a captured entry (src/shared/importMatch.ts). Local only. */
     imported?: ImportedRow[];
-    /** Firm, bill-to and the client's billing rules for the time sheet and invoice. */
+    /** Firm, bill-to and the client's billing rules for the time sheet and invoice. Only a demo seed sets it;
+     *  a person's firm details are `billing`, which `termsFor()` turns into these for one matter and period. */
     invoice?: InvoiceTerms | null;
+    /** The firm's billing details, from Settings → Billing. */
+    billing?: BillingSetup | null;
     /** The client's billing rules (its outside counsel guidelines and engagement letter), each on or off. */
     clientRules?: ClientRules | null;
     /** Every client whose rules can be applied to the day, and the one applied now (its key), or null for generic billing. */
@@ -786,7 +815,13 @@ function renameMatter(w: Workspace, from: string, to: string): void {
  * entries keep the rate they were saved with. A new name must not be another open
  * matter's (merge them instead); activity named after the old one follows.
  */
-export function updateProject(w: Workspace, id: string, change: { name?: string; client?: string; hourlyRate?: number }): void {
+export type ProjectChange = { name?: string; client?: string; hourlyRate?: number; matterNumber?: string; billTo?: string[]; codeSet?: Project["codeSet"] | null };
+const CODE_SETS = new Set<unknown>(["project", "counseling", "litigation"]);
+/** Lines as typed, trimmed, blanks dropped, each cut to BILLING_LINE_MAX and at most BILLING_LINES_MAX of them. */
+export const cleanLines = (lines: readonly string[]): string[] => lines.map((l) => String(l).trim().slice(0, BILLING_LINE_MAX)).filter(Boolean).slice(0, BILLING_LINES_MAX);
+const linesValid = (lines: unknown): boolean => lines == null || (Array.isArray(lines) && lines.length <= BILLING_LINES_MAX && lines.every((l) => typeof l === "string" && l.length <= BILLING_LINE_MAX));
+
+export function updateProject(w: Workspace, id: string, change: ProjectChange): void {
     const p = project(w, id);
     if (!p) throw new WorkspaceError("That matter no longer exists.");
     if (change.name !== undefined) {
@@ -802,7 +837,61 @@ export function updateProject(w: Workspace, id: string, change: { name?: string;
         if (!Number.isFinite(change.hourlyRate) || change.hourlyRate < 0) throw new WorkspaceError("Enter a valid hourly rate.");
         p.hourlyRate = change.hourlyRate;
     }
+    if (change.matterNumber !== undefined) {
+        const n = change.matterNumber.trim().slice(0, 60);
+        if (n) p.matterNumber = n; else delete p.matterNumber;
+    }
+    if (change.billTo !== undefined) {
+        const lines = cleanLines(change.billTo);
+        if (lines.length) p.billTo = lines; else delete p.billTo;
+    }
+    if (change.codeSet !== undefined) {
+        if (change.codeSet != null && !CODE_SETS.has(change.codeSet)) throw new WorkspaceError("That is not a UTBMS code set.");
+        if (change.codeSet) p.codeSet = change.codeSet; else delete p.codeSet;
+    }
 }
+
+/** The firm's billing details, as typed: names and lines trimmed, limits applied; the firm's name is the one thing required. */
+export function setBilling(w: Workspace, input: BillingSetup): void {
+    const text = (s: unknown, max = BILLING_LINE_MAX): string => (typeof s === "string" ? s.trim().slice(0, max) : "");
+    const firm = text(input.firm?.name);
+    if (!firm) throw new WorkspaceError("Enter the firm's name.");
+    const next = Number(input.nextInvoice);
+    const b: BillingSetup = {
+        firm: { name: firm, address: cleanLines(input.firm?.address ?? []) },
+        timekeeper: { name: text(input.timekeeper?.name), title: text(input.timekeeper?.title) },
+        ...(w.billing?.logo ? { logo: w.billing.logo } : {}),
+        ...(w.billing?.folder ? { folder: w.billing.folder } : {}),
+    };
+    for (const k of ["terms", "contact", "footer"] as const) { const v = text(input[k]); if (v) b[k] = v; }
+    const remit = cleanLines(input.remit ?? []);
+    if (remit.length) b.remit = remit;
+    const prefix = text(input.invoicePrefix, 20);
+    if (prefix) b.invoicePrefix = prefix;
+    if (Number.isInteger(next) && next >= 1 && next <= 9_999_999) b.nextInvoice = next;
+    w.billing = b;
+}
+
+/** The logo's or the folder's path, kept outside setBilling so a form that saves text never touches a file choice. */
+export function setBillingFile(w: Workspace, key: "logo" | "folder", path: string | null): void {
+    if (!w.billing) throw new WorkspaceError("Set up billing first: the firm's name, at least.");
+    if (path) w.billing[key] = path; else delete w.billing[key];
+}
+
+/** "2026-012": the number the next invoice prints, from the prefix and the counter (which starts at 1). */
+export function nextInvoiceNumber(w: Workspace): string {
+    const b = w.billing;
+    return `${b?.invoicePrefix ?? ""}${String(b?.nextInvoice ?? 1).padStart(3, "0")}`;
+}
+
+/** An invoice was made under the current number: the counter moves on. */
+export function invoiceIssued(w: Workspace): void {
+    if (w.billing) w.billing.nextInvoice = (w.billing.nextInvoice ?? 1) + 1;
+}
+
+const billingValid = (b: BillingSetup | null | undefined): boolean =>
+    b == null || (!!b && typeof b.firm?.name === "string" && b.firm.name.length > 0 && linesValid(b.firm.address) && !!b.timekeeper && typeof b.timekeeper.name === "string" && typeof b.timekeeper.title === "string"
+        && linesValid(b.remit) && (b.nextInvoice == null || (Number.isInteger(b.nextInvoice) && b.nextInvoice >= 1)) && (b.logo == null || typeof b.logo === "string") && (b.folder == null || typeof b.folder === "string"));
 
 /**
  * Rename a matter from a review row: its project when it has one (as updateProject, so
@@ -1375,7 +1464,8 @@ export function validate(w: Workspace): Workspace {
         new Set(w.entries.map((e) => e.id)).size === w.entries.length &&
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
-        w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
+        w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight) && linesValid(x.billTo) && (x.codeSet == null || CODE_SETS.has(x.codeSet))) &&
+        billingValid(w.billing) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || DRAFT_SOURCES.has(e.drafted)) && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20) && (e.hours == null || (Number.isFinite(e.hours) && e.hours >= 0 && e.hours <= 24))) &&
         (w.rulebooks == null || (Array.isArray(w.rulebooks) && w.rulebooks.every((r) => r && typeof r.clientId === "string" && Array.isArray(r.rules)))) &&
         w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&

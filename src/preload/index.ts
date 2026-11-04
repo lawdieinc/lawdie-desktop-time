@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppState } from "@shared/state";
-import type { EntryChange, KeepInput, KeepLine, Preferences } from "@shared/model";
+import type { BillingSetup, EntryChange, KeepInput, KeepLine, Preferences, ProjectChange } from "@shared/model";
+import type { BillScope } from "@shared/invoice";
 import type { Destination, Product } from "@shared/kiwi";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
@@ -42,7 +43,7 @@ export const api = {
     /** From the button: now. Otherwise (opening Activity): only if the last run was over ten minutes ago. */
     suggestMatters: (fromButton = false): Promise<void> => ipcRenderer.invoke("suggestMatters", fromButton),
     /** A matter's name, client or rate; the rate applies to time kept from now on. */
-    updateProject: (id: string, change: { name?: string; client?: string; hourlyRate?: number }): Promise<boolean> => ipcRenderer.invoke("updateProject", id, change),
+    updateProject: (id: string, change: ProjectChange): Promise<boolean> => ipcRenderer.invoke("updateProject", id, change),
     mergeProjects: (fromID: string, intoID: string): Promise<boolean> => ipcRenderer.invoke("mergeProjects", fromID, intoID),
     archiveProject: (id: string, archived: boolean): Promise<boolean> => ipcRenderer.invoke("archiveProject", id, archived),
     clearActivity: (): Promise<boolean> => ipcRenderer.invoke("clearActivity"),
@@ -73,9 +74,17 @@ export const api = {
     importDecision: (id: string, decision: "use" | "keep" | null): Promise<boolean> => ipcRenderer.invoke("importDecision", id, decision),
     clearImport: (): Promise<boolean> => ipcRenderer.invoke("clearImport"),
     /** Make the day's time sheet or invoice PDF in the matter folder and open it. Resolves to a problem, or null. */
-    makePdf: (kind: "timesheet" | "invoice", mode: string = "generic", day?: string): Promise<string | null> => ipcRenderer.invoke("makePdf", kind, mode, day),
+    makePdf: (kind: "timesheet" | "invoice", mode: string = "generic", scope?: BillScope): Promise<string | null> => ipcRenderer.invoke("makePdf", kind, mode, scope),
+    /** Settings → Billing. */
+    setBilling: (input: BillingSetup): Promise<boolean> => ipcRenderer.invoke("setBilling", input),
+    chooseBillingFolder: (): Promise<null> => ipcRenderer.invoke("chooseBillingFolder"),
+    billingLogo: (): Promise<string | null> => ipcRenderer.invoke("billingLogo"),
+    /** The firm's logo from its website; a problem as text, or null. */
+    fetchLogo: (site: string): Promise<string | null> => ipcRenderer.invoke("fetchLogo", site),
+    chooseLogo: (): Promise<string | null> => ipcRenderer.invoke("chooseLogo"),
+    removeLogo: (): Promise<null> => ipcRenderer.invoke("removeLogo"),
     /** The time sheet with the client's rules as Word tracked changes and comments. Resolves to a problem, or null. */
-    makeDocx: (mode: string = "generic", day?: string): Promise<string | null> => ipcRenderer.invoke("makeDocx", mode, day),
+    makeDocx: (mode: string = "generic", scope?: BillScope): Promise<string | null> => ipcRenderer.invoke("makeDocx", mode, scope),
     /** Match the imported rows not linked yet to captured work. */
     linkImport: (): Promise<boolean> => ipcRenderer.invoke("linkImport"),
     /** Match one typed entry (imported or added here) to the captured work it describes. */

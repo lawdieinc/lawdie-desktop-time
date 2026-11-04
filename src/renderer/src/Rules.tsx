@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { Project, TimeEntry, Workspace } from "@shared/model";
 import { narrativeFor } from "@shared/narrative";
+import { contextOf } from "@shared/invoice";
 import { applyFix, checkEntry, rulebookFor, rulesMet, type CheckContext, type EntryDraft, type Finding, type Fix, type PlanLine } from "@shared/rules";
 
 /* The client's billing rules in the window: what each finding says, the clause it cites,
@@ -8,7 +9,8 @@ import { applyFix, checkEntry, rulebookFor, rulesMet, type CheckContext, type En
 
 /** The rules context of a matter, by name or project: its client's rule set, its people, the timekeeper. */
 export function rulesContext(w: Workspace, project: Project | null | undefined): CheckContext {
-    return { book: project ? rulebookFor(w, project.context, project.client) : null, ctx: project?.context ?? null, profile: w.profile ?? null };
+    const ctx = contextOf(project);
+    return { book: project ? rulebookFor(w, ctx, project.client) : null, ctx, profile: w.profile ?? null };
 }
 
 export const projectByName = (w: Workspace, name: string): Project | undefined => w.projects.find((p) => !p.archived && p.name.trim().toLowerCase() === name.trim().toLowerCase());

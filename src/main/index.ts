@@ -1,21 +1,22 @@
 import { joinMatter, undoJoin } from "@shared/feed";
 import { Feed } from "./feed";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { homedir, hostname } from "node:os";
-import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, protocol, shell, systemPreferences, Tray } from "electron";
+import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } from "@shared/kiwi";
 import { evidenceFor, modelDrafter, rulesDrafter, type Drafter } from "@shared/drafter";
 import { parseCsv, typedRows } from "@shared/importMatch";
 import { addTypedRow, clearImports, decideRow, editTypedRow, expandRow, linkAll, removeTypedRow, type TypedInput } from "@shared/typed";
-import { localDay, rulebooksOf, shortName } from "@shared/invoice";
+import { localDay, rulebooksOf, shortName, termsFor, type BillScope } from "@shared/invoice";
 import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoiceHtml";
 import { applyRules, type AppliedBill } from "@shared/applyRules";
 import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
-import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, referencedScreenshots, renameMatterNamed, setMatter, updateProject, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type Workspace } from "@shared/model";
+import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
+import { LOGO_MIN_PX, logoCandidates, siteURL } from "@shared/logo";
 import { demoNow } from "@shared/demo";
 import type { AppState } from "@shared/state";
 import { entriesCsv } from "@shared/export";
@@ -226,10 +227,13 @@ app.whenReady().then(() => {
     ipcMain.handle("renameMatter", (_e, from: string, to: string) => store.change((w) => renameMatterNamed(w, String(from), String(to))));
     ipcMain.handle("setMatter", (_e, ids: string[], matter: string | null) => store.change((w) => setMatter(w, Array.isArray(ids) ? ids : [], typeof matter === "string" ? matter : null)));
     ipcMain.handle("suggestMatters", (_e, fromButton: boolean) => matters.suggest(fromButton === true ? 0 : SUGGEST_ON_OPEN_MS));
-    ipcMain.handle("updateProject", (_e, id: string, change: { name?: string; client?: string; hourlyRate?: number }) => store.change((w) => updateProject(w, String(id), {
+    ipcMain.handle("updateProject", (_e, id: string, change: ProjectChange) => store.change((w) => updateProject(w, String(id), {
         ...(typeof change?.name === "string" ? { name: change.name } : {}),
         ...(typeof change?.client === "string" ? { client: change.client } : {}),
         ...(typeof change?.hourlyRate === "number" ? { hourlyRate: change.hourlyRate } : {}),
+        ...(typeof change?.matterNumber === "string" ? { matterNumber: change.matterNumber } : {}),
+        ...(Array.isArray(change?.billTo) ? { billTo: change.billTo.map(String) } : {}),
+        ...(change?.codeSet !== undefined ? { codeSet: change.codeSet } : {}),
     })));
     ipcMain.handle("mergeProjects", (_e, fromID: string, intoID: string) => store.change((w) => mergeProjects(w, String(fromID), String(intoID))));
     ipcMain.handle("archiveProject", (_e, id: string, archived: boolean) => store.change((w) => archiveProject(w, String(id), archived === true)));
@@ -367,23 +371,39 @@ app.whenReady().then(() => {
         store.say(`Saved ${name} in ${basename(folder)}.`);
     };
     const logoFile = (terms: InvoiceTerms): Buffer | null => { try { return terms.logo ? readFileSync(localPath(terms.logo)) : null; } catch { return null; } };
-    // The day's time sheet or invoice: generic (standard rates, no client rules) or with the client's rules that are on.
-    // HTML from src/shared/invoice.ts, printed to PDF in a hidden window, saved in the matter folder, opened.
-    /** The rulebook a billing file is for: a client's key, "generic", or the older "rules" (the first client). */
-    /** The applied bill for a billing file: the day shown on the Time page (else the demo day, else today) and the mode
-     *  ("generic" or a client's key), from the one function the Time page renders from too. */
-    const billOf = (w: Workspace, mode: string | null | undefined, day: string | null | undefined): AppliedBill =>
-        applyRules(w, day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : w.demo?.day ?? localDay(new Date(clock()).toISOString()), mode ?? "generic");
+    // A time sheet or invoice: generic (standard rates, no client rules) or with the client's rules that are on.
+    // HTML from src/shared/invoice.ts, printed to PDF in a hidden window, saved in the billing folder, opened.
+    const isDay = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    /** What a billing file covers. A day (the Time page's, else the demo day, else today), or a matter over a period
+     *  from the Invoice sheet; the bill comes from the one function the Time page renders from too. */
+    const scopeOf = (w: Workspace, raw: unknown): BillScope => {
+        const s = (raw && typeof raw === "object" ? raw : {}) as BillScope;
+        if (s.projectID || s.from || s.to) return { projectID: typeof s.projectID === "string" ? s.projectID : null, from: isDay(s.from) ? s.from : null, to: isDay(s.to) ? s.to : null };
+        return { day: isDay(s.day) ? s.day : w.demo?.day ?? localDay(new Date(clock()).toISOString()) };
+    };
+    const billOf = (w: Workspace, mode: string | null | undefined, scope: BillScope): AppliedBill => applyRules(w, scope.day ?? null, mode ?? "generic", scope.day ? null : scope);
+    /** The terms a file prints: the seed's for a demo day; else the firm's from Settings with the scope's matter. */
+    const termsOfScope = (w: Workspace, scope: BillScope, number = ""): InvoiceTerms | string => {
+        if (w.invoice && !w.billing) return w.invoice;
+        if (!w.billing) return "Set up billing first: Settings → Billing, the firm's name and address.";
+        const project = scope.projectID ? w.projects.find((p) => p.id === scope.projectID) ?? null : null;
+        if (!project && !scope.day) return "Choose the matter the invoice is for.";
+        return termsFor(w, project, scope.to ?? scope.day ?? null, number);
+    };
     const modeTag = (bill: AppliedBill): string => (bill.book ? ` (${shortName(bill.book)} rules)` : " (generic)");
-    ipcMain.handle("makePdf", async (_e, kind: "timesheet" | "invoice", mode: string = "generic", day?: string) => {
-        const w = store.workspace, terms = w.invoice;
-        if (!terms) return "This workspace has no billing terms for a time sheet or invoice.";
+    const periodTag = (scope: BillScope): string => (scope.day ? scope.day : [scope.from, scope.to].filter(Boolean).join(" to "));
+    ipcMain.handle("makePdf", async (_e, kind: "timesheet" | "invoice", mode: string = "generic", rawScope?: unknown) => {
+        const w = store.workspace;
+        const scope = scopeOf(w, rawScope);
+        const terms = termsOfScope(w, scope, kind === "invoice" ? nextInvoiceNumber(w) : "");
+        if (typeof terms === "string") return terms;
+        const bill = billOf(w, mode, scope);
+        if (!bill.lines.length) return "Nothing to bill: no kept entries with a matter in that period.";
         const png = logoFile(terms);
         const logo = png ? `data:image/png;base64,${png.toString("base64")}` : null;
-        const bill = billOf(w, mode, day);
         const html = kind === "invoice" ? invoiceHtml(w, terms, logo, new Date(clock()), bill) : timeSheetHtml(w, terms, logo, bill);
         const tag = modeTag(bill);
-        const name = kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}${tag}.pdf` : `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter}${tag}.pdf`;
+        const name = kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}${tag}.pdf` : `Time detail ${terms.timekeeper.name || w.profile?.name || "time"} ${terms.matter || periodTag(scope)}${tag}.pdf`;
         const folder = await billingFolder(terms, "PDF");
         if (!folder) return null;
         const win = new BrowserWindow({ show: false, webPreferences: { javascript: false } });
@@ -391,6 +411,8 @@ app.whenReady().then(() => {
             await win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html).toString("base64")}`);
             const pdf = await win.webContents.printToPDF({ pageSize: "Letter", printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: footerTemplate(terms) });
             saved(folder, name, pdf);
+            // The number is used up only once the invoice exists; the folder choice is remembered for next time.
+            if (kind === "invoice" && w.billing) store.change((x) => { invoiceIssued(x); if (!x.billing?.folder) setBillingFile(x, "folder", folder); });
             return null;
         } catch (err) {
             return `The PDF could not be made. ${err instanceof Error ? err.message : ""}`.trim();
@@ -399,19 +421,66 @@ app.whenReady().then(() => {
         }
     });
     // The time sheet with the client's rules as Word tracked changes and comments (src/main/docx.ts).
-    ipcMain.handle("makeDocx", async (_e, mode: string = "generic", day?: string) => {
-        const w = store.workspace, terms = w.invoice;
-        if (!terms) return "This workspace has no billing terms for a time sheet.";
+    ipcMain.handle("makeDocx", async (_e, mode: string = "generic", rawScope?: unknown) => {
+        const w = store.workspace;
+        const scope = scopeOf(w, rawScope);
+        const terms = termsOfScope(w, scope);
+        if (typeof terms === "string") return terms;
+        const bill = billOf(w, mode, scope);
+        if (!bill.lines.length) return "Nothing to bill: no kept entries with a matter in that period.";
         const folder = await billingFolder(terms, "time sheet");
         if (!folder) return null;
-        const bill = billOf(w, mode, day);
         try {
-            saved(folder, `Time detail ${w.profile?.name ?? terms.timekeeper.name} ${terms.matter}${modeTag(bill)}.docx`, await timeSheetDocx(w, terms, logoFile(terms), new Date(), bill));
+            saved(folder, `Time detail ${terms.timekeeper.name || w.profile?.name || "time"} ${terms.matter || periodTag(scope)}${modeTag(bill)}.docx`, await timeSheetDocx(w, terms, logoFile(terms), new Date(), bill));
+            if (w.billing && !w.billing.folder) store.change((x) => setBillingFile(x, "folder", folder));
             return null;
         } catch (err) {
             return `The time sheet could not be made. ${err instanceof Error ? err.message : ""}`.trim();
         }
     });
+    // Settings → Billing: the firm's details, where files go, and the logo (from the firm's website or a file).
+    ipcMain.handle("setBilling", (_e, input: BillingSetup) => store.change((w) => setBilling(w, input)));
+    ipcMain.handle("chooseBillingFolder", async () => {
+        const res = await dialog.showOpenDialog({ title: "Where should invoices and time sheets go?", properties: ["openDirectory", "createDirectory"] });
+        if (res.canceled || !res.filePaths[0]) return null;
+        store.change((w) => setBillingFile(w, "folder", res.filePaths[0]));
+        return null;
+    });
+    const logoPath = join(workspacePath, "..", "billing-logo.png");
+    /** The logo as the window can show it. */
+    ipcMain.handle("billingLogo", () => { const b = logoFile({ logo: store.workspace.billing?.logo } as InvoiceTerms); return b ? `data:image/png;base64,${b.toString("base64")}` : null; });
+    const keepLogo = (image: Electron.NativeImage): string | null => {
+        const { width } = image.getSize();
+        if (image.isEmpty() || width < LOGO_MIN_PX) return "That picture is too small for a letterhead.";
+        writeFileSync(logoPath, image.toPNG());
+        store.change((w) => setBillingFile(w, "logo", logoPath));
+        return null;
+    };
+    /** The firm's logo from its website: the page's own icons and share image, best first (src/shared/logo.ts). */
+    ipcMain.handle("fetchLogo", async (_e, typed: string) => {
+        if (!store.workspace.billing) return "Save the firm's name first.";
+        const site = siteURL(String(typed ?? ""));
+        if (!site) return "Enter the firm's website, such as lawdie.co.";
+        const get = async (url: string): Promise<Response> => { const c = new AbortController(); const t = setTimeout(() => c.abort(), 8_000); try { return await net.fetch(url, { signal: c.signal, redirect: "follow" }); } finally { clearTimeout(t); } };
+        let html = "", base = site;
+        try { const page = await get(site); base = page.url || site; html = page.ok ? (await page.text()).slice(0, 500_000) : ""; } catch { /* the well-known paths are still tried */ }
+        for (const url of logoCandidates(html, base)) {
+            try {
+                const res = await get(url);
+                if (!res.ok || !/image\//.test(res.headers.get("content-type") ?? "image/")) continue;
+                const image = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer()));
+                if (image.isEmpty() || image.getSize().width < LOGO_MIN_PX) continue;
+                return keepLogo(image);
+            } catch { /* next candidate */ }
+        }
+        return "No logo was found on that site. Choose a file instead.";
+    });
+    ipcMain.handle("chooseLogo", async () => {
+        const res = await dialog.showOpenDialog({ title: "Choose the firm's logo", properties: ["openFile"], filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg"] }] });
+        if (res.canceled || !res.filePaths[0]) return null;
+        try { return keepLogo(nativeImage.createFromPath(res.filePaths[0])); } catch (err) { return `That picture could not be read. ${err instanceof Error ? err.message : ""}`.trim(); }
+    });
+    ipcMain.handle("removeLogo", () => { store.change((w) => setBillingFile(w, "logo", null)); try { unlinkSync(logoPath); } catch { /* already gone */ } return null; });
     ipcMain.handle("deviceName", () => hostname());
     ipcMain.handle("officeStatus", () => ({ supported: capture.office.supported, errors: Object.fromEntries(capture.office.lastError) }));
     ipcMain.handle("screenTextStatus", () => ({

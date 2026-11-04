@@ -3,7 +3,7 @@
    sheet (PDF and DOCX) and the invoice all take its lines, so what the presenter sees on the
    Time page is what the client receives. Nothing recomputes a line on its own. */
 
-import { bookOf, feeLines, rulebooksOf, termsOf, totals, type FeeLine, type LineEffect, type Segment } from "./invoice";
+import { bookOf, feeLines, rulebooksOf, termsOf, totals, type BillScope, type FeeLine, type LineEffect, type Segment } from "./invoice";
 import type { ClientRulebook, Workspace } from "./model";
 
 /** A change a rule made to a line: which rule, what kind, before and after (or what it says). */
@@ -35,6 +35,8 @@ export type AppliedBill = {
     mode: string;
     book: ClientRulebook | null;
     day: string | null;
+    /** A matter and period, when the bill is an invoice's rather than the Time page's day. */
+    scope: BillScope | null;
     lines: AppliedLine[];
     totals: { hours: number; billedHours: number; fees: number };
     /** The same day at standard rates, for "Generic $5,616.50 → Northlake $4,730.00". */
@@ -60,11 +62,11 @@ export function bookForMode(w: Workspace, mode: string | null | undefined): Clie
  * The day's bill under a rulebook's rules that are on ("generic": none). `day` is YYYY-MM-DD,
  * or null for every settled entry in the workspace.
  */
-export function applyRules(w: Workspace, day: string | null, mode: string | null): AppliedBill {
+export function applyRules(w: Workspace, day: string | null, mode: string | null, scope: BillScope | null = null): AppliedBill {
     const terms = termsOf(w);
     const book = bookForMode(w, mode);
-    const lines = book ? feeLines(w, terms, book.rules.filter((r) => r.enabled), { book, day }) : feeLines(w, terms, [], { day });
-    return { mode: book ? book.key : "generic", book, day, lines: lines.map(toLine), totals: totals(lines), standard: totals(feeLines(w, terms, [], { day })).fees };
+    const lines = book ? feeLines(w, terms, book.rules.filter((r) => r.enabled), { book, day, scope }) : feeLines(w, terms, [], { day, scope });
+    return { mode: book ? book.key : "generic", book, day, scope, lines: lines.map(toLine), totals: totals(lines), standard: totals(feeLines(w, terms, [], { day, scope })).fees };
 }
 
 /** What the Time page shows of each line: the figures and the narrative, by entry and part. */

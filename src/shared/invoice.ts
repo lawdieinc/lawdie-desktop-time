@@ -8,7 +8,8 @@
    for words added to a narrative, as a marked segment: what the Time page shows inline, what
    the rules page lists, and what the DOCX writes as tracked changes and comments. */
 
-import { seconds, type ClientRule, type ClientRulebook, type InvoiceTerms, type TimeEntry, type Workspace } from "./model";
+import { seconds, type ClientRule, type ClientRulebook, type InvoiceTerms, type Project, type TimeEntry, type Workspace } from "./model";
+import type { MatterContext } from "./rules";
 
 /** A change a rule made to a line. rate, hours, noCharge: a figure, before and after. split: one entry made several
  *  lines. text: words added to the narrative (`text` says which). kept: checked, and the line stays as it is. */
@@ -38,20 +39,62 @@ export const money = (n: number): string => `$${n.toLocaleString("en-US", { mini
 /** "$1,195" for a round rate, "$358.50" otherwise. */
 export const moneyShort = (n: number): string => (Number.isInteger(n) ? `$${n.toLocaleString("en-US")}` : money(n));
 
-/** Entries that bill: on a matter, settled (no open suggestion or flag), with a narrative. */
-export function billable(w: Workspace, day: string | null = null): TimeEntry[] {
-    return w.entries.filter((e) => e.projectID && (!e.status || e.status === "draft") && e.description.trim() && (!day || localDay(e.startedAt) === day))
+/** What a bill covers: one day (the Time page), or a matter over a period (an invoice), days YYYY-MM-DD, `to` inclusive. */
+export type BillScope = { day?: string | null; projectID?: string | null; from?: string | null; to?: string | null };
+
+/** Entries that bill: on a matter, settled (no open suggestion or flag), with a narrative, inside the scope. */
+export function billable(w: Workspace, scope: string | null | BillScope = null): TimeEntry[] {
+    const s: BillScope = typeof scope === "string" ? { day: scope } : scope ?? {};
+    const inScope = (e: TimeEntry): boolean => {
+        const d = localDay(e.startedAt);
+        return (!s.day || d === s.day) && (!s.projectID || e.projectID === s.projectID) && (!s.from || d >= s.from) && (!s.to || d <= s.to);
+    };
+    return w.entries.filter((e) => e.projectID && (!e.status || e.status === "draft") && e.description.trim() && inScope(e))
         .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
 }
 
 /** The local day of an ISO time, YYYY-MM-DD. */
 export const localDay = (iso: string): string => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-/** The workspace's invoice terms, or plain ones (the timekeeper's name, nothing else) when the workspace has none. */
-export const termsOf = (w: Workspace): InvoiceTerms => w.invoice ?? {
-    firm: { name: "", address: [] }, billTo: [], client: "", matter: "", matterName: "", number: "", through: "", terms: "",
-    timekeeper: { name: w.profile?.name ?? "", title: "" },
-};
+/** "October 31, 2026" from YYYY-MM-DD. */
+export const longDate = (day: string): string => new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+/**
+ * The terms one bill prints: the firm's side from Settings → Billing, the matter's from the project
+ * (its number, name, client and bill-to lines), the period's end and the invoice's number. A demo
+ * seed's `invoice` stands in for the firm's side when there is no setup. With neither there are
+ * plain terms: the timekeeper's name and nothing else.
+ */
+export function termsFor(w: Workspace, project: Project | null, through: string | null = null, number = ""): InvoiceTerms {
+    const b = w.billing, seed = w.invoice;
+    const firm = b ? { name: b.firm.name, address: b.firm.address } : seed?.firm ?? { name: "", address: [] };
+    const timekeeper = b ? b.timekeeper : seed?.timekeeper ?? { name: w.profile?.name ?? "", title: "" };
+    const base: InvoiceTerms = {
+        firm, timekeeper,
+        billTo: project ? (project.billTo?.length ? project.billTo : project.client ? [project.client] : []) : seed?.billTo ?? [],
+        client: project ? project.client : seed?.client ?? "",
+        matter: project ? project.matterNumber ?? project.name : seed?.matter ?? "",
+        matterName: project ? project.name : seed?.matterName ?? "",
+        number: number || seed?.number || "",
+        through: through ? longDate(through) : seed?.through ?? "",
+        terms: b ? b.terms ?? "" : seed?.terms ?? "",
+    };
+    const extra: Partial<InvoiceTerms> = b
+        ? { ...(b.logo ? { logo: b.logo } : {}), ...(b.folder ? { folder: b.folder } : {}), ...(b.footer ? { footer: b.footer } : {}), ...(b.remit?.length ? { remit: b.remit } : {}), ...(b.contact ? { contact: b.contact } : {}) }
+        : seed ? { logo: seed.logo, folder: seed.folder, footer: seed.footer, remit: seed.remit, contact: seed.contact, rateCap: seed.rateCap, rateCapRule: seed.rateCapRule, noChargeActivity: seed.noChargeActivity, noChargeRule: seed.noChargeRule } : {};
+    return { ...base, ...extra };
+}
+
+/** The workspace's terms with no matter chosen: the seed's, else the firm's side alone (what the Time page's day bill uses). */
+export const termsOf = (w: Workspace): InvoiceTerms => w.invoice ?? termsFor(w, null);
+
+/** What the rules know about a matter: its `context` from a seed, else what the person set on it (number, client, code set). */
+export function contextOf(p: Project | null | undefined): MatterContext | null {
+    if (!p) return null;
+    if (p.context) return p.context;
+    if (!p.matterNumber && !p.client) return null;
+    return { number: p.matterNumber ?? "", client: p.client, ...(p.codeSet ? { codeSet: p.codeSet } : {}), people: [], glossary: {} };
+}
 
 const sentence = (t: string): string => { const s = t.trim().replace(/[.;]+$/, ""); return s ? `${s[0].toUpperCase()}${s.slice(1)}.` : s; };
 const usDate = (iso: string): string => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
@@ -123,14 +166,14 @@ function tasksOf(e: TimeEntry): Task[] | null {
  * noCharge and notBilled, seniorOnly (checked, kept), split (one line per task, each with its
  * own captured time), blockWithTimes (one line, each task's time written in), codePrefix.
  */
-export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly ClientRule[] = [], opts: { book?: ClientRulebook | null; day?: string | null } = {}): FeeLine[] {
+export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly ClientRule[] = [], opts: { book?: ClientRulebook | null; day?: string | null; scope?: BillScope | null } = {}): FeeLine[] {
     const book = opts.book ?? null;
     const has = (k: ClientRule["kind"]) => rules.find((r) => r.kind === k);
     // Hours are in tenths unless the client's tenths rule was switched off for this bill.
     const tenthsOff = rules.length > 0 && !has("tenths") && !!(book?.rules ?? w.clientRules?.rules)?.some((r) => r.kind === "tenths" && !r.enabled);
     const hoursOf = (minutes: number): number => (tenthsOff ? round2(minutes / 60) : tenths(minutes));
     const out: FeeLine[] = [];
-    for (const e of billable(w, opts.day ?? null)) {
+    for (const e of billable(w, { ...opts.scope, ...(opts.day ? { day: opts.day } : {}) })) {
         const effects: LineEffect[] = [];
         const recorded = e.hours ?? tenths(seconds(e) / 60);
         const stdRate = e.hourlyRate;

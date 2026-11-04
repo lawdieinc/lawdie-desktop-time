@@ -128,7 +128,7 @@ input[type="date"] { font: inherit; font-size: 13px; padding: 6px 8px; border: 1
 .matter-row.head { padding: 0 0 10px; cursor: default; } .matter-row.archived { opacity: 0.6; }
 .matter-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .waiting { color: var(--accent); font-weight: 600; }
-.matter-form .field.rate { flex: 0 0 150px; } .matter-form { align-items: flex-end; }
+.matter-form { display: flex; flex-direction: column; gap: 12px; } .matter-form .row { align-items: flex-end; } .matter-form .field.rate { flex: 0 0 150px; } .matter-form textarea { min-height: 40px; }
 .link.back { align-self: flex-start; }
 .bar.pending { background: rgba(139, 92, 42, 0.35); }
 /* What was read from a window, under the capture it came from. */
@@ -398,3 +398,8 @@ button.primary.big-button { padding: 13px 22px; font-size: 14px; border-radius: 
 .link-line.done { opacity: 0.28; }
 @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .link-line.active, .link-narr { animation: none; } .link-row, .link-card { transition: none; } }
+/* Settings → Billing and the Invoice sheet (2026-11-04). */
+textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; user-select: text; font: inherit; color: inherit; resize: vertical; min-height: 40px; }
+.billing-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 12px; } .billing-form .field.short { flex: 0 0 130px; }
+.logo-preview { height: 48px; max-width: 180px; object-fit: contain; border-radius: 6px; background: #fff; border: 1px solid var(--line); padding: 4px; }
+.logo-preview.none { display: inline-flex; align-items: center; justify-content: center; width: 96px; }

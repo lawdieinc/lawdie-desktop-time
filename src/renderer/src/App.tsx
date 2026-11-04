@@ -11,7 +11,7 @@ import { NarrativeEntry, PrivateRow, SUGGESTED_TIP, flaggedTip, hasNarrative } f
 import { AddEntryForm, ImportedPanel, TypedEntries } from "./Imported";
 import { ClientRulesView } from "./ClientRules";
 import { Menu } from "./Menu";
-import { ApplyRulesMenu, BillingMenu, EntryChanges, TotalsLine, inlineNarrative } from "./Billing";
+import { ApplyRulesMenu, BillingMenu, BillingSettings, EntryChanges, TotalsLine, inlineNarrative } from "./Billing";
 import { applyRules, linesByEntry, type AppliedBill, type AppliedLine } from "@shared/applyRules";
 import { money as dollars, shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
@@ -214,10 +214,10 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
                         <button type="button" role="menuitem" title="Type a short note and its hours, such as .9 call w/ client. It shows as typed until you expand it into a narrative." onClick={() => setAdding(true)}>Add entry</button>
                         <button type="button" role="menuitem" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
                     </Menu>
-                    {w.invoice && <BillingMenu bill={dayBill} day={day} onProblem={setPdfProblem} />}
+                    {(w.invoice || w.billing) && <BillingMenu w={w} bill={dayBill} day={day} onProblem={setPdfProblem} />}
                 </span>
             </div>
-            {range === "today" && w.invoice && <TotalsLine bill={dayBill} onRules={onRules} />}
+            {range === "today" && (w.invoice || w.billing) && <TotalsLine bill={dayBill} onRules={onRules} />}
             {pdfProblem && <p className="danger small">{pdfProblem}</p>}
             <div className="metrics">
                 <Metric label={range === "today" ? "Tracked today" : "Tracked"} value={cardTime(tracked)} detail={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`} />
@@ -950,12 +950,16 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
     const [name, setName] = useState(p?.name ?? "");
     const [client, setClient] = useState(p?.client ?? "");
     const [rate, setRate] = useState(p ? String(p.hourlyRate) : "");
+    const [number, setNumber] = useState(p?.matterNumber ?? "");
+    const [billTo, setBillTo] = useState(p?.billTo?.join("\n") ?? "");
+    const [codeSet, setCodeSet] = useState<string>(p?.codeSet ?? "");
     const [into, setInto] = useState("");
-    const changed = !!p && (name !== p.name || client !== p.client || Number(rate) !== p.hourlyRate);
+    const billToLines = billTo.split("\n").map((l) => l.trim()).filter(Boolean);
+    const changed = !!p && (name !== p.name || client !== p.client || Number(rate) !== p.hourlyRate || number.trim() !== (p.matterNumber ?? "") || billToLines.join("\n") !== (p.billTo ?? []).join("\n") || codeSet !== (p.codeSet ?? ""));
     const others = w.projects.filter((x) => p && x.id !== p.id && !x.archived).sort((a, b) => a.name.localeCompare(b.name));
     const days = new Map<string, TimeEntry[]>();
     for (const e of stats.entries) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
-    const save = (): void => { if (p) void window.lawdie.updateProject(p.id, { name, client, hourlyRate: Number(rate) }); };
+    const save = (): void => { if (p) void window.lawdie.updateProject(p.id, { name, client, hourlyRate: Number(rate), matterNumber: number, billTo: billToLines, codeSet: (codeSet || null) as Project["codeSet"] | null }); };
     return (
         <>
             <button type="button" className="link back" title="Go back to the list of matters." onClick={onBack}>‹ All matters</button>
@@ -979,13 +983,24 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
             {p && (
                 <Panel>
                     <strong>Details</strong>
-                    <form className="row gap wrap matter-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+                    <form className="matter-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+                        <div className="row gap wrap">
                         <label className="field grow"><span className="eyebrow">Name</span><input value={name} title="The matter's name in Time Capture." onChange={(e) => setName(e.target.value)} /></label>
                         <label className="field grow"><span className="eyebrow">Client</span><input value={client} placeholder="Who it is billed to" title="The client this matter is billed to." onChange={(e) => setClient(e.target.value)} /></label>
                         <label className="field rate"><span className="eyebrow">Hourly rate</span><input type="number" min="0" step="5" value={rate} title="The hourly rate for time you keep from now on." onChange={(e) => setRate(e.target.value)} /></label>
-                        <button type="submit" className="primary" disabled={!changed || !name.trim() || !(Number(rate) >= 0)} title={changed ? "Save the name, client and rate." : "Change the name, client or rate first."}>Save</button>
+                        </div>
+                        <div className="row gap wrap">
+                        <label className="field rate"><span className="eyebrow">Matter number</span><input value={number} placeholder="104882-0001" title="The client's or the firm's number for this matter, printed on the invoice." onChange={(e) => setNumber(e.target.value)} /></label>
+                        <label className="field grow"><span className="eyebrow">Bill to</span><textarea rows={2} value={billTo} placeholder={"Rosa Delacroix, Acme Inc.\n200 Peachtree Street, Atlanta, GA 30303"} title="The invoice's Bill to lines: the client's billing contact and address. The client's name alone without them." onChange={(e) => setBillTo(e.target.value)} /></label>
+                        <label className="field rate"><span className="eyebrow">Code set</span>
+                            <select value={codeSet} title="The UTBMS code set the client bills this matter under, for its rules." onChange={(e) => setCodeSet(e.target.value)}>
+                                <option value="">None</option><option value="project">Project (P)</option><option value="counseling">Counseling (C)</option><option value="litigation">Litigation (L)</option>
+                            </select>
+                        </label>
+                        <button type="submit" className="primary" disabled={!changed || !name.trim() || !(Number(rate) >= 0)} title={changed ? "Save the matter's details." : "Change something first."}>Save</button>
+                        </div>
                     </form>
-                    <p className="muted tiny">A new rate applies to time you keep from now on; entries already kept keep the rate they were saved with. Renaming carries activity named after this matter along with it.</p>
+                    <p className="muted tiny">A new rate applies to time you keep from now on; entries already kept keep the rate they were saved with. Renaming carries activity named after this matter along with it. The number, bill-to and code set go on this matter's invoices{w.billing ? "" : " once billing is set up in Settings"}.</p>
                     <div className="row gap wrap">
                         {others.length > 0 && (
                             <>
@@ -1120,6 +1135,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <select value={p.retentionDays} title="Choose how long raw activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
                 </Setting>
             </Panel>
+            <BillingSettings w={w} />
             <Panel>
                 <strong>Display</strong>
                 <Setting title="Text size" detail="Makes everything in this window larger, for reading on a laptop or from a distance.">

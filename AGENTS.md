@@ -145,9 +145,23 @@ Add entry or an iTimeKeep/Excel import matched into the captured entry; it never
 addition is optional, a version 2 file reads as it is and is written back as 3 (so a build before
 0.13 refuses it). Nothing here changes capture; billing details go on the entry at keep
 (`KeepInput.hours`/codes/`hourlyRate`) only under a rulebook. A demo or verification run sets
-`LAWDIE_USER_DATA` so it never locks the real workspace. Not built yet: rejecting a bill, custom
-DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`), the logo from the firm's website (a
-file path in the seed), live Outlook/Teams sources (evidence comes from the seed).
+`LAWDIE_USER_DATA` so it never locks the real workspace.
+
+For a person, not a seed (2026-11-04, later the same day): Settings → Billing holds the firm's
+side (`Workspace.billing`, `BillingSetup`: firm, address, timekeeper, terms, remittance, contact,
+invoice prefix and counter, folder, logo; `setBilling()`/`setBillingFile()`), a matter holds its
+own (`Project.matterNumber`, `billTo`, `codeSet`, edited on its page; `contextOf()` gives the
+rules a context from them when a seed gave none), and `termsFor(w, project, through, number)`
+joins the two into the `InvoiceTerms` a bill prints (a seed's `invoice` still stands in when
+there is no setup). A bill is scoped (`BillScope`: a day for the Time page, or a matter over
+a period for the Invoice sheet in Billing.tsx; `applyRules(w, day, mode, scope)`). An invoice
+takes `nextInvoiceNumber()` and `invoiceIssued()` moves the counter once the PDF exists. The
+logo comes from the firm's website (`src/shared/logo.ts` orders the page's apple-touch-icon,
+og:image, sized icons and the well-known paths; `fetchLogo` in index.ts keeps the first that
+decodes at 48 px or wider, as `billing-logo.png` beside the workspace) or from a chosen file.
+Not built yet: rejecting a bill, custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
+client rules made in the app (only the feed and the seed bring them), live Outlook/Teams
+sources (evidence comes from the seed).
 
 ## Kiwi and Lawdie CRM
 
@@ -271,3 +285,9 @@ exactly unless the times are edited (`keepBounds()`). Version 0.12.0.
 idle/merge/screenshot rows and Keep sheet kept, with the branch's rules check, hours and codes
 added to the sheet; the branch's narrative `SourceRef` renamed `NarrativeSource` (feed.ts owns
 `SourceRef`). Tests 162.
+2026-11-04, later: billing for a person. Settings → Billing (the firm), matter number, bill-to
+and code set on a matter, and an Invoice sheet (matter, period, rules) in place of "the day
+shown"; the logo fetched from the firm's website. Tested: an invoice PDF made from a scratch
+workspace through the sheet (`billing.test.ts` covers the model). The 0.12.0 Install path was
+proved on this Mac the same day: a signed local 0.12.0 updated to a signed local 0.12.1 from a
+local server in 3 s (ShipIt log); 0.11.0 hung because the fix shipped after its tag.
