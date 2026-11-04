@@ -1,0 +1,1953 @@
+{
+ "schemaVersion": 3,
+ "projects": [
+  {
+   "id": "d9f6b588-5006-541c-95c4-ca58dee4c2db",
+   "name": "61407-002 Hudson Valley Health Plan provider agreement and telehealth expansion",
+   "client": "Northlake Behavioral Health, Inc.",
+   "color": "gold",
+   "hourlyRate": 1195,
+   "archived": false,
+   "insight": {
+    "summary": "Review and negotiation of Hudson Valley Health Plan's Medicaid participating provider agreement (sign by Nov 20, live Jan 1), a six-state telehealth licensure and prescribing analysis, and the 42 CFR Part 2 consent and BAA review.",
+    "points": [
+     "Redline under way: rate exhibit, credentialing timeline, termination without cause, 42 CFR 438 provisions.",
+     "Six-state matrix drafted: NY, NJ, CA, IL, TX, FL, including controlled substance prescribing for MAT.",
+     "Part 2 consent form reviewed against the 2024 final rule."
+    ],
+    "generatedAt": "2026-10-26T20:10:00.000Z",
+    "source": "kiwi"
+   }
+  }
+ ],
+ "entries": [
+  {
+   "id": "765b1027-3b47-505e-8f6a-1d7ca332bdf4",
+   "description": "Teams conference with P. Raman and M. Bell (Northlake) regarding HVHP rates, credentialing, termination and order of state rollout.",
+   "projectID": "d9f6b588-5006-541c-95c4-ca58dee4c2db",
+   "startedAt": "2026-10-26T13:15:00.000Z",
+   "endedAt": "2026-10-26T13:51:00.000Z",
+   "billable": true,
+   "hourlyRate": 1195,
+   "source": "desktop",
+   "activityID": "1dd19b04-6067-5b11-bf67-3391222a6a02",
+   "hours": 0.6,
+   "parts": [
+    {
+     "text": "Teams conference with ",
+     "evidence": [
+      "mtg-kickoff"
+     ],
+     "slot": "verb"
+    },
+    {
+     "text": "P. Raman and M. Bell (Northlake)",
+     "evidence": [
+      "mtg-kickoff",
+      "mail-invite-kickoff"
+     ],
+     "slot": "participants"
+    },
+    {
+     "text": " regarding HVHP rates, credentialing, termination",
+     "evidence": [
+      "tx-kickoff",
+      "mail-agenda"
+     ],
+     "slot": "purpose"
+    },
+    {
+     "text": " and order of state rollout.",
+     "evidence": [
+      "tx-kickoff"
+     ],
+     "slot": "purpose"
+    }
+   ],
+   "sources": [
+    {
+     "id": "mtg-kickoff",
+     "kind": "meeting",
+     "label": "Teams meeting: Northlake / Manatt kickoff (61407-002)"
+    },
+    {
+     "id": "mail-invite-kickoff",
+     "kind": "email",
+     "label": "Teams invite: Northlake / Manatt kickoff (61407-002)"
+    },
+    {
+     "id": "tx-kickoff",
+     "kind": "transcript",
+     "label": "Teams transcript (sample)"
+    },
+    {
+     "id": "mail-agenda",
+     "kind": "email",
+     "label": "Email: Kickoff agenda (61407-002)"
+    }
+   ],
+   "work": [
+    {
+     "app": "Microsoft Teams",
+     "title": "Northlake / Manatt kickoff (61407-002) | Microsoft Teams",
+     "startedAt": "2026-10-26T13:15:00.000Z",
+     "minutes": 36,
+     "url": null
+    }
+   ],
+   "reasons": [
+    "Teams was in a call from 9:15 to 9:51 with the kickoff meeting open.",
+    "Priya's invite and the meeting's attendee line name P. Raman and M. Bell.",
+    "The transcript covers the rate exhibit, credentialing, termination and the order of states."
+   ],
+   "status": "draft",
+   "drafter": "rules",
+   "seen": {
+    "app": "Microsoft Teams",
+    "title": "Northlake / Manatt kickoff (61407-002) | Microsoft Teams"
+   },
+   "activityIDs": [
+    "1dd19b04-6067-5b11-bf67-3391222a6a02"
+   ],
+   "group": "Client communication",
+   "groupLabel": "Client communication",
+   "matterReason": "Matter 61407-002 from the meeting title.",
+   "drafted": "kiwi",
+   "draftedAt": "2026-10-26T13:53:00.000Z",
+   "taskCode": "C300",
+   "activityCode": "A106"
+  },
+  {
+   "id": "16c546ca-371b-5432-9087-d6fdbe2af241",
+   "description": "Review and revise HVHP participating provider agreement regarding Exhibit B rates, credentialing, termination and 42 CFR 438 terms.",
+   "projectID": "d9f6b588-5006-541c-95c4-ca58dee4c2db",
+   "startedAt": "2026-10-26T13:58:00.000Z",
+   "endedAt": "2026-10-26T15:43:00.000Z",
+   "billable": true,
+   "hourlyRate": 1195,
+   "source": "desktop",
+   "activityID": "36df1133-186e-5a6e-92c9-798b447bec59",
+   "hours": 1.7,
+   "parts": [
+    {
+     "text": "Review and revise ",
+     "evidence": [
+      "redline",
+      "hvhp-v3"
+     ],
+     "slot": "verb"
+    },
+    {
+     "text": "HVHP participating provider agreement",
+     "evidence": [
+      "hvhp-v3",
+      "mail-hvhp"
+     ],
+     "slot": "object"
+    },
+    {
+     "text": " regarding Exhibit B rates, credentialing, termination",
+     "evidence": [
+      "tx-kickoff",
+      "redline",
+      "issues"
+     ],
+     "slot": "purpose"
+    },
+    {
+     "text": " and 42 CFR 438 terms.",
+     "evidence": [
+      "redline"
+     ],
+     "slot": "purpose"
+    }
+   ],
+   "sources": [
+    {
+     "id": "redline",
+     "kind": "document",
+     "label": "Document: HVHP Participating Provider Agreement - Manatt redline 61407-002.docx"
+    },
+    {
+     "id": "hvhp-v3",
+     "kind": "document",
+     "label": "Document: HVHP Participating Provider Agreement v3 61407-002.pdf"
+    },
+    {
+     "id": "mail-hvhp",
+     "kind": "email",
+     "label": "Email: FW: HVHP participating provider agreement v3 (61407-002)"
+    },
+    {
+     "id": "tx-kickoff",
+     "kind": "transcript",
+     "label": "Teams transcript (sample)"
+    },
+    {
+     "id": "issues",
+     "kind": "document",
+     "label": "Document: HVHP agreement issues list 61407-002.docx"
+    }
+   ],
+   "work": [
+    {
+     "app": "Google Chrome",
+     "title": "61407-002 Hudson Valley Health Plan Participating Provider Agreement review - Kiwi",
+     "startedAt": "2026-10-26T13:58:00.000Z",
+     "minutes": 52,
+     "url": "https://lawdie.ai/kiwi-ai/projects/northlake"
+    },
+    {
+     "app": "Microsoft Word",
+     "title": "HVHP Participating Provider Agreement - Manatt redline 61407-002.docx",
+     "startedAt": "2026-10-26T14:55:00.000Z",
+     "minutes": 48,
+     "url": null
+    }
+   ],
+   "reasons": [
+    "Rosa spent 52 minutes on HVHP v3 in Kiwi and made the issues list there. She then spent 48 minutes on the redline in Word.",
+    "Rosa worked on the same agreement in both stretches, so Lawdie makes them one task, review and revise.",
+    "The redline changes the four items that the narrative names."
+   ],
+   "status": "draft",
+   "drafter": "rules",
+   "seen": {
+    "app": "Google Chrome",
+    "title": "61407-002 Hudson Valley Health Plan Participating Provider Agreement review - Kiwi"
+   },
+   "activityIDs": [
+    "36df1133-186e-5a6e-92c9-798b447bec59"
+   ],
+   "sittings": [
+    {
+     "startedAt": "2026-10-26T13:58:00.000Z",
+     "endedAt": "2026-10-26T14:50:00.000Z"
+    },
+    {
+     "startedAt": "2026-10-26T14:55:00.000Z",
+     "endedAt": "2026-10-26T15:43:00.000Z"
+    }
+   ],
+   "group": "HVHP provider agreement",
+   "groupLabel": "HVHP provider agreement",
+   "matterReason": "Matter 61407-002 from the Kiwi page title.",
+   "drafted": "kiwi",
+   "draftedAt": "2026-10-26T15:45:00.000Z",
+   "taskCode": "C300",
+   "activityCode": "A103"
+  },
+  {
+   "id": "aed63985-0e94-5b6f-b91f-1f47e32419fe",
+   "description": "Conference with T. Navarro regarding licensure matrix format and state research assignments.",
+   "projectID": "d9f6b588-5006-541c-95c4-ca58dee4c2db",
+   "startedAt": "2026-10-26T16:30:00.000Z",
+   "endedAt": "2026-10-26T16:48:00.000Z",
+   "billable": true,
+   "hourlyRate": 1195,
+   "source": "desktop",
+   "activityID": "34fa41e0-5df1-595e-8cc4-d0587495ddc3",
+   "hours": 0.3,
+   "parts": [
+    {
+     "text": "Conference with ",
+     "evidence": [
+      "mtg-theo"
+     ],
+     "slot": "verb"
+    },
+    {
+     "text": "T. Navarro",
+     "evidence": [
+      "mtg-theo",
+      "mail-invite-theo"
+     ],
+     "slot": "participants"
+    },
+    {
+     "text": " regarding licensure matrix format and state research assignments.",
+     "evidence": [
+      "tx-theo",
+      "mail-theo"
+     ],
+     "slot": "purpose"
+    }
+   ],
+   "sources": [
+    {
+     "id": "mtg-theo",
+     "kind": "meeting",
+     "label": "Teams meeting: Rosa / Theo: Northlake licensure matrix (61407-002)"
+    },
+    {
+     "id": "mail-invite-theo",
+     "kind": "email",
+     "label": "Teams invite: Rosa / Theo: Northlake licensure matrix (61407-002)"
+    },
+    {
+     "id": "tx-theo",
+     "kind": "transcript",
+     "label": "Teams transcript (sample)"
+    },
+    {
+     "id": "mail-theo",
+     "kind": "email",
+     "label": "Email: matrix (61407-002)"
+    }
+   ],
+   "work": [
+    {
+     "app": "Microsoft Teams",
+     "title": "Rosa / Theo: Northlake licensure matrix (61407-002) | Microsoft Teams",
+     "startedAt": "2026-10-26T16:30:00.000Z",
+     "minutes": 18,
+     "url": null
+    }
+   ],
+   "reasons": [
+    "Teams was in a call with T. Navarro from 12:30 to 12:48. Rosa's invite set it up.",
+    "The transcript and Theo's email cover the matrix columns and who takes which states."
+   ],
+   "status": "draft",
+   "drafter": "rules",
+   "seen": {
+    "app": "Microsoft Teams",
+    "title": "Rosa / Theo: Northlake licensure matrix (61407-002) | Microsoft Teams"
+   },
+   "activityIDs": [
+    "34fa41e0-5df1-595e-8cc4-d0587495ddc3"
+   ],
+   "group": "Six-state telehealth analysis",
+   "groupLabel": "Six-state telehealth analysis",
+   "matterReason": "Matter 61407-002 from the meeting title.",
+   "drafted": "kiwi",
+   "draftedAt": "2026-10-26T16:50:00.000Z",
+   "taskCode": "C300",
+   "activityCode": "A105"
+  },
+  {
+   "id": "1f5b734c-e928-5c77-a934-91a15c20d0d9",
+   "description": "Research telehealth licensure and prescribing rules for New York, California, Texas and Florida; review and revise six-state licensure and prescribing matrix for the MAT program.",
+   "projectID": "d9f6b588-5006-541c-95c4-ca58dee4c2db",
+   "startedAt": "2026-10-26T17:05:00.000Z",
+   "endedAt": "2026-10-26T18:46:00.000Z",
+   "billable": true,
+   "hourlyRate": 1195,
+   "source": "desktop",
+   "activityID": "11f30640-2f8c-5b82-a58b-4d43f38472e3",
+   "hours": 1.6,
+   "parts": [
+    {
+     "text": "Research telehealth licensure and prescribing rules for New York, California, Texas and Florida",
+     "evidence": [
+      "tx-kickoff",
+      "mail-intake"
+     ],
+     "slot": "object"
+    },
+    {
+     "text": "; review and revise ",
+     "evidence": [
+      "matrix"
+     ],
+     "slot": "verb"
+    },
+    {
+     "text": "six-state licensure and prescribing matrix",
+     "evidence": [
+      "matrix",
+      "mail-theo-reply"
+     ],
+     "slot": "object"
+    },
+    {
+     "text": " for the MAT program.",
+     "evidence": [
+      "tx-kickoff",
+      "matrix"
+     ],
+     "slot": "purpose"
+    }
+   ],
+   "sources": [
+    {
+     "id": "tx-kickoff",
+     "kind": "transcript",
+     "label": "Teams transcript (sample)"
+    },
+    {
+     "id": "mail-intake",
+     "kind": "email",
+     "label": "Email: Medicaid plan contract + telehealth expansion: need counsel by Nov 20"
+    },
+    {
+     "id": "matrix",
+     "kind": "document",
+     "label": "Document: Northlake telehealth licensure matrix 61407-002.xlsx"
+    },
+    {
+     "id": "mail-theo-reply",
+     "kind": "email",
+     "label": "Email: RE: matrix (61407-002)"
+    }
+   ],
+   "work": [
+    {
+     "app": "Google Chrome",
+     "title": "61407-002 research: NY OMH telehealth (14 NYCRR 596), Medi-Cal telehealth policy, TX and FL licensure - Kiwi",
+     "startedAt": "2026-10-26T17:05:00.000Z",
+     "minutes": 41,
+     "url": "https://lawdie.ai/kiwi-ai/research"
+    },
+    {
+     "app": "Microsoft Excel",
+     "title": "Northlake telehealth licensure matrix 61407-002.xlsx",
+     "startedAt": "2026-10-26T17:52:00.000Z",
+     "minutes": 54,
+     "url": null
+    }
+   ],
+   "reasons": [
+    "Rosa researched NY OMH, Medi-Cal, Texas and Florida licensure in Chrome for 41 minutes. She then worked on the matrix in Excel for 54 minutes.",
+    "The entry holds two tasks, research (0.7) and the matrix (0.9). A client rule that wants one task per line splits it at these times.",
+    "Priya asked for all six states on the kickoff call and in her first email."
+   ],
+   "status": "draft",
+   "drafter": "rules",
+   "seen": {
+    "app": "Google Chrome",
+    "title": "61407-002 research: NY OMH telehealth (14 NYCRR 596), Medi-Cal telehealth policy, TX and FL licensure - Kiwi"
+   },
+   "activityIDs": [
+    "11f30640-2f8c-5b82-a58b-4d43f38472e3"
+   ],
+   "sittings": [
+    {
+     "startedAt": "2026-10-26T17:05:00.000Z",
+     "endedAt": "2026-10-26T17:46:00.000Z"
+    },
+    {
+     "startedAt": "2026-10-26T17:52:00.000Z",
+     "endedAt": "2026-10-26T18:46:00.000Z"
+    }
+   ],
+   "group": "Six-state telehealth analysis",
+   "groupLabel": "Six-state telehealth analysis",
+   "matterReason": "Matter 61407-002 from the Kiwi page title.",
+   "drafted": "kiwi",
+   "draftedAt": "2026-10-26T18:48:00.000Z",
+   "taskCode": "C200",
+   "activityCode": "A102",
+   "tasks": [
+    {
+     "stretch": 0,
+     "text": "Research telehealth licensure and prescribing rules for New York, California, Texas and Florida.",
+     "task": "C200",
+     "activity": "A102",
+     "hours": 0.7
+    },
+    {
+     "stretch": 1,
+     "text": "review and revise six-state licensure and prescribing matrix for the MAT program.",
+     "task": "C300",
+     "activity": "A103",
+     "hours": 0.9
+    }
+   ]
+  },
+  {
+   "id": "0e8b9363-58b1-597c-99fd-61ac23a4fe28",
+   "description": "Review Northlake 42 CFR Part 2 consent form and BAA template against the 2024 Part 2 final rule.",
+   "projectID": "d9f6b588-5006-541c-95c4-ca58dee4c2db",
+   "startedAt": "2026-10-26T18:55:00.000Z",
+   "endedAt": "2026-10-26T19:21:00.000Z",
+   "billable": true,
+   "hourlyRate": 1195,
+   "source": "desktop",
+   "activityID": "3c8706e0-8217-5999-82a1-eb52ead7c678",
+   "hours": 0.5,
+   "parts": [
+    {
+     "text": "Review ",
+     "evidence": [
+      "part2"
+     ],
+     "slot": "verb"
+    },
+    {
+     "text": "Northlake 42 CFR Part 2 consent form and BAA template",
+     "evidence": [
+      "part2"
+     ],
+     "slot": "object"
+    },
+    {
+     "text": " against the 2024 Part 2 final rule.",
+     "evidence": [
+      "part2",
+      "mail-summary"
+     ],
+     "slot": "purpose"
+    }
+   ],
+   "sources": [
+    {
+     "id": "part2",
+     "kind": "document",
+     "label": "Document: Northlake 42 CFR Part 2 Consent and BAA template 61407-002.pdf"
+    },
+    {
+     "id": "mail-summary",
+     "kind": "email",
+     "label": "Email: RE: Medicaid plan contract + telehealth expansion: need counsel by Nov 20"
+    }
+   ],
+   "work": [
+    {
+     "app": "Adobe Acrobat",
+     "title": "Northlake 42 CFR Part 2 Consent and BAA template 61407-002.pdf",
+     "startedAt": "2026-10-26T18:55:00.000Z",
+     "minutes": 26,
+     "url": null
+    }
+   ],
+   "reasons": [
+    "Rosa reviewed Northlake's consent form and BAA template in Acrobat for 26 minutes.",
+    "Northlake last revised the form in March 2023, before the 2024 Part 2 rule. Rosa's summary email says that it needs updating."
+   ],
+   "status": "draft",
+   "drafter": "rules",
+   "seen": {
+    "app": "Adobe Acrobat",
+    "title": "Northlake 42 CFR Part 2 Consent and BAA template 61407-002.pdf"
+   },
+   "activityIDs": [
+    "3c8706e0-8217-5999-82a1-eb52ead7c678"
+   ],
+   "group": "Part 2 consent and BAA",
+   "groupLabel": "Part 2 consent and BAA",
+   "matterReason": "Matter 61407-002 from the file name.",
+   "drafted": "kiwi",
+   "draftedAt": "2026-10-26T19:23:00.000Z",
+   "taskCode": "C300",
+   "activityCode": "A104"
+  },
+  {
+   "id": "983dafcf-e87e-57ad-af5b-35413828c266",
+   "description": "Telephone conference with P. Raman regarding California telehealth timing ahead of the December board meeting.",
+   "projectID": "d9f6b588-5006-541c-95c4-ca58dee4c2db",
+   "startedAt": "2026-10-26T20:10:00.000Z",
+   "endedAt": "2026-10-26T20:25:00.000Z",
+   "billable": true,
+   "hourlyRate": 1195,
+   "source": "desktop",
+   "activityID": null,
+   "hours": 0.3,
+   "parts": [
+    {
+     "text": "Telephone conference with ",
+     "evidence": [
+      "cal-call"
+     ],
+     "slot": "verb"
+    },
+    {
+     "text": "P. Raman",
+     "evidence": [
+      "cal-call"
+     ],
+     "slot": "participants"
+    },
+    {
+     "text": " regarding California telehealth timing ahead of the December board meeting.",
+     "evidence": [
+      "tx-kickoff"
+     ],
+     "slot": "purpose"
+    }
+   ],
+   "sources": [
+    {
+     "id": "cal-call",
+     "kind": "meeting",
+     "label": "Calendar: Call Priya re CA"
+    },
+    {
+     "id": "tx-kickoff",
+     "kind": "transcript",
+     "label": "Teams transcript (sample)"
+    }
+   ],
+   "work": [
+    {
+     "app": "Phone",
+     "title": "Call Priya re CA (calendar)",
+     "startedAt": "2026-10-26T20:10:00.000Z",
+     "minutes": 15,
+     "url": null
+    }
+   ],
+   "reasons": [
+    "Rosa's calendar holds 15 minutes for \"Call Priya re CA\".",
+    "On the kickoff, Priya said that California matters for next year and that the board meets in December."
+   ],
+   "status": "suggested",
+   "drafter": "rules",
+   "seen": {
+    "app": "Phone",
+    "title": "Call Priya re CA (calendar)"
+   },
+   "group": "Client communication",
+   "groupLabel": "Client communication",
+   "matterReason": "Matter 61407-002 from matter history: the kickoff call and Rosa's summary email.",
+   "drafted": "kiwi",
+   "draftedAt": "2026-10-26T20:27:00.000Z",
+   "why": "The phone call has no recording or transcript. Lawdie drafted the entry from the calendar hold and the kickoff. Rosa confirms it before it bills.",
+   "taskCode": "C300",
+   "activityCode": "A106"
+  }
+ ],
+ "activities": [
+  {
+   "id": "1dd19b04-6067-5b11-bf67-3391222a6a02",
+   "app": "Microsoft Teams",
+   "ownerID": "com.microsoft.teams2",
+   "title": "Northlake / Manatt kickoff (61407-002) | Microsoft Teams",
+   "document": null,
+   "startedAt": "2026-10-26T13:15:00.000Z",
+   "endedAt": "2026-10-26T13:51:00.000Z",
+   "endedBy": "switched",
+   "disposition": "kept",
+   "matter": "Northlake Behavioral Health - Hudson Valley Health Plan provider agreement and telehealth expansion",
+   "matterBy": "ai"
+  },
+  {
+   "id": "36df1133-186e-5a6e-92c9-798b447bec59",
+   "app": "Microsoft Word",
+   "ownerID": "com.microsoft.Word",
+   "title": "HVHP Participating Provider Agreement - Manatt redline 61407-002.docx",
+   "document": {
+    "name": "HVHP Participating Provider Agreement - Manatt redline 61407-002.docx",
+    "path": "~/Documents/Manatt/Northlake 61407-002",
+    "excerpt": "PARTICIPATING PROVIDER AGREEMENT. Section 4. Compensation. Plan shall reimburse Provider for Covered Services at the rates set out in Exhibit B..."
+   },
+   "startedAt": "2026-10-26T14:55:00.000Z",
+   "endedAt": "2026-10-26T15:43:00.000Z",
+   "endedBy": "switched",
+   "disposition": "kept",
+   "matter": "Northlake Behavioral Health - Hudson Valley Health Plan provider agreement and telehealth expansion",
+   "matterBy": "ai"
+  },
+  {
+   "id": "34fa41e0-5df1-595e-8cc4-d0587495ddc3",
+   "app": "Microsoft Teams",
+   "ownerID": "com.microsoft.teams2",
+   "title": "Rosa / Theo: Northlake licensure matrix (61407-002) | Microsoft Teams",
+   "document": null,
+   "startedAt": "2026-10-26T16:30:00.000Z",
+   "endedAt": "2026-10-26T16:48:00.000Z",
+   "endedBy": "switched",
+   "disposition": "kept",
+   "matter": "Northlake Behavioral Health - Hudson Valley Health Plan provider agreement and telehealth expansion",
+   "matterBy": "ai"
+  },
+  {
+   "id": "11f30640-2f8c-5b82-a58b-4d43f38472e3",
+   "app": "Microsoft Excel",
+   "ownerID": "com.microsoft.Excel",
+   "title": "Northlake telehealth licensure matrix 61407-002.xlsx",
+   "document": {
+    "name": "Northlake telehealth licensure matrix 61407-002.xlsx",
+    "path": "~/Documents/Manatt/Northlake 61407-002",
+    "excerpt": "Sheet: Six states. State | Licensure | Interstate compact | Controlled substance prescribing (DEA) | State CS rules | Part 2 notes | Owner | Due"
+   },
+   "startedAt": "2026-10-26T17:52:00.000Z",
+   "endedAt": "2026-10-26T18:46:00.000Z",
+   "endedBy": "switched",
+   "disposition": "kept",
+   "matter": "Northlake Behavioral Health - Hudson Valley Health Plan provider agreement and telehealth expansion",
+   "matterBy": "ai"
+  },
+  {
+   "id": "3c8706e0-8217-5999-82a1-eb52ead7c678",
+   "app": "Adobe Acrobat",
+   "ownerID": "com.adobe.Acrobat.Pro",
+   "title": "Northlake 42 CFR Part 2 Consent and BAA template 61407-002.pdf",
+   "document": {
+    "name": "Northlake 42 CFR Part 2 Consent and BAA template 61407-002.pdf",
+    "path": "~/Documents/Manatt/Northlake 61407-002",
+    "excerpt": "CONSENT TO DISCLOSE SUBSTANCE USE DISORDER RECORDS (42 CFR Part 2)..."
+   },
+   "startedAt": "2026-10-26T18:55:00.000Z",
+   "endedAt": "2026-10-26T19:21:00.000Z",
+   "endedBy": "switched",
+   "disposition": "kept",
+   "matter": "Northlake Behavioral Health - Hudson Valley Health Plan provider agreement and telehealth expansion",
+   "matterBy": "ai"
+  }
+ ],
+ "timer": null,
+ "currentActivity": null,
+ "preferences": {
+  "captureEnabled": false,
+  "captureTitles": true,
+  "captureDocuments": true,
+  "captureScreenText": false,
+  "suggestMatters": false,
+  "idleMinutes": 3,
+  "retentionDays": 30,
+  "excludedOwnerIDs": [
+   "com.apple.systempreferences",
+   "com.apple.keychainaccess",
+   "com.apple.Passwords",
+   "com.agilebits.onepassword7",
+   "com.1password.1password",
+   "com.google.Chrome"
+  ],
+  "narrativeDrafter": "rules"
+ },
+ "sync": null,
+ "evidence": {
+  "mail-intake": {
+   "id": "mail-intake",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-10-21T16:02:00",
+   "from": "Priya Raman",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "subject": "Medicaid plan contract + telehealth expansion: need counsel by Nov 20",
+   "body": "Hello,\n\nI'm General Counsel at Northlake Behavioral Health. We provide virtual outpatient mental health and substance use treatment, and we're growing fast.\n\nTwo things we need help with:\n\n1. Hudson Valley Health Plan, a New York Medicaid managed care plan, sent us its participating provider agreement. They want it signed by November 20 so we go live January 1. We need a review and a redline: rates, credentialing timelines, termination, and whatever Medicaid managed care rules require.\n\n2. We're expanding telehealth into six states next year: New York, New Jersey, California, Illinois, Texas and Florida. We need a licensure and prescribing analysis for each (including controlled substances for our MAT program), plus a look at our 42 CFR Part 2 consent form and our BAA template.\n\nCan Manatt take this on? Our outside counsel guidelines are attached.\n\nPriya",
+   "attach": [
+    "ocg-northlake"
+   ],
+   "facts": [
+    "names all six states",
+    "Nov 20 signing deadline",
+    "Part 2 consent and BAA review",
+    "guidelines attached"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi1AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-intake.png"
+  },
+  "mail-engagement": {
+   "id": "mail-engagement",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-10-22T10:14:00",
+   "from": "Priya Raman",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "subject": "RE: Engagement letter - Northlake (61407-002)",
+   "body": "Rosa,\n\nSigned letter attached. Our outside counsel guidelines apply, as we discussed. Please send invoices monthly to legalops@northlakebh.example.\n\nPriya",
+   "quote": {
+    "from": "Rosa Delacroix",
+    "when": "2026-10-21T17:30:00",
+    "to": "Priya Raman",
+    "subject": "Engagement letter - Northlake (61407-002)",
+    "text": "Priya,\n\nThe engagement letter for the HVHP agreement and the telehealth work is attached. Rates are our 2026 health system panel rates. Sign and send it back when you can.\n\nRosa"
+   },
+   "attach": [
+    "engagement"
+   ],
+   "facts": [
+    "signed engagement letter",
+    "guidelines apply",
+    "monthly invoices"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi2AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-engagement.png"
+  },
+  "mail-kestrel-ocg": {
+   "id": "mail-kestrel-ocg",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-01-14T09:05:00",
+   "from": "Marisol Ortega",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "subject": "Kestrel Valley Health billing guidelines (2026)",
+   "category": "Kestrel Valley Health",
+   "body": "Rosa,\n\nAttached are our updated billing guidelines for outside counsel. The main changes for 2026:\n- partner time capped at $995 an hour\n- calls over 0.5 hours need our approval\n- each entry starts with its activity code\n\nThey apply to invoices from February 1.\n\nThanks,\nMarisol",
+   "attach": [
+    "ocg-kestrel"
+   ],
+   "facts": [
+    "Kestrel 2026 guidelines",
+    "$995 partner cap",
+    "0.5 hour calls",
+    "activity code first"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi3AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-kestrel-ocg.png"
+  },
+  "mail-agenda": {
+   "id": "mail-agenda",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-10-23T17:41:00",
+   "from": "Priya Raman",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "cc": [
+    "Marcus Bell"
+   ],
+   "subject": "Kickoff agenda (61407-002)",
+   "body": "Rosa,\n\nFor our kickoff. Marcus is joining, he owns the go-live.\n\nOur list, roughly in order:\n- the rate exhibit. HVHP's numbers are below what we get from Riverbend\n- credentialing. they say 120 days, we can't wait that long for Jan 1\n- can they really terminate without cause on 60 days?\n- which states first. board wants NY and NJ in Q1, the rest after\n\nPriya",
+   "facts": [
+    "rate exhibit",
+    "credentialing 120 days",
+    "termination without cause",
+    "NY and NJ first"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi4AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-agenda.png"
+  },
+  "mail-hvhp": {
+   "id": "mail-hvhp",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-10-26T07:58:00",
+   "from": "Marcus Bell",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "cc": [
+    "Priya Raman"
+   ],
+   "subject": "FW: HVHP participating provider agreement v3 (61407-002)",
+   "body": "Rosa,\n\nHere's the latest from Janet at HVHP. They're calling v3 final. I don't buy it, especially on credentialing.\n\nCan you look before our 9:15?\n\nMarcus",
+   "quote": {
+    "from": "Janet Okoye <jokoye@hvhp.example>",
+    "when": "2026-10-23T16:20:00",
+    "to": "Marcus Bell",
+    "subject": "HVHP participating provider agreement v3",
+    "text": "Marcus,\n\nAttached is v3 of the Participating Provider Agreement with the changes we discussed. We would need signature by 11/20 for a 1/1 effective date.\n\nThanks,\nJanet Okoye\nProvider Contracting | Hudson Valley Health Plan"
+   },
+   "attach": [
+    "hvhp-v3"
+   ],
+   "facts": [
+    "v3 from HVHP",
+    "signature by 11/20"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi5AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-hvhp.png"
+  },
+  "mail-theo": {
+   "id": "mail-theo",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-10-26T13:30:00",
+   "from": "Theo Navarro",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "subject": "matrix (61407-002)",
+   "body": "Rosa,\n\nFirst pass at the Northlake matrix is attached. Columns are what we said on the call:\n- licensure\n- interstate compact\n- DEA\n- state controlled substance rules\n- Part 2 notes\n\nAll six states have a first pass. I'd start with NY and NJ since they go first.\n\nOne flag on NY: the MAT side needs OASAS certification, not just the OMH telehealth approval. I put it in the NY row.\n\nTheo",
+   "attach": [
+    "matrix-v1"
+   ],
+   "facts": [
+    "matrix columns",
+    "all six states",
+    "OASAS for MAT in NY"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi6AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-theo.png"
+  },
+  "mail-summary": {
+   "id": "mail-summary",
+   "kind": "email",
+   "folder": "sentitems",
+   "when": "2026-10-26T15:47:00",
+   "from": "Rosa Delacroix",
+   "to": [
+    "Priya Raman"
+   ],
+   "cc": [
+    "Marcus Bell"
+   ],
+   "subject": "RE: Medicaid plan contract + telehealth expansion: need counsel by Nov 20",
+   "body": "Priya,\n\nWhere we are after today:\n\nHVHP agreement. Redline is attached. Main asks: rates in Exhibit B up to your Riverbend numbers, credentialing in 60 days with provisional status after that, and no termination without cause in year one. The 42 CFR 438 terms they left out are in now too. Once you're fine with it I'll send it to Janet.\n\nStates. Theo's matrix covers all six. NY and NJ go first, then CA, IL, TX and FL. Prescribing for the MAT program is in the same chart.\n\nPart 2 consent and BAA. Comments on both coming early next week. The consent form is still on the old language and the 2024 rule is in force now, so it needs updating.\n\nTalk soon,\nRosa",
+   "quote_of": "mail-intake",
+   "attach": [
+    "redline"
+   ],
+   "facts": [
+    "redline sent",
+    "three asks",
+    "states timeline",
+    "Part 2 next week"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEJAAD5LraLlFCyRYOJpX_f5YpZAAAePU8ZAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-summary.png"
+  },
+  "mail-invite-kickoff": {
+   "id": "mail-invite-kickoff",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-10-23T15:12:00",
+   "from": "Priya Raman",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "cc": [
+    "Marcus Bell"
+   ],
+   "subject": "Northlake / Manatt kickoff (61407-002)",
+   "invite_for": "mtg-kickoff",
+   "note": "Rosa, sending a Teams link for the kickoff. Agenda to follow.",
+   "facts": [
+    "Teams invite",
+    "Priya, Marcus, Rosa"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi7AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-invite-kickoff.png"
+  },
+  "mail-invite-theo": {
+   "id": "mail-invite-theo",
+   "kind": "email",
+   "folder": "sentitems",
+   "when": "2026-10-26T10:52:00",
+   "from": "Rosa Delacroix",
+   "to": [
+    "Theo Navarro"
+   ],
+   "subject": "Rosa / Theo: Northlake licensure matrix (61407-002)",
+   "invite_for": "mtg-theo",
+   "note": "Quick call on the matrix before you start. Bring the state list.",
+   "facts": [
+    "Teams invite",
+    "Rosa, Theo"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEJAAD5LraLlFCyRYOJpX_f5YpZAAAePU8aAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-invite-theo.png"
+  },
+  "mail-theo-reply": {
+   "id": "mail-theo-reply",
+   "kind": "email",
+   "folder": "inbox",
+   "when": "2026-10-26T13:51:00",
+   "from": "Theo Navarro",
+   "to": [
+    "Rosa Delacroix"
+   ],
+   "subject": "RE: matrix (61407-002)",
+   "body": "Done. NJ CDS registration is in the state CS column of the NJ row now, apart from the DEA side.\n\nQuestion for Priya at some point: does Northlake have DEA registrations in all six states already, or just NY?\n\nTheo",
+   "quote": {
+    "from": "Rosa Delacroix",
+    "when": "2026-10-26T13:47:00",
+    "to": "Theo Navarro",
+    "subject": "RE: matrix (61407-002)",
+    "text": "Looks good. Pull NJ CDS out as its own step, it's not the same as DEA.\n\nR"
+   },
+   "attach": [
+    "matrix"
+   ],
+   "facts": [
+    "DEA and state CS split",
+    "NJ CDS in the state CS column",
+    "question on DEA registrations"
+   ],
+   "link": "https://outlook.cloud.microsoft/mail/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAEMAAD5LraLlFCyRYOJpX_f5YpZAAAePFi8AAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mail-theo-reply.png"
+  },
+  "mtg-kickoff": {
+   "id": "mtg-kickoff",
+   "kind": "meeting",
+   "teams": true,
+   "start": "2026-10-26T09:15:00",
+   "end": "2026-10-26T10:00:00",
+   "subject": "Northlake / Manatt kickoff (61407-002)",
+   "organizer": "Priya Raman",
+   "attendees": [
+    "Priya Raman",
+    "Marcus Bell",
+    "Rosa Delacroix"
+   ],
+   "body": "Kickoff on the Hudson Valley Health Plan agreement and the telehealth expansion.",
+   "agenda": [
+    "Exhibit B rates (HVHP is below what Riverbend pays)",
+    "Credentialing: 120 days vs. a January 1 go-live",
+    "Termination without cause on 60 days",
+    "Order of the six states for the board"
+   ],
+   "notes": [
+    "rates up to Riverbend #s",
+    "cred 60 days + provisional",
+    "no w/o cause yr 1, expect 90 back",
+    "NY/NJ Q1; all 6 mapped before Dec board",
+    "Theo on matrix, incl. MAT CS rules",
+    "summary to Priya EOD"
+   ],
+   "importance": "high",
+   "transcript": "tx-kickoff",
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMSAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mtg-kickoff.png"
+  },
+  "mtg-theo": {
+   "id": "mtg-theo",
+   "kind": "meeting",
+   "teams": true,
+   "start": "2026-10-26T12:30:00",
+   "end": "2026-10-26T12:45:00",
+   "subject": "Rosa / Theo: Northlake licensure matrix (61407-002)",
+   "organizer": "Rosa Delacroix",
+   "attendees": [
+    "Rosa Delacroix",
+    "Theo Navarro"
+   ],
+   "body": "Quick one on the six-state matrix before Theo starts.",
+   "agenda": [
+    "Columns: licensure, compact, prescribing, Part 2",
+    "Who takes which states",
+    "MAT prescribing"
+   ],
+   "notes": [
+    "split DEA / state CS",
+    "NY + NJ first, then CA IL TX FL"
+   ],
+   "transcript": "tx-theo",
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMTAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/mtg-theo.png"
+  },
+  "cal-call": {
+   "id": "cal-call",
+   "kind": "meeting",
+   "teams": false,
+   "start": "2026-10-26T16:10:00",
+   "end": "2026-10-26T16:25:00",
+   "subject": "Call Priya re CA",
+   "organizer": "Rosa Delacroix",
+   "attendees": [
+    "Rosa Delacroix",
+    "Priya Raman"
+   ],
+   "location": "Phone: Priya cell (312) 555-0143",
+   "body": "Priya wants to talk California timing before the December board deck. 4:10 to 4:25 PM on her cell, (312) 555-0143.",
+   "notes": [
+    "CA in phase 2? check Medi-Cal telehealth policy",
+    "she'll confirm board date"
+   ],
+   "transcript": null,
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMUAAA%3D?login_hint=r.delacroix%40lawdie.ai",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/cal-call.png"
+  },
+  "tx-kickoff": {
+   "id": "tx-kickoff",
+   "kind": "transcript",
+   "meeting": "mtg-kickoff",
+   "lines": [
+    {
+     "t": "09:15:40",
+     "who": "Priya Raman",
+     "text": "OK, Marcus is on. Rosa, rates first? That's the one the board asks about."
+    },
+    {
+     "t": "09:16:02",
+     "who": "Rosa Delacroix",
+     "text": "Sure. Exhibit B is under what Riverbend pays you for the same codes. We push them up to that."
+    },
+    {
+     "t": "09:18:31",
+     "who": "Marcus Bell",
+     "text": "Credentialing is my problem. A hundred twenty days kills January first."
+    },
+    {
+     "t": "09:18:55",
+     "who": "Rosa Delacroix",
+     "text": "We ask for sixty, and provisional credentialing after that so you can see members."
+    },
+    {
+     "t": "09:24:10",
+     "who": "Priya Raman",
+     "text": "And the without cause termination. Sixty days notice is nothing."
+    },
+    {
+     "t": "09:24:30",
+     "who": "Rosa Delacroix",
+     "text": "I'd take it out for the first year. They'll probably come back with ninety days."
+    },
+    {
+     "t": "09:31:12",
+     "who": "Priya Raman",
+     "text": "States. Board wants New York and New Jersey in Q1."
+    },
+    {
+     "t": "09:31:40",
+     "who": "Priya Raman",
+     "text": "But I need all six mapped before the December board meeting. California and Texas matter for next year's numbers."
+    },
+    {
+     "t": "09:32:05",
+     "who": "Rosa Delacroix",
+     "text": "Fine. Theo does the matrix, all six, with the controlled substance rules for MAT."
+    },
+    {
+     "t": "09:49:58",
+     "who": "Priya Raman",
+     "text": "Great. Send me where we are end of day?"
+    }
+   ],
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMSAAA%3D?login_hint=r.delacroix%40lawdie.ai"
+  },
+  "tx-theo": {
+   "id": "tx-theo",
+   "kind": "transcript",
+   "meeting": "mtg-theo",
+   "lines": [
+    {
+     "t": "12:30:20",
+     "who": "Rosa Delacroix",
+     "text": "One row per state. Licensure, compact, prescribing, Part 2 notes."
+    },
+    {
+     "t": "12:31:05",
+     "who": "Theo Navarro",
+     "text": "Do you want DEA and state CS rules split? It gets messy otherwise."
+    },
+    {
+     "t": "12:31:12",
+     "who": "Rosa Delacroix",
+     "text": "Split them. You take NY and NJ first, then the rest."
+    },
+    {
+     "t": "12:46:40",
+     "who": "Theo Navarro",
+     "text": "OK. NY and NJ first."
+    }
+   ],
+   "link": "https://outlook.cloud.microsoft/calendar/deeplink/read/AAMkAGI2YTMzYzMwLTdiODItNDk3Ny04Nzc1LTJiNWJhODk3YTA0OQBGAAAAAAAGY38smmmTToYOS01RVl2cBwD5LraLlFCyRYOJpX_f5YpZAAAAAAENAAD5LraLlFCyRYOJpX_f5YpZAAAePVMTAAA%3D?login_hint=r.delacroix%40lawdie.ai"
+  },
+  "hvhp-v3": {
+   "id": "hvhp-v3",
+   "kind": "document",
+   "file": "HVHP Participating Provider Agreement v3 61407-002.pdf",
+   "title": "Participating Provider Agreement v3 (Hudson Valley Health Plan)",
+   "facts": [
+    "Exhibit B rates",
+    "120-day credentialing",
+    "termination without cause on 60 days"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/HVHP Participating Provider Agreement v3 61407-002.pdf",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/hvhp-v3.png"
+  },
+  "redline": {
+   "id": "redline",
+   "kind": "document",
+   "file": "HVHP Participating Provider Agreement - Manatt redline 61407-002.docx",
+   "title": "Manatt redline of the HVHP agreement",
+   "facts": [
+    "§4 compensation and Exhibit B",
+    "§6 credentialing",
+    "§11.2 termination",
+    "42 CFR 438 terms added"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/HVHP Participating Provider Agreement - Manatt redline 61407-002.docx",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/redline.png"
+  },
+  "issues": {
+   "id": "issues",
+   "kind": "document",
+   "file": "HVHP agreement issues list 61407-002.docx",
+   "title": "Issues list (prepared in Kiwi)",
+   "facts": [
+    "12 issues",
+    "rate exhibit first"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/HVHP agreement issues list 61407-002.docx",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/issues.png"
+  },
+  "matrix": {
+   "id": "matrix",
+   "kind": "document",
+   "file": "Northlake telehealth licensure matrix 61407-002.xlsx",
+   "title": "Six-state telehealth licensure and prescribing matrix",
+   "facts": [
+    "six states",
+    "compact",
+    "DEA and state CS split"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/Northlake telehealth licensure matrix 61407-002.xlsx",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/matrix.png"
+  },
+  "part2": {
+   "id": "part2",
+   "kind": "document",
+   "file": "Northlake 42 CFR Part 2 Consent and BAA template 61407-002.pdf",
+   "title": "Northlake Part 2 consent and BAA template",
+   "facts": [
+    "consent predates the 2024 rule",
+    "BAA template"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/Northlake 42 CFR Part 2 Consent and BAA template 61407-002.pdf",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/part2.png"
+  },
+  "ocg-northlake": {
+   "id": "ocg-northlake",
+   "kind": "document",
+   "file": "Northlake Outside Counsel Guidelines 2026.pdf",
+   "title": "Northlake Behavioral Health Outside Counsel Guidelines (2026)",
+   "facts": [
+    "Northlake billing rules"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/Northlake Outside Counsel Guidelines 2026.pdf",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/ocg-northlake.png"
+  },
+  "ocg-kestrel": {
+   "id": "ocg-kestrel",
+   "kind": "document",
+   "file": "Kestrel Valley Health Billing Guidelines 2026.pdf",
+   "title": "Kestrel Valley Health Billing Guidelines for Outside Counsel (2026)",
+   "facts": [
+    "Kestrel billing rules"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/Kestrel Valley Health Billing Guidelines 2026.pdf",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/ocg-kestrel.png"
+  },
+  "engagement": {
+   "id": "engagement",
+   "kind": "document",
+   "file": "Engagement letter - Northlake 61407-002 (signed).pdf",
+   "title": "Engagement letter, Northlake (signed)",
+   "facts": [
+    "§2 panel rates $1,075 and $725",
+    "§3 matters not billed"
+   ],
+   "path": "~/Documents/Manatt/Northlake 61407-002/Engagement letter - Northlake 61407-002 (signed).pdf",
+   "screenshot": "~/Documents/Manatt/Northlake 61407-002/Evidence/engagement.png"
+  }
+ },
+ "privateStretches": [],
+ "profile": {
+  "name": "Rosa Delacroix",
+  "timekeeper": "10417",
+  "rate": 1195,
+  "title": "Partner"
+ },
+ "invoice": {
+  "firm": {
+   "name": "Manatt, Phelps & Phillips, LLP",
+   "address": [
+    "7 Times Square",
+    "New York, NY 10036"
+   ]
+  },
+  "billTo": [
+   "Northlake Behavioral Health, Inc.",
+   "Attn: Priya Raman, General Counsel",
+   "400 North LaSalle Street, Suite 1200",
+   "Chicago, IL 60654"
+  ],
+  "client": "61407",
+  "matter": "61407-002",
+  "matterName": "Northlake Behavioral Health - Hudson Valley Health Plan provider agreement and telehealth expansion",
+  "number": "712418",
+  "through": "October 26, 2026",
+  "rateCap": 1075,
+  "rateCapRule": "engagement letter panel rate",
+  "noChargeActivity": "A105",
+  "noChargeRule": "Northlake OCG §5.1",
+  "terms": "Due within 30 days",
+  "timekeeper": {
+   "name": "R. Delacroix",
+   "title": "Partner"
+  },
+  "folder": "~/Documents/Manatt/Northlake 61407-002",
+  "logo": "~/worktrees/demos-manatt-narr/workflows/manatt/narratives/brand/manatt-logo-gold.png",
+  "remit": [
+   "Remit to Manatt, Phelps & Phillips, LLP, Accounts Receivable, 2049 Century Park East, Suite 1700, Los Angeles, CA 90067",
+   "ACH and wire instructions: billing@manatt.example",
+   "Please reference invoice 712418 with your payment."
+  ],
+  "contact": "Questions about this invoice: billing@manatt.example or R. Delacroix, 212.555.0181",
+  "footer": "Sample data for a Lawdie demonstration"
+ },
+ "clientRulebooks": [
+  {
+   "key": "northlake",
+   "client": "Northlake Behavioral Health, Inc.",
+   "short": "Northlake",
+   "title": "Northlake Behavioral Health Outside Counsel Guidelines (2026)",
+   "effective": "January 1, 2026",
+   "doc": "ocg-northlake",
+   "email": "mail-intake",
+   "rules": [
+    {
+     "id": "NBH-3",
+     "section": "§3.1",
+     "title": "Engagement-letter rates",
+     "kind": "rateCap",
+     "rate": 1075,
+     "quote": "Timekeepers are paid at the rates in the engagement letter. Higher rates on an invoice are reduced.",
+     "does": "Bills R. Delacroix at the engagement-letter rate, $1,075 an hour.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§3.1",
+       "email": "mail-intake",
+       "page": 1
+      },
+      {
+       "doc": "engagement",
+       "section": "§2",
+       "email": "mail-engagement",
+       "page": 2
+      }
+     ]
+    },
+    {
+     "id": "NBH-10",
+     "section": "§3.2",
+     "title": "Approved timekeepers only",
+     "kind": "check",
+     "check": "timekeepers",
+     "approved": [
+      "R. Delacroix",
+      "T. Navarro"
+     ],
+     "quote": "Only timekeepers approved in the engagement letter may bill time to Northlake matters.",
+     "does": "Checks each line's timekeeper against the approved list: R. Delacroix and T. Navarro.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§3.2",
+       "email": "mail-intake",
+       "page": 1
+      },
+      {
+       "doc": "engagement",
+       "section": "§2",
+       "email": "mail-engagement",
+       "page": 2
+      }
+     ]
+    },
+    {
+     "id": "NBH-4",
+     "section": "§4.1",
+     "title": "Tenth-hour increments",
+     "kind": "tenths",
+     "quote": "Time is recorded in increments of one-tenth of an hour.",
+     "does": "Rounds each entry's recorded minutes up to the next tenth of an hour.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§4.1",
+       "email": "mail-intake",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "NBH-1",
+     "section": "§4.2",
+     "title": "One task per entry",
+     "kind": "split",
+     "quote": "Each time entry must describe a single task. Block-billed entries will be returned.",
+     "does": "Splits a block-billed entry into one line per task, each with the time Time Capture recorded for that task.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§4.2",
+       "email": "mail-intake",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "NBH-5",
+     "section": "§4.3",
+     "title": "No vague narratives",
+     "kind": "check",
+     "check": "vague",
+     "quote": "Entries such as \"review file\", \"attention to matter\", \"call\" or \"email\" without the subject and the other party are not paid.",
+     "does": "Checks that each narrative names the task, the people and the subject. A bare note such as \"phone call with client\" fails.",
+     "examples": [
+      "phone call with client"
+     ],
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§4.3",
+       "email": "mail-intake",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "NBH-11",
+     "section": "§4.4",
+     "title": "Counseling code first",
+     "kind": "codePrefix",
+     "code": "task",
+     "quote": "Each entry begins with its UTBMS counseling code (C100 to C400).",
+     "does": "Puts each entry's counseling code in front of its narrative, for example \"C300\".",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§4.4",
+       "email": "mail-intake",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "NBH-2",
+     "section": "§5.1",
+     "title": "Internal conferences are not paid",
+     "kind": "noCharge",
+     "activityCode": "A105",
+     "quote": "Conferences between firm attorneys or staff are firm overhead and will not be paid.",
+     "does": "Keeps a conference between firm people on the bill at no charge.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§5.1",
+       "email": "mail-intake",
+       "page": 1
+      },
+      {
+       "doc": "engagement",
+       "section": "§3",
+       "email": "mail-engagement",
+       "page": 2
+      }
+     ]
+    },
+    {
+     "id": "NBH-6",
+     "section": "§5.2",
+     "title": "One attendee per meeting",
+     "kind": "check",
+     "check": "oneAttendee",
+     "quote": "Only one timekeeper may bill for a meeting or call unless Northlake approves more attendees in advance.",
+     "does": "Checks that only one Manatt timekeeper billed each meeting.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§5.2",
+       "email": "mail-intake",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "NBH-7",
+     "section": "§6.1",
+     "title": "Research over 2.0 hours needs approval",
+     "kind": "check",
+     "check": "researchCap",
+     "maxHours": 2,
+     "quote": "Legal research over 2.0 hours on a single issue requires Northlake's prior written approval.",
+     "does": "Checks each research line against the 2.0-hour limit.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§6.1",
+       "email": "mail-intake",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "NBH-8",
+     "section": "§6.2",
+     "title": "No clerical time",
+     "kind": "check",
+     "check": "clerical",
+     "words": [
+      "filing",
+      "file organization",
+      "organize",
+      "scan",
+      "copying",
+      "copies",
+      "scheduling",
+      "calendar",
+      "index",
+      "binder",
+      "proofread"
+     ],
+     "quote": "Clerical and administrative work, such as filing, copying, scheduling and organizing files, is not billable.",
+     "does": "Checks each narrative for clerical work.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§6.2",
+       "email": "mail-intake",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "NBH-9",
+     "section": "§7.1",
+     "title": "Travel at 50%",
+     "kind": "check",
+     "check": "travel",
+     "words": [
+      "travel"
+     ],
+     "quote": "Non-working travel time is billed at 50% of the timekeeper's rate.",
+     "does": "Bills travel time at half rate when there is any.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-northlake",
+       "section": "§7.1",
+       "email": "mail-intake",
+       "page": 2
+      }
+     ]
+    },
+    {
+     "id": "EL-3",
+     "section": "Engagement letter §3",
+     "title": "Intake is not billed",
+     "kind": "notBilled",
+     "words": [
+      "intake",
+      "conflict check",
+      "conflicts review",
+      "initial consultation"
+     ],
+     "quote": "We will not charge for the initial consultation, new matter intake, our conflicts review or the preparation of this letter.",
+     "does": "Bills intake, the conflicts review and the first consultation at no charge.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "engagement",
+       "section": "§3",
+       "email": "mail-engagement",
+       "page": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": "kestrel",
+   "client": "Kestrel Valley Health",
+   "short": "Kestrel Valley",
+   "title": "Kestrel Valley Health Billing Guidelines for Outside Counsel (2026)",
+   "effective": "February 1, 2026",
+   "doc": "ocg-kestrel",
+   "email": "mail-kestrel-ocg",
+   "rules": [
+    {
+     "id": "KVH-1",
+     "section": "§2.1",
+     "title": "Partner rate cap",
+     "kind": "rateCap",
+     "rate": 995,
+     "quote": "Partner time is paid at no more than $995 per hour in 2026.",
+     "does": "Bills R. Delacroix at $995 an hour.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-kestrel",
+       "section": "§2.1",
+       "email": "mail-kestrel-ocg",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "KVH-2",
+     "section": "§3.1",
+     "title": "Tenth-hour increments",
+     "kind": "tenths",
+     "quote": "Bill in tenths of an hour.",
+     "does": "Rounds each entry's recorded minutes up to the next tenth of an hour.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-kestrel",
+       "section": "§3.1",
+       "email": "mail-kestrel-ocg",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "KVH-3",
+     "section": "§3.2",
+     "title": "Time for each task",
+     "kind": "blockWithTimes",
+     "quote": "An entry may list more than one task only if the time for each task appears in parentheses after it.",
+     "does": "Keeps the research and matrix entry on one line and writes in each task's time from Time Capture: (0.7) and (0.9).",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-kestrel",
+       "section": "§3.2",
+       "email": "mail-kestrel-ocg",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "KVH-4",
+     "section": "§3.3",
+     "title": "Activity code first",
+     "kind": "codePrefix",
+     "code": "activity",
+     "quote": "Begin each entry with its UTBMS activity code (A101 to A111).",
+     "does": "Puts each entry's activity code in front of its narrative, for example \"A106\".",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-kestrel",
+       "section": "§3.3",
+       "email": "mail-kestrel-ocg",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "KVH-5",
+     "section": "§4.1",
+     "title": "Calls up to 0.5 hours",
+     "kind": "callCap",
+     "maxHours": 0.5,
+     "quote": "Telephone and video calls are paid up to 0.5 hours each unless Kestrel approves a longer call in writing.",
+     "does": "Cuts a call over 0.5 hours to 0.5 hours.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-kestrel",
+       "section": "§4.1",
+       "email": "mail-kestrel-ocg",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "KVH-6",
+     "section": "§4.2",
+     "title": "Internal conferences: senior attendee only",
+     "kind": "seniorOnly",
+     "quote": "For a conference between firm lawyers, only the most senior attendee may bill.",
+     "does": "Keeps the conference with T. Navarro billable for R. Delacroix, the senior attendee.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-kestrel",
+       "section": "§4.2",
+       "email": "mail-kestrel-ocg",
+       "page": 1
+      }
+     ]
+    },
+    {
+     "id": "KVH-7",
+     "section": "§5.1",
+     "title": "Research over 3.0 hours needs approval",
+     "kind": "check",
+     "check": "researchCap",
+     "maxHours": 3,
+     "quote": "Research over 3.0 hours on one question needs written approval before the work starts.",
+     "does": "Checks each research line against the 3.0-hour limit.",
+     "enabled": true,
+     "sources": [
+      {
+       "doc": "ocg-kestrel",
+       "section": "§5.1",
+       "email": "mail-kestrel-ocg",
+       "page": 1
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "clientRules": {
+  "client": "Northlake Behavioral Health, Inc.",
+  "title": "Northlake Behavioral Health Outside Counsel Guidelines (2026)",
+  "rules": [
+   {
+    "id": "NBH-3",
+    "section": "§3.1",
+    "title": "Engagement-letter rates",
+    "kind": "rateCap",
+    "rate": 1075,
+    "quote": "Timekeepers are paid at the rates in the engagement letter. Higher rates on an invoice are reduced.",
+    "does": "Bills R. Delacroix at the engagement-letter rate, $1,075 an hour.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§3.1",
+      "email": "mail-intake",
+      "page": 1
+     },
+     {
+      "doc": "engagement",
+      "section": "§2",
+      "email": "mail-engagement",
+      "page": 2
+     }
+    ]
+   },
+   {
+    "id": "NBH-10",
+    "section": "§3.2",
+    "title": "Approved timekeepers only",
+    "kind": "check",
+    "check": "timekeepers",
+    "approved": [
+     "R. Delacroix",
+     "T. Navarro"
+    ],
+    "quote": "Only timekeepers approved in the engagement letter may bill time to Northlake matters.",
+    "does": "Checks each line's timekeeper against the approved list: R. Delacroix and T. Navarro.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§3.2",
+      "email": "mail-intake",
+      "page": 1
+     },
+     {
+      "doc": "engagement",
+      "section": "§2",
+      "email": "mail-engagement",
+      "page": 2
+     }
+    ]
+   },
+   {
+    "id": "NBH-4",
+    "section": "§4.1",
+    "title": "Tenth-hour increments",
+    "kind": "tenths",
+    "quote": "Time is recorded in increments of one-tenth of an hour.",
+    "does": "Rounds each entry's recorded minutes up to the next tenth of an hour.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§4.1",
+      "email": "mail-intake",
+      "page": 1
+     }
+    ]
+   },
+   {
+    "id": "NBH-1",
+    "section": "§4.2",
+    "title": "One task per entry",
+    "kind": "split",
+    "quote": "Each time entry must describe a single task. Block-billed entries will be returned.",
+    "does": "Splits a block-billed entry into one line per task, each with the time Time Capture recorded for that task.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§4.2",
+      "email": "mail-intake",
+      "page": 1
+     }
+    ]
+   },
+   {
+    "id": "NBH-5",
+    "section": "§4.3",
+    "title": "No vague narratives",
+    "kind": "check",
+    "check": "vague",
+    "quote": "Entries such as \"review file\", \"attention to matter\", \"call\" or \"email\" without the subject and the other party are not paid.",
+    "does": "Checks that each narrative names the task, the people and the subject. A bare note such as \"phone call with client\" fails.",
+    "examples": [
+     "phone call with client"
+    ],
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§4.3",
+      "email": "mail-intake",
+      "page": 1
+     }
+    ]
+   },
+   {
+    "id": "NBH-11",
+    "section": "§4.4",
+    "title": "Counseling code first",
+    "kind": "codePrefix",
+    "code": "task",
+    "quote": "Each entry begins with its UTBMS counseling code (C100 to C400).",
+    "does": "Puts each entry's counseling code in front of its narrative, for example \"C300\".",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§4.4",
+      "email": "mail-intake",
+      "page": 1
+     }
+    ]
+   },
+   {
+    "id": "NBH-2",
+    "section": "§5.1",
+    "title": "Internal conferences are not paid",
+    "kind": "noCharge",
+    "activityCode": "A105",
+    "quote": "Conferences between firm attorneys or staff are firm overhead and will not be paid.",
+    "does": "Keeps a conference between firm people on the bill at no charge.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§5.1",
+      "email": "mail-intake",
+      "page": 1
+     },
+     {
+      "doc": "engagement",
+      "section": "§3",
+      "email": "mail-engagement",
+      "page": 2
+     }
+    ]
+   },
+   {
+    "id": "NBH-6",
+    "section": "§5.2",
+    "title": "One attendee per meeting",
+    "kind": "check",
+    "check": "oneAttendee",
+    "quote": "Only one timekeeper may bill for a meeting or call unless Northlake approves more attendees in advance.",
+    "does": "Checks that only one Manatt timekeeper billed each meeting.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§5.2",
+      "email": "mail-intake",
+      "page": 1
+     }
+    ]
+   },
+   {
+    "id": "NBH-7",
+    "section": "§6.1",
+    "title": "Research over 2.0 hours needs approval",
+    "kind": "check",
+    "check": "researchCap",
+    "maxHours": 2,
+    "quote": "Legal research over 2.0 hours on a single issue requires Northlake's prior written approval.",
+    "does": "Checks each research line against the 2.0-hour limit.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§6.1",
+      "email": "mail-intake",
+      "page": 1
+     }
+    ]
+   },
+   {
+    "id": "NBH-8",
+    "section": "§6.2",
+    "title": "No clerical time",
+    "kind": "check",
+    "check": "clerical",
+    "words": [
+     "filing",
+     "file organization",
+     "organize",
+     "scan",
+     "copying",
+     "copies",
+     "scheduling",
+     "calendar",
+     "index",
+     "binder",
+     "proofread"
+    ],
+    "quote": "Clerical and administrative work, such as filing, copying, scheduling and organizing files, is not billable.",
+    "does": "Checks each narrative for clerical work.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§6.2",
+      "email": "mail-intake",
+      "page": 1
+     }
+    ]
+   },
+   {
+    "id": "NBH-9",
+    "section": "§7.1",
+    "title": "Travel at 50%",
+    "kind": "check",
+    "check": "travel",
+    "words": [
+     "travel"
+    ],
+    "quote": "Non-working travel time is billed at 50% of the timekeeper's rate.",
+    "does": "Bills travel time at half rate when there is any.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "ocg-northlake",
+      "section": "§7.1",
+      "email": "mail-intake",
+      "page": 2
+     }
+    ]
+   },
+   {
+    "id": "EL-3",
+    "section": "Engagement letter §3",
+    "title": "Intake is not billed",
+    "kind": "notBilled",
+    "words": [
+     "intake",
+     "conflict check",
+     "conflicts review",
+     "initial consultation"
+    ],
+    "quote": "We will not charge for the initial consultation, new matter intake, our conflicts review or the preparation of this letter.",
+    "does": "Bills intake, the conflicts review and the first consultation at no charge.",
+    "enabled": true,
+    "sources": [
+     {
+      "doc": "engagement",
+      "section": "§3",
+      "email": "mail-engagement",
+      "page": 2
+     }
+    ]
+   }
+  ]
+ },
+ "demo": {
+  "seed": "manatt-narratives",
+  "epoch": 0,
+  "stage": "day",
+  "day": "2026-10-26"
+ }
+}

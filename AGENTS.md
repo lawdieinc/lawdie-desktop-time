@@ -11,15 +11,19 @@ the wire contract land in all three repos together.
   machine, review rules, sync payload, file validation, the v1 Swift-format migration),
   `kiwi.ts` (the client), `feed.ts` (Kiwi and browser time brought in: pages, receipts,
   overlap clipping, matter links), `export.ts` (kept entries as CSV: project, date, hours,
-  description; the Time screen's Export CSV, for the range shown), `format.ts`, `state.ts`. Everything here is under
-  `model.test.ts` and `feed.test.ts`.
+  description; the Time screen's Export CSV, for the range shown), `format.ts`, `state.ts`; billing (see
+  Billing): `rules.ts`, `clientRules.ts`, `applyRules.ts`, `invoice.ts`, `invoiceHtml.ts`, `narrative.ts`,
+  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`. Everything here is under
+  `model.test.ts`, `feed.test.ts` and the billing tests beside their files.
 - `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock),
   `store.ts` (the only place the workspace changes; copy → validate → save → publish),
   `capture.ts` (get-windows + powerMonitor → `observe()`), `sync.ts` (token via
   `safeStorage`, the minute tick), `feed.ts` (the import pass, every three minutes),
-  `index.ts` (window, tray, IPC).
+  `index.ts` (window, tray, IPC), `rulesFeed.ts` (client rulebooks from the billing system), `docx.ts` and
+  `xlsx.ts` (the time sheet as Word; a time-system export read).
 - `src/preload/` — the whole surface the window may touch (`window.lawdie`).
-- `src/renderer/` — React. One file, `App.tsx`; brand in `styles.css` (see `docs/brand.md`).
+- `src/renderer/` — React. `App.tsx` (the screens), with billing beside it: `Billing.tsx`, `ClientRules.tsx`,
+  `Rules.tsx`, `Narrative.tsx`, `Imported.tsx`, `Menu.tsx`; brand in `styles.css` (see `docs/brand.md`).
 - `resources/` fonts and brand assets; `build/` icons; `electron-builder.yml` installers.
 - `legacy/swift/` — the first, macOS-only version. Reference only; not built.
 
@@ -123,6 +127,27 @@ the totals, so the model quotes figures rather than computing them). Prompts liv
 `kiwi/backend/src/lib/desktopDrafts.ts` and `desktopInsights.ts`. Drafts and insights
 record their source; "sample" ones come only from demo data and are never replaced.
 One switch, "AI suggestions" (`suggestMatters`), covers all three.
+
+## Billing
+
+Merged from Meeth's `manatt-narratives` on 2026-11-04 (built for the Manatt demo, 2026-10-21 to
+2026-11-04; README "Billing" has the person's view). Client rulebooks (`ClientRulebook`, one card
+per rule with the client's words and its source) arrive by `--rules-feed <url|file>` (`rulesFeed.ts`,
+read every 2 s) or a `--demo <seed.json>` workspace (`resources/demo/manatt.json`; `workspace.demo`
+runs on the seeded day's clock and is never updated by a release). `applyRules()` is the one
+function every figure comes from: the Time page, the Matters page, the time sheet (PDF and DOCX)
+and the invoice all print its lines, so nothing recomputes a line on its own. Entries gain
+`hours`, `taskCode`, `activityCode`, `raw`, `parts`/`sources` (the narrative and the evidence ids
+it rests on, `workspace.evidence`), `status` (draft / suggested / flagged), `typed` (a note from
+Add entry or an iTimeKeep/Excel import matched into the captured entry; it never adds hours) and
+`tasks`. Narratives are drafted by the stored rules (the demo) or Kiwi's model
+(`narrativeDrafter`); a part naming an unknown source is dropped. Schema version 3: every
+addition is optional, a version 2 file reads as it is and is written back as 3 (so a build before
+0.13 refuses it). Nothing here changes capture; billing details go on the entry at keep
+(`KeepInput.hours`/codes/`hourlyRate`) only under a rulebook. A demo or verification run sets
+`LAWDIE_USER_DATA` so it never locks the real workspace. Not built yet: rejecting a bill, custom
+DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`), the logo from the firm's website (a
+file path in the seed), live Outlook/Teams sources (evidence comes from the seed).
 
 ## Kiwi and Lawdie CRM
 
@@ -241,3 +266,8 @@ Add to entry (`mergeIntoEntry()`): the entry is deleted, so the destinations are
 its sittings come back with the new ones as one row (`mergeKey`) to be kept again. Keep
 separate (`separateFrom`) is never asked again. The Keep sheet keeps the captured bounds
 exactly unless the times are edited (`keepBounds()`). Version 0.12.0.
+2026-11-04, later: `manatt-narratives` (Meeth, 17 commits from 0.8.1) merged into main: billing
+(section above). Resolved by hand: main's version, Install-on-press updater, callout, text sizes,
+idle/merge/screenshot rows and Keep sheet kept, with the branch's rules check, hours and codes
+added to the sheet; the branch's narrative `SourceRef` renamed `NarrativeSource` (feed.ts owns
+`SourceRef`). Tests 162.

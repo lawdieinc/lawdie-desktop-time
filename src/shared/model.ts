@@ -1,5 +1,6 @@
 import { prepareImportedKeep, validateFeedState, type FeedState, type SourceRef } from "./feed";
 import { isProduct, type Product } from "./kiwi";
+import type { MatterContext, Profile, RuleSet } from "./rules";
 /* The workspace and the rules that change it. Pure: no Electron, no filesystem, no
    clock of its own — every function takes `now` in milliseconds — so the whole thing
    runs under vitest and inside the main process unchanged.
@@ -10,7 +11,12 @@ import { isProduct, type Product } from "./kiwi";
    not time, until a person keeps it; kept time never overlaps; rates freeze at save.
    Dates are ISO-8601 strings, which is both the file format and the wire format. */
 
-export const SCHEMA_VERSION = 2;
+/** 3 (2026-10-26): entries may carry what the person typed, the drafted narrative's parts and
+ *  their sources, and the workspace an evidence list. Every addition is optional, so a version 2
+ *  file reads as it is and is written back as 3. */
+export const SCHEMA_VERSION = 3;
+/** Older versions this app reads unchanged. */
+const READS_VERSIONS = new Set<unknown>([2, SCHEMA_VERSION]);
 export const APP_ID = "co.lawdie.timecapture.desktop";
 /** A stalled process or a sleep must never inflate a timer or a segment. */
 export const GAP_SECONDS = 45;
@@ -37,6 +43,9 @@ export type Project = {
     /** What a model made of the matter's work, shown on its page. Nothing writes one yet but
      *  sample data ("sample"); Kiwi is meant to ("kiwi"). */
     insight?: MatterInsight | null;
+    /** The matter's number, client and people, and what its documents are called: what the
+     *  local drafter (src/shared/narrative.ts) and the billing rules need to read capture. */
+    context?: MatterContext | null;
 };
 
 export type MatterInsight = { summary: string; points: string[]; generatedAt: string; source: "kiwi" | "sample" };
@@ -66,15 +75,186 @@ export type TimeEntry = {
     drafted?: DraftSource;
     /** Screenshots of the activity it was kept from, inside its time. On this computer only; never synced. */
     screenshots?: string[];
+    /** Hours billed, in the client's increment; absent means the captured time. */
+    hours?: number;
+    /** UTBMS task and activity codes (P500 / A103), when the client asks for them. */
+    taskCode?: string;
+    activityCode?: string;
+    /** What the attorney typed on the time card ("phone call with client"); empty when nothing. */
+    raw?: string;
+    /** The drafted narrative in parts, each with the evidence ids it rests on (workspace.evidence). */
+    parts?: NarrativePart[];
+    /** The sources behind the parts, in order, as the side panel lists them. */
+    sources?: NarrativeSource[];
+    /** draft: drafted from evidence; suggested: built from matter history, to confirm; flagged: needs the person. */
+    status?: EntryStatus;
+    /** Why an entry is suggested or flagged. */
+    why?: string;
+    /** The person edited the narrative: the parts no longer match it, so it shows as plain text. */
+    partsEdited?: boolean;
+    /** Who drafted the parts: the stored rules, or a model. */
+    drafter?: DrafterKind;
+    /** What capture saw for this time: the app and its window title or document (a browser stretch has no activity). */
+    seen?: { app: string; title: string };
+    /** The high-level task this entry is part of ("hvhp-agreement", "HVHP provider agreement"); the Time page groups by it. */
+    group?: string;
+    groupLabel?: string;
+    /** When the narrative was drafted. */
+    draftedAt?: string;
+    /** What capture saw for this entry, stretch by stretch: app, window or document, start, minutes. */
+    work?: WorkStretch[];
+    /** Why the narrative says what it says, one plain sentence each. */
+    reasons?: string[];
+    /** Why the entry is on its matter ("Matter 61407-002 from the meeting title."). */
+    matterReason?: string;
+    /** A note the person typed for this work (an imported row or Add entry) that was matched and accepted into this
+     *  entry. It is the same work, so its hours are never added: the entry keeps the hours Time Capture recorded. */
+    typed?: { note: string; hours: number; rowID: string; origin: "import" | "manual" } | null;
+    /** The tasks of a block-billed entry, one per work stretch (`stretch` indexes `work`), with their own codes: what a
+     *  split or a "time for each task" rule bills. Without them a rule splits the narrative at its semicolons. */
+    tasks?: EntryTask[] | null;
 };
+
+/** What the time sheet and invoice PDFs need beyond the entries (src/shared/invoice.ts). Written by a demo seed. */
+export type InvoiceTerms = {
+    firm: { name: string; address: string[] };
+    billTo: string[];
+    client: string;
+    matter: string;
+    matterName: string;
+    number: string;
+    through: string;
+    /** The most an hour may bill at (an engagement-letter panel rate), and where that rule comes from. */
+    rateCap?: number;
+    rateCapRule?: string;
+    /** Entries with this UTBMS activity code bill at no charge (internal conferences), and the rule. */
+    noChargeActivity?: string;
+    noChargeRule?: string;
+    terms: string;
+    timekeeper: { name: string; title: string };
+    /** Where the PDFs are saved. */
+    folder?: string;
+    /** The firm's logo, an absolute PNG path on this machine. */
+    logo?: string;
+    footer?: string;
+    /** Where and how to pay, as lines (the seed writes them); without them the invoice prints placeholders. */
+    remit?: string[] | string | null;
+    /** Who to ask about the invoice. */
+    contact?: string | null;
+};
+
+export type EntryTask = { stretch?: number | null; text: string; task?: string | null; activity?: string | null; hours?: number | null };
+
+export type WorkStretch = { app: string; title: string; startedAt: string; minutes: number; url?: string | null };
+
+/** A row typed into the firm's time system (an iTimeKeep export), matched back to the captured entry it describes. */
+export type ImportedRow = {
+    id: string;
+    date: string;
+    matter: string;
+    timekeeper: string;
+    hours: number;
+    description: string;
+    /** The captured entry this row describes, or null when no captured work matches. */
+    entryID: string | null;
+    /** The person's choice: use Lawdie's narrative for this row, or keep what they typed. */
+    decision?: "use" | "keep" | null;
+    /** Matched to captured work ("Link sources and draft narratives" or "Expand narrative"); until then the row shows as typed. */
+    linked?: boolean;
+    /** Where the row came from: an imported export, or typed into this app with Add entry. */
+    origin?: "import" | "manual";
+    /** For an imported row, the file it came from: the iTimeKeep CSV export, or a spreadsheet (.xlsx). */
+    source?: "itimekeep" | "excel" | null;
+    /** The matter the row was typed for, when it was picked from this app's matters (Add entry). */
+    projectID?: string | null;
+    /** When this row found no entry of its own because another typed row already holds that work: that row's id. */
+    sameAs?: string | null;
+    /** The matched entry as it was before this row's decision changed it, so Undo puts it back exactly. */
+    prior?: Partial<Pick<TimeEntry, "description" | "status" | "why" | "partsEdited" | "drafted" | "typed">> | null;
+};
+
+/** One of a client's billing rules, in the client's own words, with what Lawdie does about it. */
+export type ClientRule = {
+    /** "NBH-2". */
+    id: string;
+    /** "§5.1" or "Engagement letter §3". */
+    section: string;
+    title: string;
+    /** The client's words, quoted. */
+    quote: string;
+    /** What Lawdie does, in a sentence. */
+    does: string;
+    /** What the rule does to a bill (src/shared/invoice.ts): split one task per line; noCharge an activity code at no
+     *  charge; rateCap the rate; tenths hours in tenths; notBilled tasks named by `words`; codePrefix a UTBMS code in
+     *  front of the narrative; callCap calls cut to `maxHours`; blockWithTimes several tasks on one line, each task's
+     *  time written in; seniorOnly an internal conference billed for the senior attendee only. check: read only. */
+    kind: "split" | "noCharge" | "rateCap" | "tenths" | "notBilled" | "codePrefix" | "callCap" | "blockWithTimes" | "seniorOnly" | "check";
+    activityCode?: string;
+    rate?: number;
+    words?: string[];
+    /** codePrefix: which code goes first, the task code (C300) or the activity code (A106). */
+    code?: "task" | "activity";
+    /** For a check: which one (src/shared/clientRules.ts), its limit, the approved names, and typed notes to test it on. */
+    check?: "vague" | "oneAttendee" | "researchCap" | "clerical" | "travel" | "timekeepers";
+    maxHours?: number;
+    approved?: string[];
+    examples?: string[];
+    /** Where the rule is written: a document (evidence id), its section and page, and the email that delivered it. */
+    sources?: RuleSource[];
+    enabled: boolean;
+};
+export type RuleSource = { doc: string; section: string; page?: number | null; email?: string | null };
+export type ClientRules = { client: string; title: string; rules: ClientRule[] };
+/** One client's billing rules as the app applies them (Time page, Apply client rules). */
+export type ClientRulebook = {
+    /** "northlake". */
+    key: string;
+    client: string;
+    /** "Northlake", "Kestrel Valley". */
+    short: string;
+    title: string;
+    /** "January 1, 2026". */
+    effective: string;
+    /** The guidelines document and the email that delivered them (evidence ids). */
+    doc: string;
+    email: string;
+    rules: ClientRule[];
+};
+const RULE_KINDS = new Set<unknown>(["split", "noCharge", "rateCap", "tenths", "notBilled", "codePrefix", "callCap", "blockWithTimes", "seniorOnly", "check"]);
+const rulesValid = (rules: unknown): boolean => Array.isArray(rules) && rules.every((r) => !!r && typeof r.id === "string" && RULE_KINDS.has(r.kind) && typeof r.enabled === "boolean");
+
+export type NarrativePart = { text: string; evidence: string[]; slot?: string | null };
+export type NarrativeSource = { id: string; kind: string; label: string };
+export type EntryStatus = "draft" | "suggested" | "flagged" | "dismissed";
+const ENTRY_STATUSES = new Set<unknown>(["draft", "suggested", "flagged", "dismissed"]);
+export type DrafterKind = "rules" | "model";
+/** One thing a narrative rests on: an email, a meeting, a transcript or a document (story.json's evidence). */
+export type Evidence = {
+    id: string;
+    kind: string;
+    subject?: string; from?: string; to?: string[]; cc?: string[]; when?: string; body?: string;
+    start?: string; end?: string; attendees?: string[]; organizer?: string; teams?: boolean; location?: string; transcript?: string | null;
+    meeting?: string; lines?: { t: string; who: string; text: string }[];
+    file?: string; title?: string; path?: string;
+    facts?: string[];
+    /** A Teams invite: the meeting it is the invite for. */
+    invite_for?: string | null;
+    /** An Outlook web link, filled in after the Graph seed. */
+    link?: string;
+    /** A picture of the source as it looked (an absolute PNG path on this machine). */
+    screenshot?: string;
+};
+/** A stretch kept off the bill on purpose (personal browsing): shown greyed, never synced. */
+export type PrivateStretch = { key: string; startedAt: string; endedAt: string; app: string; title: string; why: string };
 
 export type Interval = { startedAt: string; endedAt: string };
 
-/** Where an AI draft came from: Kiwi, or sample data (nothing drafts yet). */
-export type DraftSource = "kiwi" | "sample";
+/** Where a draft came from: Kiwi, sample data, or the local drafter that reads capture (src/shared/narrative.ts). */
+export type DraftSource = "kiwi" | "sample" | "capture";
+const DRAFT_SOURCES = new Set<unknown>(["kiwi", "sample", "capture"]);
 export type Draft = { text: string; source: DraftSource };
 export const DRAFT_MAX = 500;
-const draftValid = (d: Draft | null | undefined): boolean => d == null || (typeof d.text === "string" && d.text.length > 0 && d.text.length <= DRAFT_MAX && (d.source === "kiwi" || d.source === "sample"));
+const draftValid = (d: Draft | null | undefined): boolean => d == null || (typeof d.text === "string" && d.text.length > 0 && d.text.length <= DRAFT_MAX && DRAFT_SOURCES.has(d.source));
 
 export type RunningTimer = {
     description: string;
@@ -158,6 +338,8 @@ export type Preferences = {
     captureScreenshots?: boolean;
     /** The window's zoom, for reading at a distance: 1 (standard) to TEXT_SIZES' largest. Absent is 1. */
     textSize?: number;
+    /** Who drafts narratives from evidence: the stored rules (the demo) or a model through Kiwi. */
+    narrativeDrafter?: DrafterKind;
 };
 
 /** The text sizes Settings offers. */
@@ -192,6 +374,25 @@ export type Workspace = {
     currentActivity: Activity | null;
     preferences: Preferences;
     sync: SyncState | null;
+    /** Each client's billing rules, as the billing system last sent them (src/main/rulesFeed.ts). */
+    rulebooks?: RuleSet[];
+    /** Who keeps time here: the timekeeper the rules check entries for. */
+    profile?: Profile | null;
+    /** A demo workspace made from a seed file: which reset and which stage it is at. Never set on a real workspace. */
+    demo?: { seed: string; epoch: number; stage: string; day: string } | null;
+    /** What narratives rest on, by id: emails, meetings, transcripts, documents. Local only; never synced. */
+    evidence?: Record<string, Evidence>;
+    /** Stretches kept off the bill on purpose; local only, never synced. */
+    privateStretches?: PrivateStretch[];
+    /** Rows imported from the firm's time system, each matched to a captured entry (src/shared/importMatch.ts). Local only. */
+    imported?: ImportedRow[];
+    /** Firm, bill-to and the client's billing rules for the time sheet and invoice. */
+    invoice?: InvoiceTerms | null;
+    /** The client's billing rules (its outside counsel guidelines and engagement letter), each on or off. */
+    clientRules?: ClientRules | null;
+    /** Every client whose rules can be applied to the day, and the one applied now (its key), or null for generic billing. */
+    clientRulebooks?: ClientRulebook[] | null;
+    billingClient?: string | null;
 };
 
 export const DEFAULT_EXCLUSIONS = [
@@ -208,7 +409,7 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export function defaultPreferences(): Preferences {
-    return { importKiwiTime: false, captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, captureScreenshots: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS] };
+    return { importKiwiTime: false, captureEnabled: false, captureTitles: false, captureDocuments: false, captureScreenText: false, suggestMatters: false, captureScreenshots: false, idleMinutes: 3, retentionDays: 14, excludedOwnerIDs: [...DEFAULT_EXCLUSIONS], narrativeDrafter: "rules" };
 }
 
 export function emptyWorkspace(): Workspace {
@@ -350,6 +551,12 @@ export type KeepInput = {
     endedAt?: string;
     /** Leave the flagged idle time out of the entry. */
     leaveOutIdle?: boolean;
+    /** Billing details the client's rules ask for (see TimeEntry). */
+    hours?: number;
+    taskCode?: string;
+    activityCode?: string;
+    /** A rate other than the matter's, when a client rule caps it; frozen at save like any rate. */
+    hourlyRate?: number;
 };
 
 /** Spans minus the spans to take out, in order. */
@@ -431,11 +638,12 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     const sourceRefs: SourceRef[] = (picked as Activity[]).filter((a) => a.origin).map((a) => ({ kind: a.sourceKind!, id: a.originRef!, account: a.originAccount!, intervals: clipSittings(intervals(a), start, end) }));
     const entry: TimeEntry = {
         id: uuid(), description: input.description.trim(), projectID, ...span,
-        billable: input.billable, hourlyRate: project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
+        billable: input.billable, hourlyRate: input.hourlyRate ?? project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
         ...(ids.length > 1 ? { activityIDs: ids } : {}),
         ...(sourceRefs.length ? { sourceRefs } : {}),
         ...(input.drafted ? { drafted: input.drafted } : {}),
         ...(shots.length ? { screenshots: shots } : {}),
+        ...billingFields(input),
     };
     saveEntry(w, entry, now);
     for (const a of picked as Activity[]) {
@@ -443,6 +651,105 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
         if (matter) { a.matter = matter; a.matterBy = "person"; }
     }
     return entry;
+}
+
+/** The billing details of a keep or an edit, checked: hours in hundredths, codes trimmed and upper case. */
+function billingFields(input: { hours?: number; taskCode?: string; activityCode?: string }): Pick<TimeEntry, "hours" | "taskCode" | "activityCode"> {
+    const out: Pick<TimeEntry, "hours" | "taskCode" | "activityCode"> = {};
+    if (input.hours !== undefined) {
+        if (!Number.isFinite(input.hours) || input.hours < 0 || input.hours > 24) throw new WorkspaceError("Enter hours between 0 and 24.");
+        out.hours = Math.round(input.hours * 100) / 100;
+    }
+    const code = (v: string | undefined) => v?.trim().toUpperCase().slice(0, 8) || undefined;
+    if (code(input.taskCode)) out.taskCode = code(input.taskCode);
+    if (code(input.activityCode)) out.activityCode = code(input.activityCode);
+    return out;
+}
+
+export type KeepLine = { activityIDs: string[]; input: KeepInput; foldInto?: string | null };
+
+/**
+ * Keep several lines at once, all or nothing (the store saves only a mutation that did not
+ * throw): a matter's day split into one entry per task (src/shared/rules.ts splitPlan),
+ * each line from its own sittings. A line with `foldInto` adds its sittings to an entry
+ * already kept (one email entry for the day) instead of making a new one.
+ */
+export function keepLines(w: Workspace, lines: KeepLine[], now: number): TimeEntry[] {
+    if (!lines.length) throw new WorkspaceError("Nothing to keep.");
+    const seen = new Set<string>();
+    for (const l of lines) for (const id of l.activityIDs) { if (seen.has(id)) throw new WorkspaceError("A sitting can be kept in one entry only."); seen.add(id); }
+    return lines.map((l) => (l.foldInto ? foldInto(w, l.foldInto, l.activityIDs, l.input, now) : keepStretch(w, l.activityIDs, l.input, now)));
+}
+
+/** Pending sittings join an entry already kept: its span widens to hold them and only the sittings count. */
+export function foldInto(w: Workspace, entryID: string, activityIDs: string[], input: Partial<KeepInput>, now: number): TimeEntry {
+    const target = w.entries.find((e) => e.id === entryID);
+    if (!target) throw new WorkspaceError("That entry no longer exists.");
+    const picked = activityIDs.map((id) => w.activities.find((a) => a.id === id));
+    if (!activityIDs.length || picked.some((a) => !a || a.disposition !== "pending")) throw new WorkspaceError("This activity has already been reviewed.");
+    const spans = mergeAdjacent([...intervals(target), ...(picked as Activity[]).map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt }))]);
+    const next: TimeEntry = {
+        ...target,
+        startedAt: spans[0].startedAt, endedAt: spans[spans.length - 1].endedAt,
+        sittings: spans,
+        activityIDs: [...new Set([target.activityID, ...(target.activityIDs ?? []), ...activityIDs].filter((x): x is string => !!x))],
+        ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+        ...billingFields(input),
+    };
+    if (spans.length <= 1) delete next.sittings;
+    if (next.description !== target.description) delete next.drafted;
+    saveEntry(w, next, now);
+    for (const a of picked as Activity[]) a.disposition = "kept";
+    return next;
+}
+
+/** A redrafted narrative for an entry (src/shared/drafter.ts): the parts and the text they make. */
+export function setNarrative(w: Workspace, id: string, parts: NarrativePart[], drafter: DrafterKind, now: number): TimeEntry {
+    const e = w.entries.find((x) => x.id === id);
+    if (!e) throw new WorkspaceError("That entry no longer exists.");
+    const text = parts.map((p) => p.text).join("").trim();
+    if (!text) throw new WorkspaceError("The drafter returned no narrative.");
+    const next: TimeEntry = { ...e, description: text.slice(0, DRAFT_MAX), parts, drafter, draftedAt: new Date(now).toISOString() };
+    delete next.partsEdited;
+    delete next.drafted;
+    saveEntry(w, next, now);
+    return next;
+}
+
+export type EntryChange = { description?: string; hours?: number; taskCode?: string; activityCode?: string; billable?: boolean; hourlyRate?: number;
+    /** The matter the entry goes to (a flagged entry the person assigns). */
+    projectID?: string | null;
+    /** The person confirms a suggested or flagged entry as it now stands. */
+    confirm?: boolean };
+
+/** Change a kept entry's description, billing details, billable flag or rate (a client rule's fix). Its times stay. */
+export function editEntry(w: Workspace, id: string, change: EntryChange, now: number): TimeEntry {
+    const e = w.entries.find((x) => x.id === id);
+    if (!e) throw new WorkspaceError("That entry no longer exists.");
+    const next: TimeEntry = { ...e, ...billingFields(change) };
+    // An emptied code field takes the code off the entry.
+    if (change.taskCode !== undefined && !change.taskCode.trim()) delete next.taskCode;
+    if (change.activityCode !== undefined && !change.activityCode.trim()) delete next.activityCode;
+    if (change.description !== undefined) {
+        next.description = change.description.trim();
+        if (next.description !== e.description) {
+            delete next.drafted;
+            // The person's own words: what they typed and the sources stay; the parts no longer describe it.
+            if (next.parts?.length) next.partsEdited = true;
+        }
+    }
+    if (change.projectID !== undefined) {
+        if (change.projectID && !project(w, change.projectID)) throw new WorkspaceError("Choose an existing matter.");
+        next.projectID = change.projectID || null;
+    }
+    // A person's edit or confirmation settles a suggestion; a flagged entry settles once it has a matter and a narrative.
+    if (next.status === "suggested" && (change.confirm || next.description !== e.description)) delete next.status;
+    if (next.status === "flagged" && change.confirm && next.projectID && next.description.trim()) delete next.status;
+    if (!next.status) delete next.why;
+    if (change.billable !== undefined) next.billable = change.billable === true;
+    if (change.hourlyRate !== undefined) next.hourlyRate = change.hourlyRate;
+    saveEntry(w, next, now);
+    return next;
 }
 
 export const MATTER_MAX = 120;
@@ -1037,19 +1344,40 @@ export function normalizeSync(raw: unknown): SyncState | null {
 const DISPOSITIONS = new Set(["pending", "kept", "dismissed"]);
 const validIso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.parse(v));
 
+const narrativeValid = (e: TimeEntry): boolean =>
+    (e.raw == null || typeof e.raw === "string") && (e.why == null || typeof e.why === "string") &&
+    (e.seen == null || (typeof e.seen.app === "string" && typeof e.seen.title === "string")) &&
+    (e.tasks == null || (Array.isArray(e.tasks) && e.tasks.every((t) => !!t && typeof t.text === "string"))) &&
+    (e.typed == null || (typeof e.typed === "object" && typeof e.typed.note === "string" && typeof e.typed.rowID === "string" && Number.isFinite(e.typed.hours))) &&
+    (e.work == null || (Array.isArray(e.work) && e.work.every((x) => x && typeof x.app === "string" && typeof x.title === "string" && validIso(x.startedAt) && Number.isFinite(x.minutes)))) &&
+    (e.reasons == null || (Array.isArray(e.reasons) && e.reasons.every((x) => typeof x === "string"))) &&
+    (e.group == null || typeof e.group === "string") && (e.groupLabel == null || typeof e.groupLabel === "string") && (e.draftedAt == null || validIso(e.draftedAt)) &&
+    (e.status == null || ENTRY_STATUSES.has(e.status)) &&
+    (e.parts == null || (Array.isArray(e.parts) && e.parts.every((p) => p && typeof p.text === "string" && Array.isArray(p.evidence) && p.evidence.every((id) => typeof id === "string")))) &&
+    (e.sources == null || (Array.isArray(e.sources) && e.sources.every((x) => x && typeof x.id === "string" && typeof x.kind === "string" && typeof x.label === "string")));
+
 /** Throws on anything that would make the engine misbehave; a corrupt file is preserved, never repaired. */
 export function validate(w: Workspace): Workspace {
     const p = w.preferences;
     validateFeedState(w);
     const ok =
         w.schemaVersion === SCHEMA_VERSION &&
+        w.entries.every(narrativeValid) &&
+        (w.evidence == null || (typeof w.evidence === "object" && !Array.isArray(w.evidence) && Object.entries(w.evidence).every(([k, v]) => !!v && typeof v === "object" && v.id === k && typeof v.kind === "string"))) &&
+        (w.clientRules == null || rulesValid(w.clientRules.rules)) &&
+        (w.clientRulebooks == null || (Array.isArray(w.clientRulebooks) && w.clientRulebooks.every((b) => !!b && typeof b.key === "string" && typeof b.client === "string" && rulesValid(b.rules)))) &&
+        (w.billingClient == null || typeof w.billingClient === "string") &&
+        (w.imported == null || (Array.isArray(w.imported) && new Set(w.imported.map((r) => r?.id)).size === w.imported.length && w.imported.every((r) => !!r && typeof r.id === "string" && typeof r.description === "string" && Number.isFinite(r.hours)
+            && (r.origin == null || r.origin === "import" || r.origin === "manual") && (r.prior == null || typeof r.prior === "object")))) &&
+        (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&
         p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) && (p.textSize == null || (TEXT_SIZES as readonly number[]).includes(p.textSize)) &&
         new Set(w.entries.map((e) => e.id)).size === w.entries.length &&
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight)) &&
-        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || e.drafted === "kiwi" || e.drafted === "sample") && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20)) &&
+        w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || DRAFT_SOURCES.has(e.drafted)) && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20) && (e.hours == null || (Number.isFinite(e.hours) && e.hours >= 0 && e.hours <= 24))) &&
+        (w.rulebooks == null || (Array.isArray(w.rulebooks) && w.rulebooks.every((r) => r && typeof r.clientId === "string" && Array.isArray(r.rules)))) &&
         w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
@@ -1087,8 +1415,10 @@ export function migrateV1(raw: Record<string, unknown>): Workspace {
 export function parseWorkspace(text: string): Workspace {
     const raw = JSON.parse(text) as Record<string, unknown>;
     if (raw.schemaVersion === 1) return validate(migrateV1(raw));
-    if (raw.schemaVersion !== SCHEMA_VERSION) throw new WorkspaceError("This workspace was created by a newer Time Capture version. Update Time Capture before opening it.");
+    if (!READS_VERSIONS.has(raw.schemaVersion)) throw new WorkspaceError("This workspace was created by a newer Time Capture version. Update Time Capture before opening it.");
     const w = raw as unknown as Workspace;
+    // Version 2 holds nothing version 3 reads differently: it is written back as 3.
+    w.schemaVersion = SCHEMA_VERSION;
     w.preferences = { ...defaultPreferences(), ...(w.preferences ?? {}) };
     w.sync = normalizeSync(w.sync);
     w.timer ??= null;

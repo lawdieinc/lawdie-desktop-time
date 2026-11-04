@@ -1,0 +1,348 @@
+{
+  "schema": "lawdie.rules-export/v1",
+  "world": "manatt",
+  "client": {
+    "id": "C-104882",
+    "name": "Halvorsen Health Partners"
+  },
+  "matters": [
+    "104882-0001",
+    "104882-0002",
+    "104882-0003"
+  ],
+  "version": 5,
+  "made_by": "billing-kit/generate_manatt.py",
+  "guidelines": "Halvorsen Outside Counsel Billing Guidelines",
+  "timekeepers": [
+    {
+      "id": "NK41",
+      "name": "Nadia Kessler",
+      "rate": 1150
+    },
+    {
+      "id": "TL77",
+      "name": "Theo Lindqvist",
+      "rate": 640
+    }
+  ],
+  "rules": [
+    {
+      "id": "HHP-1",
+      "label": "R1",
+      "clause": "\u00a73.1",
+      "text": "Record time in increments of one-tenth of an hour.",
+      "title": "Time is recorded in tenths of an hour",
+      "check_type": "INC01",
+      "check": "time_increment",
+      "parameters": {
+        "incr": 0.1
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-2",
+      "label": "R2",
+      "clause": "\u00a73.2",
+      "text": "Each task must be a separate entry with its own time. Halvorsen returns any entry that lists several tasks.",
+      "title": "No block billing",
+      "check_type": "BLK01",
+      "check": "block_billing",
+      "parameters": {
+        "max_tasks": 1,
+        "penalty": "split",
+        "separators": ";,",
+        "auto_split": true
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-3",
+      "label": "R3",
+      "clause": "\u00a73.3",
+      "text": "Every time entry must carry a UTBMS task code and activity code: the Project code set for transactions, the Counseling code set for advice.",
+      "title": "Task codes required",
+      "check_type": "INV02",
+      "check": "task_codes",
+      "parameters": {
+        "codeset": "matter"
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-4",
+      "label": "R4",
+      "clause": "\u00a73.5",
+      "text": "Halvorsen does not pay for conferences between firm timekeepers.",
+      "title": "Internal conferences are not billable",
+      "check_type": "NB01",
+      "check": "internal_conference",
+      "parameters": {
+        "mode": "none"
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-5",
+      "label": "R5",
+      "clause": "\u00a74.2",
+      "text": "Work on HIPAA business associate terms is billed under its own phase, task code P270, so the Privacy Office can track it apart from the commercial terms.",
+      "title": "HIPAA business associate terms billed under task code P270",
+      "check_type": "PH01",
+      "check": "separate_phase",
+      "parameters": {
+        "kw": [
+          "business associate",
+          "baa"
+        ],
+        "task": "P270",
+        "label": "HIPAA business associate terms"
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-6",
+      "label": "R6",
+      "clause": "\u00a74.4",
+      "text": "Legal research above 5.0 hours on one issue needs Halvorsen's written approval in advance.",
+      "title": "Research above 5 hours on one issue needs approval",
+      "check_type": "NB07",
+      "check": "research_threshold",
+      "parameters": {
+        "max_hrs": 5.0,
+        "per": "issue"
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-7",
+      "label": "R7",
+      "clause": "\u00a75.1",
+      "text": "Travel time is billed at 50 percent of the timekeeper's hourly rate.",
+      "title": "Travel billed at 50%",
+      "check_type": "TRV01",
+      "check": "travel_rate",
+      "parameters": {
+        "pct": 50.0
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-8",
+      "label": "R8",
+      "clause": "\u00a75.3",
+      "text": "Clerical work, such as scanning, copying, organizing documents or calendaring, is firm overhead.",
+      "title": "Clerical work is not billable",
+      "check_type": "TK06",
+      "check": "clerical_work",
+      "parameters": {
+        "kw": [
+          "scan",
+          "copy",
+          "organize",
+          "collate",
+          "file-stamp",
+          "calendar",
+          "docket"
+        ]
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-9",
+      "label": "R9",
+      "clause": "\u00a76.1",
+      "text": "The rates in the engagement letter stay fixed for the first twelve months of the engagement.",
+      "title": "Rate freeze",
+      "check_type": "RTE02",
+      "check": "rate_freeze",
+      "parameters": {
+        "freeze_until": "2027-09-30"
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-10",
+      "label": "R10",
+      "clause": "\u00a77.2",
+      "text": "Attach an itemized receipt to every expense over $75.",
+      "title": "Receipt threshold",
+      "check_type": "EXP06",
+      "check": "expense_receipt",
+      "parameters": {
+        "threshold": 75.0
+      },
+      "applies_at_entry": false,
+      "source": {
+        "stage": "guidelines",
+        "doc": "Halvorsen_OCG_2026.pdf",
+        "kind": "OCG",
+        "date": "2026-10-01"
+      },
+      "status": "active",
+      "version_added": 1
+    },
+    {
+      "id": "HHP-E1",
+      "label": "E1",
+      "clause": null,
+      "text": "As we discussed, we'll cover one hour for the redline session itself. Please take the rest off the top.",
+      "title": "The redline session capped at 1 h, agreed by email",
+      "check_type": "AGR01",
+      "check": "agreed_cap",
+      "parameters": {
+        "max_hours": 1.0,
+        "write_off": false,
+        "match": "session",
+        "what": "the redline session",
+        "matter": "",
+        "date_to": "2026-10-16"
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "client_note",
+        "doc": "Lauren Mbeki's email",
+        "kind": "Email",
+        "date": "2026-10-16"
+      },
+      "status": "active",
+      "version_added": 2
+    },
+    {
+      "id": "HHP-11",
+      "label": "R11",
+      "clause": null,
+      "text": "Our guidelines cap research at $700/hr. Please move this to Theo's rate or write it down.",
+      "title": "Research above $700 an hour is flagged",
+      "check_type": "RTE05",
+      "check": "task_rate_cap",
+      "parameters": {
+        "task": "research",
+        "cap": 700.0,
+        "reassign_to": "Theo"
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "rejection",
+        "doc": "Lauren Mbeki's rejection, Nov 4",
+        "kind": "Rejection",
+        "date": "2026-11-04"
+      },
+      "status": "active",
+      "version_added": 3
+    },
+    {
+      "id": "HHP-12",
+      "label": "R12",
+      "clause": null,
+      "text": "We don't pay for individual emails of a tenth or less. Fold these into one entry for the day.",
+      "title": "Short emails merge into one entry for the day",
+      "check_type": "INC03",
+      "check": "merge_short_emails",
+      "parameters": {
+        "max_hrs": 0.1
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "rejection",
+        "doc": "Lauren Mbeki's rejection, Nov 4",
+        "kind": "Rejection",
+        "date": "2026-11-04"
+      },
+      "status": "active",
+      "version_added": 4
+    },
+    {
+      "id": "HHP-13",
+      "label": "R13",
+      "clause": null,
+      "text": "Our auditors return any drafting entry that doesn't name the document. Name the agreement in every drafting entry.",
+      "title": "Drafting entries name the document",
+      "check_type": "NAR04",
+      "check": "name_the_document",
+      "parameters": {
+        "require": true
+      },
+      "applies_at_entry": true,
+      "source": {
+        "stage": "rejection",
+        "doc": "Lauren Mbeki's rejection, Nov 4",
+        "kind": "Rejection",
+        "date": "2026-11-04"
+      },
+      "status": "active",
+      "version_added": 5
+    }
+  ]
+}

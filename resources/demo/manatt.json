@@ -1,0 +1,487 @@
+{
+  "seed": "manatt",
+  "_note": "Built by workflows/manatt/time/make_seed.py from world.json, billing/world-billing.json and billing/rules-export.json. Do not edit by hand.",
+  "profile": {
+    "name": "Nadia Kessler",
+    "timekeeper": "NK41",
+    "title": "Partner, Digital and Technology",
+    "rate": 1150
+  },
+  "project": {
+    "name": "104882-0001 Data Licensing Agreement with Corvane Analytics",
+    "client": "Halvorsen Health Partners",
+    "hourlyRate": 1150,
+    "context": {
+      "number": "104882-0001",
+      "client": "Halvorsen Health Partners",
+      "clientId": "C-104882",
+      "codeSet": "project",
+      "defaultTask": "P500",
+      "document": "Corvane data license agreement",
+      "people": [
+        {
+          "name": "Nadia Kessler",
+          "side": "firm",
+          "role": "Partner, Digital and Technology",
+          "rate": 1150
+        },
+        {
+          "name": "Theo Lindqvist",
+          "side": "firm",
+          "role": "Associate",
+          "rate": 640
+        },
+        {
+          "name": "Lauren Mbeki",
+          "side": "client",
+          "role": "Associate General Counsel"
+        },
+        {
+          "name": "Dr. Simon Achterberg",
+          "side": "counterparty",
+          "role": "CTO",
+          "aliases": [
+            "Simon Achterberg"
+          ]
+        },
+        {
+          "name": "Corvane counsel",
+          "side": "counterparty",
+          "label": true,
+          "aliases": [
+            "Corvane's counsel"
+          ]
+        }
+      ],
+      "glossary": {
+        "Corvane_DLA": "Corvane data license agreement"
+      }
+    }
+  },
+  "rulebooks": [
+    {
+      "schema": "lawdie.rules-export/v1",
+      "world": "manatt",
+      "client": {
+        "id": "C-104882",
+        "name": "Halvorsen Health Partners"
+      },
+      "matters": [
+        "104882-0001",
+        "104882-0002",
+        "104882-0003"
+      ],
+      "version": 2,
+      "made_by": "billing-kit/generate_manatt.py",
+      "guidelines": "Halvorsen Outside Counsel Billing Guidelines",
+      "timekeepers": [
+        {
+          "id": "NK41",
+          "name": "Nadia Kessler",
+          "rate": 1150
+        },
+        {
+          "id": "TL77",
+          "name": "Theo Lindqvist",
+          "rate": 640
+        }
+      ],
+      "rules": [
+        {
+          "id": "HHP-1",
+          "label": "R1",
+          "clause": "\u00a73.1",
+          "text": "Record time in increments of one-tenth of an hour.",
+          "title": "Time is recorded in tenths of an hour",
+          "check_type": "INC01",
+          "check": "time_increment",
+          "parameters": {
+            "incr": 0.1
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-2",
+          "label": "R2",
+          "clause": "\u00a73.2",
+          "text": "Each task must be a separate entry with its own time. Halvorsen returns any entry that lists several tasks.",
+          "title": "No block billing",
+          "check_type": "BLK01",
+          "check": "block_billing",
+          "parameters": {
+            "max_tasks": 1,
+            "penalty": "split",
+            "separators": ";,",
+            "auto_split": true
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-3",
+          "label": "R3",
+          "clause": "\u00a73.3",
+          "text": "Every time entry must carry a UTBMS task code and activity code: the Project code set for transactions, the Counseling code set for advice.",
+          "title": "Task codes required",
+          "check_type": "INV02",
+          "check": "task_codes",
+          "parameters": {
+            "codeset": "matter"
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-4",
+          "label": "R4",
+          "clause": "\u00a73.5",
+          "text": "Halvorsen does not pay for conferences between firm timekeepers.",
+          "title": "Internal conferences are not billable",
+          "check_type": "NB01",
+          "check": "internal_conference",
+          "parameters": {
+            "mode": "none"
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-5",
+          "label": "R5",
+          "clause": "\u00a74.2",
+          "text": "Work on HIPAA business associate terms is billed under its own phase, task code P270, so the Privacy Office can track it apart from the commercial terms.",
+          "title": "HIPAA business associate terms billed under task code P270",
+          "check_type": "PH01",
+          "check": "separate_phase",
+          "parameters": {
+            "kw": [
+              "business associate",
+              "baa"
+            ],
+            "task": "P270",
+            "label": "HIPAA business associate terms"
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-6",
+          "label": "R6",
+          "clause": "\u00a74.4",
+          "text": "Legal research above 5.0 hours on one issue needs Halvorsen's written approval in advance.",
+          "title": "Research above 5 hours on one issue needs approval",
+          "check_type": "NB07",
+          "check": "research_threshold",
+          "parameters": {
+            "max_hrs": 5.0,
+            "per": "issue"
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-7",
+          "label": "R7",
+          "clause": "\u00a75.1",
+          "text": "Travel time is billed at 50 percent of the timekeeper's hourly rate.",
+          "title": "Travel billed at 50%",
+          "check_type": "TRV01",
+          "check": "travel_rate",
+          "parameters": {
+            "pct": 50.0
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-8",
+          "label": "R8",
+          "clause": "\u00a75.3",
+          "text": "Clerical work, such as scanning, copying, organizing documents or calendaring, is firm overhead.",
+          "title": "Clerical work is not billable",
+          "check_type": "TK06",
+          "check": "clerical_work",
+          "parameters": {
+            "kw": [
+              "scan",
+              "copy",
+              "organize",
+              "collate",
+              "file-stamp",
+              "calendar",
+              "docket"
+            ]
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-9",
+          "label": "R9",
+          "clause": "\u00a76.1",
+          "text": "The rates in the engagement letter stay fixed for the first twelve months of the engagement.",
+          "title": "Rate freeze",
+          "check_type": "RTE02",
+          "check": "rate_freeze",
+          "parameters": {
+            "freeze_until": "2027-09-30"
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-10",
+          "label": "R10",
+          "clause": "\u00a77.2",
+          "text": "Attach an itemized receipt to every expense over $75.",
+          "title": "Receipt threshold",
+          "check_type": "EXP06",
+          "check": "expense_receipt",
+          "parameters": {
+            "threshold": 75.0
+          },
+          "applies_at_entry": false,
+          "source": {
+            "stage": "guidelines",
+            "doc": "Halvorsen_OCG_2026.pdf",
+            "kind": "OCG",
+            "date": "2026-10-01"
+          },
+          "status": "active",
+          "version_added": 1
+        },
+        {
+          "id": "HHP-E1",
+          "label": "E1",
+          "clause": null,
+          "text": "As we discussed, we'll cover one hour for the redline session itself. Please take the rest off the top.",
+          "title": "The redline session capped at 1 h, agreed by email",
+          "check_type": "AGR01",
+          "check": "agreed_cap",
+          "parameters": {
+            "max_hours": 1.0,
+            "write_off": false,
+            "match": "session",
+            "what": "the redline session",
+            "matter": "",
+            "date_to": "2026-10-16"
+          },
+          "applies_at_entry": true,
+          "source": {
+            "stage": "client_note",
+            "doc": "Lauren Mbeki's email",
+            "kind": "Email",
+            "date": "2026-10-16"
+          },
+          "status": "active",
+          "version_added": 2
+        }
+      ]
+    },
+    {
+      "client": "Manatt",
+      "clientId": "firm",
+      "guidelines": "Manatt time entry standard",
+      "version": 1,
+      "rules": [
+        {
+          "id": "MTS-1",
+          "clause": "1",
+          "title": "Entries say what was done, on what, and why",
+          "text": "Every entry states the task, the subject and the purpose. A one- or two-word narrative is returned.",
+          "check": "vague_narrative",
+          "params": {
+            "min_words": 4
+          },
+          "source": "firm",
+          "sourceRef": "Manatt time entry standard"
+        },
+        {
+          "id": "MTS-2",
+          "clause": "2",
+          "title": "Calls and emails name the other party and the subject",
+          "text": "A call, meeting or email entry names who it was with and what it was about.",
+          "check": "name_participants",
+          "params": {},
+          "source": "firm",
+          "sourceRef": "Manatt time entry standard"
+        }
+      ]
+    }
+  ],
+  "stages": {
+    "day": {
+      "day": "2026-10-22",
+      "activities": [
+        {
+          "n": 1,
+          "app": "Microsoft Outlook",
+          "ownerID": "com.microsoft.Outlook",
+          "title": "RE: 104882-0001 - data-use restrictions",
+          "start": "08:32",
+          "end": "08:47",
+          "document": {
+            "name": "RE: 104882-0001 - data-use restrictions",
+            "path": null,
+            "excerpt": "From: Lauren Mbeki <lmbeki@halvorsenhealth.example>\nTo: Nadia Kessler\nSubject: RE: 104882-0001 - data-use restrictions"
+          }
+        },
+        {
+          "n": 2,
+          "app": "Microsoft Word",
+          "ownerID": "com.microsoft.Word",
+          "title": "Corvane_DLA_v6.docx",
+          "start": "08:48",
+          "end": "10:05",
+          "document": {
+            "name": "Corvane_DLA_v6.docx",
+            "path": "Halvorsen/104882-0001/Corvane_DLA_v6.docx",
+            "excerpt": "DATA LICENSE AGREEMENT (tracked changes). Section 4.2 Permitted Purposes. Section 7.3 Audit Rights."
+          }
+        },
+        {
+          "n": 3,
+          "app": "Microsoft Teams",
+          "ownerID": "com.microsoft.teams2",
+          "title": "Microsoft Teams",
+          "start": "10:15",
+          "end": "10:52",
+          "screenText": "Corvane counsel\nDr. Simon Achterberg\nNadia Kessler\nAgenda: data-use restrictions and audit rights"
+        },
+        {
+          "n": 4,
+          "app": "Microsoft Word",
+          "ownerID": "com.microsoft.Word",
+          "title": "Corvane_DLA_v6.docx",
+          "start": "10:55",
+          "end": "11:24",
+          "document": {
+            "name": "Corvane_DLA_v6.docx",
+            "path": "Halvorsen/104882-0001/Corvane_DLA_v6.docx",
+            "excerpt": "DATA LICENSE AGREEMENT (tracked changes). Section 4.2 Permitted Purposes. Section 7.3 Audit Rights."
+          }
+        },
+        {
+          "n": 5,
+          "app": "Microsoft Outlook",
+          "ownerID": "com.microsoft.Outlook",
+          "title": "Open points after the Corvane call",
+          "start": "11:26",
+          "end": "11:33",
+          "document": {
+            "name": "Open points after the Corvane call",
+            "path": null,
+            "excerpt": "From: Nadia Kessler\nTo: Lauren Mbeki <lmbeki@halvorsenhealth.example>\nSubject: Open points after the Corvane call"
+          }
+        },
+        {
+          "n": 6,
+          "app": "Adobe Acrobat",
+          "ownerID": "com.adobe.Acrobat.Pro",
+          "title": "45 CFR 164.504(e) business associate contracts.pdf",
+          "start": "11:35",
+          "end": "12:22"
+        },
+        {
+          "n": 7,
+          "app": "Microsoft Teams",
+          "ownerID": "com.microsoft.teams2",
+          "title": "Microsoft Teams",
+          "start": "12:25",
+          "end": "12:40",
+          "screenText": "Theo Lindqvist\nNadia Kessler\nBAA open points"
+        }
+      ]
+    },
+    "act3": {
+      "day": "2026-11-05",
+      "activities": [
+        {
+          "n": 1,
+          "app": "Adobe Acrobat",
+          "ownerID": "com.adobe.Acrobat.Pro",
+          "title": "Cal. Civ. Code 56.10 - CMIA permitted disclosures.pdf",
+          "start": "09:10",
+          "end": "09:52"
+        },
+        {
+          "n": 2,
+          "app": "Microsoft Word",
+          "ownerID": "com.microsoft.Word",
+          "title": "Corvane_DLA_v7.docx",
+          "start": "09:55",
+          "end": "10:31",
+          "document": {
+            "name": "Corvane_DLA_v7.docx",
+            "path": "Halvorsen/104882-0001/Corvane_DLA_v7.docx",
+            "excerpt": "DATA LICENSE AGREEMENT (tracked changes). Section 4.2 Permitted Purposes."
+          }
+        }
+      ]
+    }
+  }
+}
