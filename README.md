@@ -124,6 +124,72 @@ from either side; what was synced stays in Kiwi. The server defaults to
 
 Provisioning without typing: `--kiwi-token <ldt_…> [--kiwi-destination kiwi|crm|both] [--kiwi-server <url>] [--crm-server <url>]`.
 
+## Billing: client rules setup and pre-bill review
+
+This branch (`manatt-narratives`, 0.9.5) adds billing on top of capture. Two parts.
+
+**Setup: client rules.** Each client can carry a rulebook: its outside counsel guidelines,
+one card per rule, the client's words, what Lawdie does, and the document or email the rule
+is written in. Rulebooks arrive two ways:
+
+- `--rules-feed <url or file>`: one JSON document that the billing system exports (shape in
+  `src/shared/demo.ts`). The app reads it every 2 seconds. A changed rulebook replaces the
+  old one and the window says what is new. A feed that cannot be read is retried and logged
+  beside the workspace, never shown as an error.
+- `--demo <seed.json>`: builds a demo workspace from a seed (for example
+  `resources/demo/manatt.json`). A new epoch in the feed resets it.
+
+The Client rules page (`src/renderer/src/ClientRules.tsx`) shows each rule with a switch.
+Filters: All, Changes today, Checked, Nothing today. A rule switched off leaves the Time page,
+the time sheet and the invoice. The rules export as a DOCX with tracked changes.
+
+**Pre-bill review.** On the Time page, "Apply client rules" bills the day as Generic or under
+one client's rulebook (`src/renderer/src/Billing.tsx`). Each change shows inline under its
+entry, with a chip that names the rule. Right-click a chip or the totals line to open that
+rule. Split entries bill under their own task codes. No-charge lines stay on the bill at
+$0.00 with their hours.
+
+Every figure comes from one pure function, `applyRules` in `src/shared/applyRules.ts`. The
+Time page, the Matters page, the time sheet (PDF and DOCX) and the invoice all print its lines.
+Nothing recomputes a line on its own, so the reviewer sees what the client receives.
+
+**Narratives and imports.**
+
+- Each entry has a drafted narrative and one "Why this entry" dropdown
+  (`src/renderer/src/Narrative.tsx`). It lists the stretches, the sum, the rounding, the
+  matter match, and the sources (email, meeting, Teams transcript, document) with links.
+  Hover a source to light the words it supports.
+- Typed entries and iTimeKeep or Excel imports (`src/renderer/src/Imported.tsx`) show as
+  typed. "Expand narrative" or "Link sources and draft narratives" matches each note to the
+  captured work and drafts the narrative. Accepting folds the note into the captured entry.
+  It never adds hours.
+- The demo narratives come from the rules drafter ("rules (demo)" at the foot of each Why
+  panel), with no model. Live model drafting needs the Mac paired with Kiwi in Settings.
+
+## Demo videos: Manatt and Kilpatrick
+
+| Video | App | Demo data and console |
+| --- | --- | --- |
+| Manatt follow-up (Time Capture, narratives, messy import, client rules) | this repo, branch `manatt-narratives` | `lawdieinc/demos`, branch `manatt-narratives`, `workflows/manatt/narratives/` (handoff `HANDOFF-2026-10-26.md`) |
+| Manatt live walkthrough | setup in `workflows/manatt/timecapture-setup/README.md` | `lawdieinc/demos`, branch `manatt-live` |
+| Kilpatrick billing (two acts, Word, Outlook and Excel panes) | release DMG | `lawdieinc/demos`, branch `kilpatrick-billing` (PR #16), `workflows/kilpatrick/` |
+
+Manatt run, in short:
+
+1. Install the packaged build (`npm run package:mac`) into /Applications.
+2. Start the console: `workflows/manatt/narratives/run_console.sh` in the demos repo. It
+   serves http://127.0.0.1:8806.
+3. Card 1 seeds the mailbox and the matter documents. Run it once.
+4. For each take, press card 2 Do (installs the day through
+   `workflows/manatt/console/timecapture.py --install`), then card 3 Do (writes the messy
+   sheet and the iTimeKeep CSV). Do not press card 1 between takes.
+5. Expected totals for the day: Generic $5,616.50, Northlake $4,730.00, Kestrel $4,577.00.
+
+Check a change without touching the live workspace. Run the packaged build with
+`LAWDIE_USER_DATA=<scratch dir>` and
+`--workspace <copy> --screenshot <png> --steps "btn:...||click:..." --import <xlsx>`.
+The window stays hidden.
+
 ## Local data and privacy
 
 The workspace is one JSON file, private to your OS account (mode 0600 where the platform
