@@ -43,7 +43,10 @@ export function evidenceLine(e: Evidence): string {
     if (e.kind === "email") return `[${e.id}] email "${e.subject ?? ""}" from ${e.from ?? "?"} to ${(e.to ?? []).join(", ")}${e.cc?.length ? ` cc ${e.cc.join(", ")}` : ""}: ${cut(e.body, 500)}`;
     if (e.kind === "meeting") return `[${e.id}] ${e.teams ? "Teams meeting" : "calendar hold"} "${e.subject ?? ""}" ${e.start ?? ""} with ${(e.attendees ?? []).join(", ")}: ${cut(e.body, 200)}`;
     if (e.kind === "transcript") return `[${e.id}] transcript: ${(e.lines ?? []).map((l) => `${l.who}: ${l.text}`).join(" / ").slice(0, 900)}`;
-    return `[${e.id}] document "${e.file ?? ""}" (${e.title ?? ""})${e.facts?.length ? `: ${e.facts.join("; ")}` : ""}`;
+    // What capture saw (capturedWhy in model.ts): a web page, a chat, or an app window with some of its text.
+    if (e.kind === "page") return `[${e.id}] web page "${e.title ?? ""}" at ${e.link ?? ""}${e.facts?.length ? `: ${cut(e.facts.join("; "), 400)}` : ""}`;
+    if (e.kind === "window" || e.kind === "chat") return `[${e.id}] ${e.kind === "chat" ? "chat" : "app window"} "${e.title ?? ""}"${e.facts?.length ? `: ${cut(e.facts.join("; "), 400)}` : ""}`;
+    return `[${e.id}] document "${e.file ?? ""}" (${e.title ?? ""})${e.facts?.length ? `: ${cut(e.facts.join("; "), 500)}` : ""}`;
 }
 
 /** The instruction and the evidence, for the model. */

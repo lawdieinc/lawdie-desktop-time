@@ -35,7 +35,7 @@ export function SourceIcon({ ev }: { ev?: Evidence }): ReactNode {
         </svg>
     );
 }
-const KIND_NAME: Record<string, string> = { email: "Email", meeting: "Meeting", transcript: "Transcript", document: "Document" };
+const KIND_NAME: Record<string, string> = { email: "Email", meeting: "Meeting", transcript: "Transcript", document: "Document", page: "Web page", window: "App window", chat: "Chat" };
 /** What a source is, short: Email, Teams meeting, Calendar, Transcript, Document. */
 export const rowKind = (ev: Evidence): string => (ev.kind === "meeting" ? (ev.teams ? "Teams meeting" : "Calendar") : KIND_NAME[ev.kind] ?? ev.kind);
 
@@ -208,7 +208,7 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
             )}
             {parts.length > 0 && (
                 <div className="why-foot">
-                    <span className="tiny muted" title={entry.drafter === "model" ? "Kiwi's model wrote this narrative from the sources." : "The rules wrote this narrative. Pick Model under Narrative drafter in Settings to use Kiwi's model."}>Drafted by: {entry.drafter === "model" ? "model (Kiwi)" : "rules (demo)"}.</span>
+                    <span className="tiny muted" title={entry.drafter === "model" ? "Kiwi's model wrote this narrative from the sources." : entry.drafter === "rules" ? "The rules wrote this narrative. Pick Model under Narrative drafter in Settings to use Kiwi's model." : entry.drafted ? "Kiwi's AI drafted this from the window titles and document details when the time was reviewed." : "You wrote this when you kept the time."}>{entry.drafter === "model" ? "Drafted by: model (Kiwi)." : entry.drafter === "rules" ? "Drafted by: rules (demo)." : entry.drafted ? "Drafted by Kiwi's AI at review." : "Written by you."}</span>
                     <button type="button" className="link-btn" disabled={drafting} title={w.preferences.narrativeDrafter === "model" ? "Ask the model to write this narrative again from the same sources. Your edits are replaced." : "Put back the narrative as drafted from the sources. Your edits are replaced."} onClick={() => void redraft()}>{drafting ? "Drafting…" : "Draft again"}</button>
                     {message && <span className="danger tiny">{message}</span>}
                 </div>
@@ -241,11 +241,11 @@ function SourceRow({ id, label, w, lit: on, onHover }: { id: string; label: stri
             <span className="source-title" title={title}>{title}</span>
             <span className="source-time">{ev ? sourceTime(ev, w.evidence) : ""}</span>
             <span className="source-links">
-                {ev?.link && <button type="button" className="link-btn" title="Open this in Outlook on the web." onClick={() => void open("link")}>Open in Outlook</button>}
+                {ev?.link && (ev.kind === "page" ? <button type="button" className="link-btn" title={`Open ${ev.link} in the browser.`} onClick={() => void open("link")}>Open page</button> : <button type="button" className="link-btn" title="Open this in Outlook on the web." onClick={() => void open("link")}>Open in Outlook</button>)}
                 {ev?.screenshot && <button type="button" className="link-btn" title="See a picture of this source as it looked." onClick={() => void viewShot()}>Screenshot</button>}
                 {ev?.path && <button type="button" className="link-btn" title={`Open ${ev.file ?? "this file"} on this Mac.`} onClick={() => void open("path")}>Open file</button>}
                 {ev?.kind === "transcript" && <button type="button" className="link-btn" aria-expanded={lines} title={lines ? "Hide the transcript lines." : "Show the transcript lines here."} onClick={() => setLines(!lines)}>{lines ? "Hide transcript" : "Show transcript"}</button>}
-                {ev && !ev.link && !ev.screenshot && !ev.path && ev.kind !== "transcript" && <span className="tiny muted" title="Links are added when the mailbox and the matter folder are seeded.">No link yet</span>}
+                {ev && !ev.link && !ev.screenshot && !ev.path && (ev.kind === "email" || ev.kind === "meeting" || ev.kind === "document") && <span className="tiny muted" title={ev.kind === "document" ? "Capture did not see where the file is saved. Switch on Office document details in Settings." : "Links are added when the mailbox is seeded."}>No link</span>}
             </span>
             {problem && <div className="danger tiny source-wide">{problem}</div>}
             {lines && ev?.lines && (

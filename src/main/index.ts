@@ -271,7 +271,7 @@ app.whenReady().then(() => {
     ipcMain.handle("openSource", async (_e, id: string, what?: "link" | "path" | "screenshot") => {
         const ev = store.workspace.evidence?.[String(id)];
         const want = what ?? (ev?.link ? "link" : "path");
-        if (want === "link" && ev?.link && /^https:\/\//.test(ev.link)) { await shell.openExternal(ev.link); return null; }
+        if (want === "link" && ev?.link && /^https?:\/\//.test(ev.link)) { await shell.openExternal(ev.link); return null; }
         const file = want === "screenshot" ? ev?.screenshot : want === "path" ? ev?.path : undefined;
         if (file) { const failed = await shell.openPath(localPath(file)); return failed ? `Could not open ${ev?.file ?? "the file"}: ${failed}` : null; }
         return "There is nothing to open for this source yet.";
@@ -289,13 +289,14 @@ app.whenReady().then(() => {
         if (!entry) return { drafter: "rules", message: "That entry no longer exists." };
         let drafter: Drafter = rulesDrafter;
         let message: string | null = null;
-        if ((w.preferences.narrativeDrafter ?? "rules") === "model") {
+        // The rules drafter replays a seed's parts; an entry kept from capture has none, so it always goes to the model.
+        if ((w.preferences.narrativeDrafter ?? "rules") === "model" || entry.drafter !== "rules") {
             const kiwi = w.sync?.targets.find((t) => t.product === "kiwi");
             const token = kiwi ? tokens.load() : null;
             if (kiwi && token) {
                 const client = new KiwiClient(kiwi.serverURL, token, fetch, 120_000, PRODUCTS.kiwi.label);
                 drafter = modelDrafter((body) => client.drafts(body), w.projects.find((p) => p.id === entry.projectID)?.name ?? null);
-            } else message = "Model not connected. Connect this computer to Kiwi in Settings. The rules draft stands.";
+            } else message = entry.drafter === "rules" ? "Model not connected. Connect this computer to Kiwi in Settings. The rules draft stands." : "Connect this computer to Kiwi in Settings to have its model draft the narrative from these sources.";
         }
         try {
             const d = await drafter.draft(entry, evidenceFor(entry, w.evidence));

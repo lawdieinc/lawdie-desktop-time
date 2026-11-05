@@ -169,9 +169,18 @@ rulebook made here also checks entries in the Keep sheet: `ruleSetOf()` maps the
 can be checked for on its own (tenths, split, codePrefix, noCharge A105, the vague, clerical,
 travel and research checks) to keep-time rules, and `rulebookFor()` falls back to it when the
 client has no exported rule set. The Invoice sheet defaults to the matter's client's rulebook.
+"Why this entry" comes from capture for a real entry (`capturedWhy()` in model.ts, called by
+`keepStretch`, the same day): the stretches kept as `work`, each as a source with an evidence
+record (a document with its path, an email's subject, a web page with its address, else the app
+window; kinds `document`, `email`, `page`, `chat`, `window`), the reasons in words (where the
+time went, idle left out, who drafted the narrative) and `matterReason`; `parts` is the
+narrative citing every source, so "Draft again" can ask Kiwi's model to write parts that cite
+them (`evidenceLine` knows the capture kinds). Deleting the entry removes its evidence. The
+rules drafter only replays a seed's parts, so an entry kept from capture always goes to the
+model when Kiwi is connected.
 Not built yet: rules proposed by a model from an uploaded guidelines document (needs a Kiwi
 route), rejecting a bill, custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
-live Outlook/Teams sources (evidence comes from the seed).
+live Outlook/Teams sources (a seed's evidence; capture's own is above).
 
 ## Kiwi and Lawdie CRM
 
@@ -303,3 +312,4 @@ proved on this Mac the same day: a signed local 0.12.0 updated to a signed local
 local server in 3 s (ShipIt log); 0.11.0 hung because the fix shipped after its tag.
 Same day: client rules made in the app (rulebook and rule sheets on the Client rules page; a
 rulebook made here also checks entries at keep). Settings in four tabs.
+Same day: "Why this entry" for entries kept from capture (work, sources, evidence, reasons).

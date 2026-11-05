@@ -629,6 +629,46 @@ export function stretchSpan(sittings: Interval[], start: number, end: number): {
  * sittings count as time and only they are held against overlap, so the minutes spent in
  * another document between two sittings stay free to be kept on their own.
  */
+/**
+ * "Why this entry", from what capture saw (2026-11-04; before, only a demo seed filled it):
+ * where the time went stretch by stretch (`work`), each stretch as a source the drafter can
+ * cite (`sources`, with an `evidence` record: a document with its path, an email's subject, a
+ * web page with its address, else the app window), and the reasons in words. Only the time
+ * inside [start, end] counts, as the entry keeps it.
+ */
+export function capturedWhy(picked: readonly Activity[], start: number, end: number, drafted: DraftSource | undefined, idleLeftOut = 0): { work: WorkStretch[]; sources: NarrativeSource[]; evidence: Record<string, Evidence>; reasons: string[]; matterReason?: string } {
+    const work: WorkStretch[] = [];
+    const sources: NarrativeSource[] = [];
+    const evidence: Record<string, Evidence> = {};
+    const host = (url: string | undefined): string | null => { try { return url ? new URL(url).hostname.replace(/^www\./, "") || null : null; } catch { return null; } };
+    for (const a of [...picked].sort((x, y) => ms(x.startedAt) - ms(y.startedAt))) {
+        const kept = clipSittings(intervals(a), start, end);
+        const minutes = Math.round(kept.reduce((n, i) => n + (ms(i.endedAt) - ms(i.startedAt)), 0) / 60_000);
+        if (!kept.length || !minutes) continue;
+        const mail = a.sourceKind === "email" || matchesOwner(MAIL_OWNER_IDS, a.ownerID);
+        const kind = a.document && !mail ? "document" : a.url ? "page" : mail ? "email" : a.sourceKind === "chat" ? "chat" : "window";
+        const title = a.document?.name || a.title || host(a.url) || a.app;
+        work.push({ app: a.app, title, startedAt: kept[0].startedAt, minutes, ...(a.url ? { url: a.url } : {}) });
+        sources.push({ id: a.id, kind, label: title });
+        const facts = [a.document?.excerpt, a.screenText].filter((x): x is string => !!x).map((x) => x.slice(0, 600));
+        evidence[a.id] = {
+            id: a.id, kind, title, when: kept[0].startedAt,
+            ...(kind === "document" ? { file: a.document!.name, ...(a.document!.path ? { path: a.document!.path } : {}) } : {}),
+            ...(kind === "email" ? { subject: a.document?.name || a.title || "", ...(a.document?.excerpt ? { body: a.document.excerpt } : {}) } : {}),
+            ...(a.url ? { link: a.url } : {}),
+            ...(facts.length && kind !== "email" ? { facts } : {}),
+        };
+    }
+    const where = work.map((x) => `${x.minutes}m in ${x.app.replace(/^(Microsoft|Google|Adobe)\s+/, "")}${x.title !== x.app ? ` on ${x.title}` : ""}`);
+    const reasons = where.length ? [`Time Capture saw ${where.join(", ")}.`] : [];
+    if (idleLeftOut >= 60) reasons.push(`${Math.round(idleLeftOut / 60)} minutes without mouse or keyboard input were left out.`);
+    reasons.push(drafted === "kiwi" ? "Kiwi's AI drafted the narrative from the window titles and document details above."
+        : drafted === "sample" ? "The narrative is a sample draft." : drafted === "capture" ? "The narrative is what capture named the work." : "The narrative is as you wrote it when you kept the time.");
+    const by = picked.find((a) => a.matter)?.matterBy;
+    const matterReason = by === "ai" ? "Kiwi's AI named the matter from the titles and documents; you kept it." : by === "person" ? "You named the matter." : undefined;
+    return { work, sources, evidence, reasons, ...(matterReason ? { matterReason } : {}) };
+}
+
 export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInput, now: number): TimeEntry {
     prepareImportedKeep(w, activityIDs, now);
     const ids = [...new Set(activityIDs)];
@@ -641,12 +681,15 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     const imported = (picked as Activity[]).some((a) => a.origin);
     let span: { startedAt: string; endedAt: string; sittings?: Interval[] } | null = imported ? (() => { const clipped = clipSittings(merged, start, end); return clipped.length ? { startedAt: clipped[0].startedAt, endedAt: clipped[clipped.length - 1].endedAt, sittings: clipped } : null; })() : stretchSpan(merged, start, end);
     if (!span) throw new WorkspaceError("No captured time falls between those times.");
+    let idleLeftOut = 0;
     if (input.leaveOutIdle) {
         const idle = (picked as Activity[]).flatMap((a) => a.idle ?? []);
         if (idle.length) {
+            const before = seconds(span as TimeEntry);
             const left = subtractIntervals(intervals(span), idle);
             if (!left.length) throw new WorkspaceError("All of this time was idle. Dismiss it instead.");
             span = { startedAt: left[0].startedAt, endedAt: left[left.length - 1].endedAt, ...(left.length > 1 ? { sittings: left } : {}) };
+            idleLeftOut = before - seconds(span as TimeEntry);
         }
     }
     const matter = input.matter?.trim().slice(0, MATTER_MAX) || null;
@@ -665,15 +708,21 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     // The screenshots inside the kept time stay with the entry; the rest go when their activity does.
     const shots = (picked as Activity[]).flatMap((a) => a.screenshots ?? []).filter((n) => { const t = screenshotTime(n); return t >= start && t <= end; }).sort((a, b) => screenshotTime(a) - screenshotTime(b));
     const sourceRefs: SourceRef[] = (picked as Activity[]).filter((a) => a.origin).map((a) => ({ kind: a.sourceKind!, id: a.originRef!, account: a.originAccount!, intervals: clipSittings(intervals(a), start, end) }));
+    // Why this entry: the stretches kept, as work, sources and evidence the drafter can cite, and the reasons.
+    const why = capturedWhy(picked as Activity[], ms(span.startedAt), ms(span.endedAt), input.drafted, idleLeftOut);
+    const description = input.description.trim();
     const entry: TimeEntry = {
-        id: uuid(), description: input.description.trim(), projectID, ...span,
+        id: uuid(), description, projectID, ...span,
         billable: input.billable, hourlyRate: input.hourlyRate ?? project(w, projectID)?.hourlyRate ?? 0, source: "desktop", activityID: ids[0],
         ...(ids.length > 1 ? { activityIDs: ids } : {}),
         ...(sourceRefs.length ? { sourceRefs } : {}),
         ...(input.drafted ? { drafted: input.drafted } : {}),
         ...(shots.length ? { screenshots: shots } : {}),
+        ...(why.work.length ? { work: why.work, sources: why.sources, reasons: why.reasons, parts: [{ text: description, evidence: why.sources.map((s) => s.id), slot: null }] } : {}),
+        ...(why.matterReason ? { matterReason: why.matterReason } : {}),
         ...billingFields(input),
     };
+    if (why.sources.length) w.evidence = { ...w.evidence, ...why.evidence };
     saveEntry(w, entry, now);
     for (const a of picked as Activity[]) {
         a.disposition = "kept";
@@ -1024,6 +1073,8 @@ export function deleteEntry(w: Workspace, id: string): void {
     w.entries = w.entries.filter((e) => e.id !== id);
     const from = new Set([entry.activityID, ...(entry.activityIDs ?? [])]);
     for (const a of w.activities) if (from.has(a.id)) a.disposition = "pending";
+    // The evidence capture made for it goes with it; keeping the activity again makes it anew.
+    if (w.evidence) for (const a of from) if (a && w.evidence[a] && (entry.sources ?? []).some((s) => s.id === a)) delete w.evidence[a];
     for (const t of w.sync?.targets ?? []) if (!t.deletedEntryIDs.includes(id)) t.deletedEntryIDs.push(id);
 }
 

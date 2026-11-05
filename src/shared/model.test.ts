@@ -971,3 +971,41 @@ describe("screenshots", () => {
         expect(() => validate(w)).toThrow(WorkspaceError);
     });
 });
+
+describe("why a kept entry says what it says, from capture", () => {
+    it("keeps where the time went, each stretch as a source with evidence the drafter can cite, and the reasons", () => {
+        const w = emptyWorkspace();
+        const doc = activity({ id: "d1", app: "Microsoft Word", ownerID: "com.microsoft.Word", title: "Lease.docx - Word", document: { name: "Lease.docx", path: "~/Matters/Lease.docx", excerpt: "This Lease is made" }, startedAt: iso(0), endedAt: iso(1800), matter: "Whitfield v. Acme", matterBy: "ai" });
+        const mail = activity({ id: "m1", app: "Microsoft Outlook", ownerID: "com.microsoft.outlook", title: "RE: Lease renewal", document: { name: "RE: Lease renewal", path: null, excerpt: "From Dana Whitfield" }, startedAt: iso(1800), endedAt: iso(2400), matter: "Whitfield v. Acme", matterBy: "ai" });
+        const page = activity({ id: "p1", app: "Google Chrome", ownerID: "com.google.Chrome", title: null, url: "https://www.courtlistener.com/docket/1", startedAt: iso(2400), endedAt: iso(3000) });
+        w.activities.push(doc, mail, page);
+        const e = keepStretch(w, ["d1", "m1", "p1"], { description: "Revise lease and reply to D. Whitfield regarding renewal.", projectID: null, matter: "Whitfield v. Acme", billable: true, drafted: "kiwi" }, Date.parse(iso(3600)));
+        expect(e.work).toEqual([
+            { app: "Microsoft Word", title: "Lease.docx", startedAt: iso(0), minutes: 30 },
+            { app: "Microsoft Outlook", title: "RE: Lease renewal", startedAt: iso(1800), minutes: 10 },
+            { app: "Google Chrome", title: "courtlistener.com", startedAt: iso(2400), minutes: 10, url: "https://www.courtlistener.com/docket/1" },
+        ]);
+        expect(e.sources).toEqual([{ id: "d1", kind: "document", label: "Lease.docx" }, { id: "m1", kind: "email", label: "RE: Lease renewal" }, { id: "p1", kind: "page", label: "courtlistener.com" }]);
+        expect(e.parts).toEqual([{ text: e.description, evidence: ["d1", "m1", "p1"], slot: null }]);
+        expect(e.reasons).toEqual(["Time Capture saw 30m in Word on Lease.docx, 10m in Outlook on RE: Lease renewal, 10m in Chrome on courtlistener.com.", "Kiwi's AI drafted the narrative from the window titles and document details above."]);
+        expect(e.matterReason).toBe("Kiwi's AI named the matter from the titles and documents; you kept it.");
+        expect(w.evidence!.d1).toMatchObject({ id: "d1", kind: "document", file: "Lease.docx", path: "~/Matters/Lease.docx", facts: ["This Lease is made"] });
+        expect(w.evidence!.m1).toMatchObject({ kind: "email", subject: "RE: Lease renewal", body: "From Dana Whitfield" });
+        expect(w.evidence!.p1).toMatchObject({ kind: "page", link: "https://www.courtlistener.com/docket/1", title: "courtlistener.com" });
+        expect(() => validate(w)).not.toThrow();
+        // Deleting the entry takes its evidence with it; the activities go back to review.
+        deleteEntry(w, e.id);
+        expect(w.evidence).toEqual({});
+        expect(w.activities.every((a) => a.disposition === "pending")).toBe(true);
+    });
+
+    it("counts only the time kept, says when idle time was left out, and makes nothing for an entry kept from no stretch", () => {
+        const w = emptyWorkspace();
+        w.activities.push(activity({ id: "a1", app: "Word", title: "Memo.docx", startedAt: iso(0), endedAt: iso(3600), idle: [{ startedAt: iso(1800), endedAt: iso(3600) }] }));
+        const e = keepStretch(w, ["a1"], { description: "Draft memo", projectID: null, matter: null, billable: true, leaveOutIdle: true }, Date.parse(iso(3600)));
+        expect(e.work).toEqual([{ app: "Word", title: "Memo.docx", startedAt: iso(0), minutes: 30 }]);
+        expect(e.reasons).toEqual(["Time Capture saw 30m in Word on Memo.docx.", "30 minutes without mouse or keyboard input were left out.", "The narrative is as you wrote it when you kept the time."]);
+        expect(e.matterReason).toBeUndefined();
+        expect(e.sources![0]).toEqual({ id: "a1", kind: "window", label: "Memo.docx" });
+    });
+});
