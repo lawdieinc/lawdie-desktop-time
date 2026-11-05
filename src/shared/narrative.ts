@@ -6,7 +6,7 @@
    on the same task join; a matter's day joined into one line is block billing, which the
    client's rules then split by the captured time of each task (src/shared/rules.ts). */
 
-import type { Activity } from "./model";
+import { seconds, type Activity } from "./model";
 import type { MatterContext, Person } from "./rules";
 
 export type TaskKind = "email" | "call" | "draft" | "review" | "research" | "other";
@@ -136,7 +136,7 @@ export function tasksOf(activities: readonly Activity[], ctx: MatterContext | nu
     const out = new Map<string, Task & { activityIDs: string[]; seconds: number; topics: string[] }>();
     for (const a of [...activities].sort((x, y) => Date.parse(x.startedAt) - Date.parse(y.startedAt))) {
         const t = taskOf(a, ctx, me);
-        const secs = Math.max(0, (Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000);
+        const secs = seconds(a);
         const topic = t.text.includes(" re ") ? t.text.slice(t.text.indexOf(" re ") + 4) : "";
         const found = out.get(t.key);
         if (!found) { out.set(t.key, { ...t, activityIDs: [a.id], seconds: secs, topics: topic.split(/, | and /).filter(Boolean) }); continue; }

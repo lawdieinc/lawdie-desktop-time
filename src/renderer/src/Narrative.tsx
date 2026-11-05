@@ -68,7 +68,7 @@ export const workTitle = (title: string): string =>
     title.replace(/\s+[|\-–]\s+(Microsoft Teams|Outlook|Microsoft Outlook|Word|Microsoft Word|Excel|Microsoft Excel|Kiwi|Google Chrome|Adobe Acrobat[^|]*)$/i, "").trim();
 const appShort = (app: string): string => app.replace(/^(Microsoft|Google|Adobe)\s+/, "");
 /** "52m in Chrome, 48m in Word": where an entry's time went. */
-export const whereTime = (e: TimeEntry): string => (e.work ?? []).map((x) => (/phone/i.test(x.app) ? `${x.minutes}m on the calendar` : `${x.minutes}m in ${appShort(x.app)}`)).join(", ");
+export const whereTime = (e: TimeEntry): string => (e.work ?? []).map((x) => (/phone/i.test(x.app) ? `${duration(Math.round(x.minutes * 60))} on the calendar` : `${duration(Math.round(x.minutes * 60))} in ${appShort(x.app)}`)).join(", ");
 
 // ---------------------------------------------------------------------------
 
@@ -173,7 +173,7 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
     const others = (entry.sources ?? []).filter((s) => !work.some((x) => x.sourceID === s.id));
     const total = work.reduce((n, x) => n + x.minutes, 0);
     const hours = entry.hours;
-    const sum = work.length > 1 ? `${work.map((x) => `${x.minutes}m`).join(" + ")} = ${total}m` : work.length ? `${total}m` : "";
+    const sum = work.length > 1 ? `${work.map((x) => `${duration(Math.round(x.minutes * 60))}`).join(" + ")} = ${duration(Math.round(total * 60))}` : work.length ? `${duration(Math.round(total * 60))}` : "";
     const redraft = async (): Promise<void> => { setDrafting(true); const r = await window.lawdie.draftNarrative(entry.id); setDrafting(false); setMessage(r.message); };
     return (
         <div className="why-body">
@@ -191,7 +191,7 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
                                 <AppMark app={x.app} />
                                 <span className="work-what"><span className="strong">{x.app}</span> · {workTitle(x.title)}</span>
                                 <span className="work-when">{timeRange(x.startedAt, end)}</span>
-                                <span className="work-min mono">{x.minutes}m</span>
+                                <span className="work-min mono">{duration(Math.round(x.minutes * 60))}</span>
                                 {ev && (ev.path || ev.link) && (
                                     <span className="source-links work-links">
                                         {ev.path && <button type="button" className="link-btn" title={`Open ${ev.file ?? "this file"} on this Mac.`} onClick={() => void window.lawdie.openSource(ev.id, "path")}>Open file</button>}

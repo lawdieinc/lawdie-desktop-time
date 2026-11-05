@@ -181,8 +181,8 @@ const onMatter = (w: Workspace, row: TypedRow, e: TimeEntry): boolean => {
     if (row.projectID) return e.projectID === row.projectID;
     if (!row.matter) return true;
     const p = w.projects.find((x) => x.id === e.projectID);
-    const m = row.matter.toLowerCase();
-    return !!p && (p.name.toLowerCase().includes(m) || p.client.toLowerCase().includes(m) || (p.context?.number ?? "").toLowerCase() === m);
+    const m = row.matter.trim().toLowerCase();
+    return !!p && (p.name.toLowerCase().includes(m) || p.client.toLowerCase().includes(m) || (p.matterNumber ?? p.context?.number ?? "").trim().toLowerCase() === m);
 };
 
 /** Every row and captured entry that could be the same work, scored: same day, same matter, enough in common. */

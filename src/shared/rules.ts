@@ -15,7 +15,8 @@
    given. A rule with an unknown check, or one marked atEntry: false, is listed but checked
    at pre-bill only. */
 
-import type { Activity, Workspace } from "./model";
+import { intervals, type Activity, type Interval, type Workspace } from "./model";
+import { allocateHours } from "./invoice";
 import { tasksOf, type Task } from "./narrative";
 import { ruleSetOf } from "./clientRulebooks";
 
@@ -356,7 +357,7 @@ export function checkEntry(d: EntryDraft, c: CheckContext): Finding[] {
             }
             case "clerical_work": {
                 const kw = listParam(p.kw, ["scan", "copy", "organize", "collate", "calendar", "docket"]);
-                if (d.billable && kw.some((k) => new RegExp(`^${k}`, "i").test(text))) add("Clerical work is firm overhead.", [{ label: "Mark no charge", change: { billable: false } }]);
+                if (d.billable && kw.some((k) => text.toLowerCase().startsWith(k.toLowerCase()))) add("Clerical work is firm overhead.", [{ label: "Mark no charge", change: { billable: false } }]);
                 break;
             }
             case "rate_freeze": {
@@ -400,7 +401,7 @@ export function checkEntry(d: EntryDraft, c: CheckContext): Finding[] {
             case "merge_short_emails": {
                 const max = numParam(p.max_hrs, 0.1);
                 if (!isEmail(d) || d.hours > max + 1e-6) break;
-                const other = (c.sameDay ?? []).find((o) => o.id !== d.id && o.id && isEmail(o) && o.hours <= max + 1e-6);
+                const other = (c.sameDay ?? []).find((o) => o.id !== d.id && o.id && isEmail(o) && o.hours <= max + 1e-6 && o.billable === d.billable && o.hourlyRate === d.hourlyRate);
                 if (other) add(`Emails of ${max} h or less are billed as one entry for the day.`, [{ label: "Fold into the day's email entry", change: { hours: Math.round((other.hours + d.hours) * 10) / 10, description: other.description }, foldInto: other.id }]);
                 break;
             }
@@ -422,12 +423,14 @@ export function rulesMet(d: EntryDraft, c: CheckContext): Rule[] {
 // Splitting a matter's day into one entry per task
 // ---------------------------------------------------------------------------
 
-export type PlanLine = { activityIDs: string[]; seconds: number; task: Task; draft: EntryDraft; /** Fold this line into a kept entry (one email entry a day) instead of keeping it apart. */ foldInto?: string };
+export type PlanLine = { activityIDs: string[]; sittings: Interval[]; seconds: number; task: Task; draft: EntryDraft; /** Fold this line into a kept entry (one email entry a day) instead of keeping it apart. */ foldInto?: string };
 
 /** One line per captured task, in time order: its narrative from capture, its own minutes rounded up to the tenth, its codes. */
-export function splitPlan(activities: readonly Activity[], ctx: MatterContext | null, profile: Profile | null, base: { billable: boolean; hourlyRate: number; day: string }): PlanLine[] {
-    return tasksOf(activities, ctx, profile?.name ?? null).map((t) => ({
-        activityIDs: t.activityIDs, seconds: t.seconds, task: t,
-        draft: { description: t.text, hours: Math.max(0.1, roundUpToTenth(t.seconds / 3600)), taskCode: t.taskCode, activityCode: t.activityCode, billable: base.billable, hourlyRate: base.hourlyRate, day: base.day },
+export function splitPlan(activities: readonly Activity[], ctx: MatterContext | null, profile: Profile | null, base: { billable: boolean; hourlyRate: number; day: string; hours?: number }): PlanLine[] {
+    const tasks = tasksOf(activities, ctx, profile?.name ?? null);
+    const hours = base.hours === undefined ? tasks.map((t) => Math.max(0.1, roundUpToTenth(t.seconds / 3600))) : allocateHours(tasks.map((t) => t.seconds), base.hours);
+    return tasks.map((t, n) => ({
+        activityIDs: t.activityIDs, sittings: activities.filter((a) => t.activityIDs.includes(a.id)).flatMap(intervals), seconds: t.seconds, task: t,
+        draft: { description: t.text, hours: hours[n], taskCode: t.taskCode, activityCode: t.activityCode, billable: base.billable, hourlyRate: base.hourlyRate, day: base.day },
     }));
 }

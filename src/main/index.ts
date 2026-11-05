@@ -7,10 +7,10 @@ import { homedir, hostname } from "node:os";
 import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } from "@shared/kiwi";
-import { evidenceFor, modelDrafter, rulesDrafter, type Drafter } from "@shared/drafter";
+import { draftEntry } from "@shared/drafter";
 import { parseCsv, typedRows } from "@shared/importMatch";
 import { addTypedRow, clearImports, decideRow, editTypedRow, expandRow, linkAll, removeTypedRow, type TypedInput } from "@shared/typed";
-import { localDay, rulebooksOf, shortName, termsFor, type BillScope } from "@shared/invoice";
+import { billingFileName, localDay, rulebooksOf, shortName, termsFor, type BillScope } from "@shared/invoice";
 import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoiceHtml";
 import { applyRules, type AppliedBill } from "@shared/applyRules";
 import { timeSheetDocx } from "./docx";
@@ -288,24 +288,16 @@ app.whenReady().then(() => {
         const w = store.workspace;
         const entry = w.entries.find((x) => x.id === String(id));
         if (!entry) return { drafter: "rules", message: "That entry no longer exists." };
-        let drafter: Drafter = rulesDrafter;
-        let message: string | null = null;
-        // The rules drafter replays a seed's parts; an entry kept from capture has none, so it always goes to the model.
-        if ((w.preferences.narrativeDrafter ?? "rules") === "model" || entry.drafter !== "rules") {
+        try {
             const kiwi = w.sync?.targets.find((t) => t.product === "kiwi");
             const token = kiwi ? tokens.load() : null;
-            if (kiwi && token) {
-                const client = new KiwiClient(kiwi.serverURL, token, fetch, 120_000, PRODUCTS.kiwi.label);
-                drafter = modelDrafter((body) => client.drafts(body), w.projects.find((p) => p.id === entry.projectID)?.name ?? null);
-            } else message = entry.drafter === "rules" ? "Model not connected. Connect this computer to Kiwi in Settings. The rules draft stands." : "Connect this computer to Kiwi in Settings to have its model draft the narrative from these sources.";
-        }
-        try {
-            const d = await drafter.draft(entry, evidenceFor(entry, w.evidence));
+            const client = kiwi && token ? new KiwiClient(kiwi.serverURL, token, fetch, 120_000, PRODUCTS.kiwi.label) : null;
+            const d = await draftEntry(w, entry, client ? (body) => client.drafts(body) : null);
             if (d.parts.length) store.change((x) => { setNarrative(x, entry.id, d.parts, d.drafter, clock()); });
-            return { drafter: d.drafter, message };
+            return { drafter: d.drafter, message: null };
         } catch (err) {
             console.warn("[drafter]", err instanceof Error ? err.message : err);
-            return { drafter: "rules", message: `The model could not draft this entry, so the rules draft stands. ${err instanceof Error ? err.message : ""}`.trim() };
+            return { drafter: entry.drafter ?? "model", message: `The narrative was not changed. ${err instanceof Error ? err.message : "The model could not draft this entry."}`.trim() };
         }
     });
     // Import entries typed into the firm's time system (.csv or .xlsx). They show as typed until "Link sources and draft narratives".
@@ -412,7 +404,7 @@ app.whenReady().then(() => {
         const logo = png ? `data:image/png;base64,${png.toString("base64")}` : null;
         const html = kind === "invoice" ? invoiceHtml(w, terms, logo, new Date(clock()), bill) : timeSheetHtml(w, terms, logo, bill);
         const tag = modeTag(bill);
-        const name = kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}${tag}.pdf` : `Time detail ${terms.timekeeper.name || w.profile?.name || "time"} ${terms.matter || periodTag(scope)}${tag}.pdf`;
+        const name = billingFileName(kind === "invoice" ? `Invoice ${terms.number} ${terms.matter}${tag}` : `Time detail ${terms.timekeeper.name || w.profile?.name || "time"} ${terms.matter || periodTag(scope)}${tag}`, "pdf");
         const folder = await billingFolder(terms, "PDF");
         if (!folder) return null;
         const win = new BrowserWindow({ show: false, webPreferences: { javascript: false } });
@@ -444,7 +436,7 @@ app.whenReady().then(() => {
         const folder = await billingFolder(terms, "time sheet");
         if (!folder) return null;
         try {
-            saved(folder, `Time detail ${terms.timekeeper.name || w.profile?.name || "time"} ${terms.matter || periodTag(scope)}${modeTag(bill)}.docx`, await timeSheetDocx(w, terms, logoFile(terms), new Date(), bill));
+            saved(folder, billingFileName(`Time detail ${terms.timekeeper.name || w.profile?.name || "time"} ${terms.matter || periodTag(scope)}${modeTag(bill)}`, "docx"), await timeSheetDocx(w, terms, logoFile(terms), new Date(), bill));
             if (w.billing && !w.billing.folder) store.change((x) => setBillingFile(x, "folder", folder));
             return null;
         } catch (err) {

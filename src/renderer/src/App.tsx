@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { IDLE_FLAG_SECONDS, NOISE_SECONDS, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, NOISE_SECONDS, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeBlock, timeValue } from "@shared/format";
@@ -742,9 +742,9 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     const rc = rulesContext(w, project);
     const day = new Date(stretch.startedAt).toLocaleDateString("en-CA");
     // The client's rules want one task per entry: the captured tasks of this stretch, each with its narrative, hours and codes.
-    const plan = useMemo(() => (rc.ctx ? splitPlan(sittings, rc.ctx, rc.profile, { billable: true, hourlyRate: project?.hourlyRate ?? 0, day }) : []), [sittings, rc.ctx, rc.profile, project?.hourlyRate, day]);
-    const single = plan.length === 1 ? plan[0].draft : null;
-    const [description, setDescription] = useState(single?.description ?? initialDescription);
+    const initialPlan = useMemo(() => (rc.ctx ? splitPlan(sittings, rc.ctx, rc.profile, { billable: true, hourlyRate: project?.hourlyRate ?? 0, day }) : []), [sittings, rc.ctx, rc.profile, project?.hourlyRate, day]);
+    const single = initialPlan.length === 1 ? initialPlan[0].draft : null;
+    const [description, setDescription] = useState(descriptionOf(sittings)?.text ?? single?.description ?? initialDescription);
     const asDrafted = (!!stretch.draft && description.trim() === stretch.draft.text) || (!!single && description.trim() === single.description);
     const [billable, setBillable] = useState(true);
     const [startText, setStartText] = useState(timeValue(stretch.startedAt));
@@ -767,6 +767,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
     const hours = hoursSet ?? Math.max(0.1, roundUpToTenth(previewSeconds / 3600));
     const hourlyRate = rate ?? project?.hourlyRate ?? 0;
+    const plan = rc.ctx && preview ? splitPlan(reviewedActivities(sittings, intervals(preview)), rc.ctx, rc.profile, { billable, hourlyRate, day, ...(hoursSet !== null ? { hours: hoursSet } : {}) }) : [];
     const draft: EntryDraft = { description, hours, ...codes, billable, hourlyRate, day };
     const sameDay = sameDayOf(w, project?.id ?? null, day);
     const check = { ...rc, sameDay, splitCount: plan.length, suggestion: single?.description ?? null };
@@ -780,7 +781,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     const save = async (): Promise<void> => {
         if (lines) {
             if (lines.some((l) => !l.draft.description.trim())) { setProblem("Add a narrative to every line."); return; }
-            const ok = await window.lawdie.keepLines(lines.map((l, n) => ({ activityIDs: l.activityIDs, input: { description: l.draft.description, projectID: null, matter: matter.trim() || null, billable: l.draft.billable, hours: l.draft.hours, taskCode: l.draft.taskCode, activityCode: l.draft.activityCode, hourlyRate: l.draft.hourlyRate, ...drafted(l.draft.description, plan[n]?.draft.description) }, foldInto: l.foldInto ?? null })));
+            const ok = await window.lawdie.keepLines(lines.map((l, n) => ({ activityIDs: l.activityIDs, input: { description: l.draft.description, projectID: null, matter: matter.trim() || null, sittings: l.sittings, leaveOutIdle, billable: l.draft.billable, hours: l.draft.hours, taskCode: l.draft.taskCode, activityCode: l.draft.activityCode, hourlyRate: l.draft.hourlyRate, ...drafted(l.draft.description, plan[n]?.draft.description) }, foldInto: l.foldInto ?? null })));
             if (ok) onClose(); else setProblem("Those entries could not be saved. They may overlap time you already kept.");
             return;
         }

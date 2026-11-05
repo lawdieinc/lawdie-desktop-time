@@ -609,6 +609,8 @@ export type KeepInput = {
     /** The span the person settled on before keeping, when they changed it. */
     startedAt?: string;
     endedAt?: string;
+    /** Reviewed intervals for a split task; always intersected with the captured time. */
+    sittings?: Interval[];
     /** Leave the flagged idle time out of the entry. */
     leaveOutIdle?: boolean;
     /** Billing details the client's rules ask for (see TimeEntry). */
@@ -641,6 +643,19 @@ export function clipSittings(list: Interval[], start: number, end: number): Inte
         .filter((i) => ms(i.endedAt) > ms(i.startedAt));
 }
 
+/** Only time present in both lists, with no duplicate intervals. */
+export function intersectIntervals(list: Interval[], kept: Interval[]): Interval[] {
+    return mergeAdjacent(kept.flatMap((i) => clipSittings(list, ms(i.startedAt), ms(i.endedAt))));
+}
+
+/** Copies of the evidence restricted to the reviewed time, used to plan split tasks. */
+export function reviewedActivities(activities: readonly Activity[], kept: Interval[]): Activity[] {
+    return activities.flatMap((a) => {
+        const sittings = intersectIntervals(intervals(a), kept);
+        return sittings.length ? [{ ...a, startedAt: sittings[0].startedAt, endedAt: sittings[sittings.length - 1].endedAt, sittings }] : [];
+    });
+}
+
 /**
  * The entry a stretch would become for a span: one sitting takes the span as given (a
  * person may stretch it to when the work really started); several sittings are clipped
@@ -667,19 +682,19 @@ export function stretchSpan(sittings: Interval[], start: number, end: number): {
  * web page with its address, else the app window), and the reasons in words. Only the time
  * inside [start, end] counts, as the entry keeps it.
  */
-export function capturedWhy(picked: readonly Activity[], start: number, end: number, drafted: DraftSource | undefined, idleLeftOut = 0): { work: WorkStretch[]; sources: NarrativeSource[]; evidence: Record<string, Evidence>; reasons: string[]; matterReason?: string } {
+export function capturedWhy(picked: readonly Activity[], start: number, end: number, drafted: DraftSource | undefined, idleLeftOut = 0, keptIntervals: Interval[] = [{ startedAt: iso(start), endedAt: iso(end) }]): { work: WorkStretch[]; sources: NarrativeSource[]; evidence: Record<string, Evidence>; reasons: string[]; matterReason?: string } {
     const work: WorkStretch[] = [];
     const sources: NarrativeSource[] = [];
     const evidence: Record<string, Evidence> = {};
     const host = (url: string | undefined): string | null => { try { return url ? new URL(url).hostname.replace(/^www\./, "") || null : null; } catch { return null; } };
     for (const a of [...picked].sort((x, y) => ms(x.startedAt) - ms(y.startedAt))) {
-        const kept = clipSittings(intervals(a), start, end);
-        const minutes = Math.round(kept.reduce((n, i) => n + (ms(i.endedAt) - ms(i.startedAt)), 0) / 60_000);
+        const kept = intersectIntervals(intervals(a), keptIntervals);
+        const minutes = kept.reduce((n, i) => n + (ms(i.endedAt) - ms(i.startedAt)), 0) / 60_000;
         if (!kept.length || !minutes) continue;
         const mail = a.sourceKind === "email" || matchesOwner(MAIL_OWNER_IDS, a.ownerID);
         const kind = a.document && !mail ? "document" : a.url ? "page" : mail ? "email" : a.sourceKind === "chat" ? "chat" : "window";
         const title = a.document?.name || a.title || host(a.url) || a.app;
-        work.push({ app: a.app, title, startedAt: kept[0].startedAt, minutes, ...(a.url ? { url: a.url } : {}), sourceID: a.id });
+        for (const i of kept) work.push({ app: a.app, title, startedAt: i.startedAt, minutes: (ms(i.endedAt) - ms(i.startedAt)) / 60_000, ...(a.url ? { url: a.url } : {}), sourceID: a.id });
         sources.push({ id: a.id, kind, label: title });
         const facts = [a.document?.excerpt, a.screenText].filter((x): x is string => !!x).map((x) => x.slice(0, 600));
         evidence[a.id] = {
@@ -723,6 +738,11 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
             idleLeftOut = before - seconds(span as TimeEntry);
         }
     }
+    if (input.sittings) {
+        const kept = intersectIntervals(intervals(span), input.sittings);
+        if (!kept.length) throw new WorkspaceError("No captured time falls inside this reviewed task.");
+        span = { startedAt: kept[0].startedAt, endedAt: kept[kept.length - 1].endedAt, sittings: kept };
+    }
     const matter = input.matter?.trim().slice(0, MATTER_MAX) || null;
     if (isPersonal(matter)) throw new WorkspaceError("Personal time is not kept. Choose a matter, or dismiss it.");
     const identities = [...new Set((picked as Activity[]).filter((a) => a.matter === matter && a.kiwiProjectID).map((a) => a.kiwiProjectID!))];
@@ -737,10 +757,11 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
         if (remote?.cm_number) chosen.matterNumber = remote.cm_number;
     }
     // The screenshots inside the kept time stay with the entry; the rest go when their activity does.
-    const shots = (picked as Activity[]).flatMap((a) => a.screenshots ?? []).filter((n) => { const t = screenshotTime(n); return t >= start && t <= end; }).sort((a, b) => screenshotTime(a) - screenshotTime(b));
-    const sourceRefs: SourceRef[] = (picked as Activity[]).filter((a) => a.origin).map((a) => ({ kind: a.sourceKind!, id: a.originRef!, account: a.originAccount!, intervals: clipSittings(intervals(a), start, end) }));
+    const keptIntervals = intervals(span);
+    const shots = (picked as Activity[]).flatMap((a) => a.screenshots ?? []).filter((n) => { const t = screenshotTime(n); return keptIntervals.some((i) => t >= ms(i.startedAt) && t <= ms(i.endedAt)); }).sort((a, b) => screenshotTime(a) - screenshotTime(b));
+    const sourceRefs: SourceRef[] = (picked as Activity[]).filter((a) => a.origin).map((a) => ({ kind: a.sourceKind!, id: a.originRef!, account: a.originAccount!, intervals: intersectIntervals(intervals(a), keptIntervals) })).filter((r) => r.intervals.length);
     // Why this entry: the stretches kept, as work, sources and evidence the drafter can cite, and the reasons.
-    const why = capturedWhy(picked as Activity[], ms(span.startedAt), ms(span.endedAt), input.drafted, idleLeftOut);
+    const why = capturedWhy(picked as Activity[], ms(span.startedAt), ms(span.endedAt), input.drafted, idleLeftOut, keptIntervals);
     const description = input.description.trim();
     const entry: TimeEntry = {
         id: uuid(), description, projectID, ...span,
@@ -794,21 +815,29 @@ export function keepLines(w: Workspace, lines: KeepLine[], now: number): TimeEnt
 export function foldInto(w: Workspace, entryID: string, activityIDs: string[], input: Partial<KeepInput>, now: number): TimeEntry {
     const target = w.entries.find((e) => e.id === entryID);
     if (!target) throw new WorkspaceError("That entry no longer exists.");
-    const picked = activityIDs.map((id) => w.activities.find((a) => a.id === id));
-    if (!activityIDs.length || picked.some((a) => !a || a.disposition !== "pending")) throw new WorkspaceError("This activity has already been reviewed.");
-    const spans = mergeAdjacent([...intervals(target), ...(picked as Activity[]).map((a) => ({ startedAt: a.startedAt, endedAt: a.endedAt }))]);
+    if ((input.billable !== undefined && input.billable !== target.billable) || (input.hourlyRate !== undefined && input.hourlyRate !== target.hourlyRate)) throw new WorkspaceError("Keep this time separately: its billable choice or rate differs from the kept entry.");
+    // Use the same reviewed bounds, idle removal and import checks as an ordinary keep.
+    const addition = keepStretch(w, activityIDs, { ...input, description: input.description?.trim() || target.description, projectID: target.projectID, billable: input.billable ?? target.billable }, now);
+    const spans = mergeAdjacent([...intervals(target), ...intervals(addition)]);
+    const sources = [...(target.sources ?? []), ...(addition.sources ?? [])];
     const next: TimeEntry = {
         ...target,
         startedAt: spans[0].startedAt, endedAt: spans[spans.length - 1].endedAt,
         sittings: spans,
         activityIDs: [...new Set([target.activityID, ...(target.activityIDs ?? []), ...activityIDs].filter((x): x is string => !!x))],
         ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+        work: [...(target.work ?? []), ...(addition.work ?? [])],
+        sources,
+        parts: [{ text: input.description?.trim() || target.description, evidence: sources.map((s) => s.id) }],
+        screenshots: [...(target.screenshots ?? []), ...(addition.screenshots ?? [])],
+        sourceRefs: [...(target.sourceRefs ?? []), ...(addition.sourceRefs ?? [])],
         ...billingFields(input),
     };
     if (spans.length <= 1) delete next.sittings;
     if (next.description !== target.description) delete next.drafted;
+    // The temporary addition has never been published or synced; it becomes part of the target.
+    w.entries = w.entries.filter((e) => e.id !== addition.id);
     saveEntry(w, next, now);
-    for (const a of picked as Activity[]) a.disposition = "kept";
     return next;
 }
 
@@ -1063,7 +1092,22 @@ export function mergeIntoEntry(w: Workspace, activityIDs: readonly string[], ent
     if (!fresh.length) throw new WorkspaceError("This activity has already been reviewed.");
     const matter = project(w, entry.projectID)?.name ?? null;
     const from = new Set([entry.activityID, ...(entry.activityIDs ?? [])]);
+    const original = w.activities.filter((a) => from.has(a.id)).sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
+    if (!original.length || original.some((a) => a.disposition !== "kept")) throw new WorkspaceError("The kept activity is no longer available to merge.");
     deleteEntry(w, entryID);
+    // Reopen only the time the person actually kept, including any manually extended outer bounds.
+    for (const [n, a] of original.entries()) {
+        const source = intervals(a).map((i) => ({ ...i }));
+        if (n === 0 && ms(entry.startedAt) < ms(a.startedAt)) source.unshift({ startedAt: entry.startedAt, endedAt: a.startedAt });
+        if (n === original.length - 1 && ms(entry.endedAt) > ms(a.endedAt)) source.push({ startedAt: a.endedAt, endedAt: entry.endedAt });
+        const kept = intersectIntervals(source, intervals(entry));
+        if (!kept.length) { a.disposition = "dismissed"; continue; }
+        a.startedAt = kept[0].startedAt;
+        a.endedAt = kept[kept.length - 1].endedAt;
+        a.sittings = kept;
+        if (a.idle) a.idle = intersectIntervals(a.idle, kept);
+        if (a.screenshots) a.screenshots = a.screenshots.filter((s) => (entry.screenshots ?? []).includes(s));
+    }
     for (const a of w.activities) {
         if (!(from.has(a.id) || activityIDs.includes(a.id)) || a.disposition !== "pending") continue;
         a.mergeKey = entryID;
@@ -1412,7 +1456,7 @@ export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP
         if (last && (a.mergeKey || (ms(a.startedAt) - ms(last.endedAt) <= gapMs && localDayOf(a.startedAt) === localDayOf(last.startedAt)))) {
             last.activityIDs.push(a.id);
             last.endedAt = a.endedAt;
-            last.seconds += spanSeconds(a);
+            last.seconds += seconds(a);
             last.sittings += 1;
             last.endedBy = a.endedBy;
             last.endedTo = a.endedTo;
@@ -1420,7 +1464,7 @@ export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP
             continue;
         }
         const mail = isMail(a.ownerID);
-        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: mail ? a.app : a.document?.name ?? a.title ?? a.app, document: mail ? null : a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: spanSeconds(a), sittings: 1, endedBy: a.endedBy, ...(a.endedTo ? { endedTo: a.endedTo } : {}), draft: a.draft ?? null };
+        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: mail ? a.app : a.document?.name ?? a.title ?? a.app, document: mail ? null : a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: seconds(a), sittings: 1, endedBy: a.endedBy, ...(a.endedTo ? { endedTo: a.endedTo } : {}), draft: a.draft ?? null };
         open.set(key, fresh);
         all.push(fresh);
     }

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ImportedRow, TimeEntry, Workspace } from "@shared/model";
+import { duration } from "@shared/format";
 import { recordedHours } from "@shared/importMatch";
 import { splitNote } from "@shared/typed";
 import { AppMark, NarrativeEntry, SourceIcon, rowKind, timeRange, whereTime, workTitle } from "./Narrative";
@@ -273,7 +274,7 @@ function cardsFor(w: Workspace, e: TimeEntry): Card[] {
     });
     const capture: Card[] = (e.work ?? []).map((x, n) => ({
         key: `tc:${e.id}:${n}`, kind: "capture", icon: <AppMark app={x.app} />, label: `Time Capture · ${x.app.replace(/^(Microsoft|Google|Adobe)\s+/, "")}`,
-        title: workTitle(x.title), when: `${timeRange(x.startedAt, new Date(Date.parse(x.startedAt) + x.minutes * 60_000).toISOString())} · ${x.minutes}m`,
+        title: workTitle(x.title), when: `${timeRange(x.startedAt, new Date(Date.parse(x.startedAt) + x.minutes * 60_000).toISOString())} · ${duration(Math.round(x.minutes * 60))}`,
     }));
     return [...capture, ...sources];
 }

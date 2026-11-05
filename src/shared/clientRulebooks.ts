@@ -55,6 +55,10 @@ export function describeRule(r: Pick<ClientRule, "kind"> & Partial<ClientRule>):
 
 const TEXT_MAX = 300;
 const QUOTE_MAX = 800;
+export const CHECK_WORDS = {
+    clerical: ["scan", "copy", "organize", "collate", "calendar", "docket", "clerical", "administrative"],
+    travel: ["travel"],
+};
 const text = (v: unknown, max = TEXT_MAX): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => text(x, 80)).filter(Boolean).slice(0, 20) : []);
 const books = (w: Workspace): ClientRulebook[] => (w.clientRulebooks ??= []);
@@ -116,6 +120,7 @@ function idFor(b: ClientRulebook): string {
 export function saveClientRule(w: Workspace, key: string, input: ClientRuleInput): string {
     const b = books(w).find((x) => x.key === key);
     if (!b) throw new WorkspaceError("That rulebook no longer exists.");
+    const existing = input.id ? b.rules.find((r) => r.id === input.id) : undefined;
     const info = RULE_KINDS.find((k) => k.kind === input.kind);
     if (!info) throw new WorkspaceError("That is not a kind of rule.");
     const title = text(input.title, 120);
@@ -131,12 +136,15 @@ export function saveClientRule(w: Workspace, key: string, input: ClientRuleInput
         const check = RULE_CHECKS.find((c) => c.check === input.check);
         if (!check) throw new WorkspaceError("Choose what to check.");
         rule.check = check.check;
+        if (check.check === "clerical" || check.check === "travel") {
+            const words = list(input.words);
+            rule.words = words.length ? words : existing?.check === check.check && existing.words?.length ? [...existing.words] : [...CHECK_WORDS[check.check]];
+        }
         if (check.check === "researchCap") rule.maxHours = num(input.maxHours) ?? 5;
         if (check.check === "timekeepers") { const approved = list(input.approved); if (!approved.length) throw new WorkspaceError("List the approved timekeepers."); rule.approved = approved; }
         if (check.check === "vague") { const examples = list(input.examples); if (examples.length) rule.examples = examples; }
     }
     rule.does = text(input.does, QUOTE_MAX) || describeRule(rule);
-    const existing = input.id ? b.rules.find((r) => r.id === input.id) : undefined;
     if (existing) {
         rule.id = existing.id;
         rule.enabled = existing.enabled;
@@ -172,7 +180,7 @@ export function ruleSetOf(book: ClientRulebook): RuleSet {
             : r.kind === "codePrefix" ? { check: "task_codes", params: {} }
             : r.kind === "noCharge" && r.activityCode === "A105" ? { check: "internal_conference", params: {} }
             : r.kind === "check" && r.check === "vague" ? { check: "vague_narrative", params: {} }
-            : r.kind === "check" && r.check === "clerical" ? { check: "clerical_work", params: {} }
+            : r.kind === "check" && r.check === "clerical" ? { check: "clerical_work", params: { kw: r.words?.length ? r.words : CHECK_WORDS.clerical } }
             : r.kind === "check" && r.check === "travel" ? { check: "travel_rate", params: { pct: 50 } }
             : r.kind === "check" && r.check === "researchCap" ? { check: "research_threshold", params: { max_hrs: r.maxHours ?? 5 } }
             : null;

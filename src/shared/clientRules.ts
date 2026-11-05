@@ -5,6 +5,7 @@
 
 import { billFor, feeLines, money, ruleEffects, totals, type FeeLine, type LineEffect } from "./invoice";
 import { seconds, type ClientRule, type ClientRulebook, type InvoiceTerms, type Workspace } from "./model";
+import { CHECK_WORDS } from "./clientRulebooks";
 
 export type RuleStatus = "changes" | "pass" | "fail" | "none";
 /** One entry a rule touches: a short name for it, and what the rule did or found. */
@@ -69,8 +70,8 @@ function checkReport(w: Workspace, rule: ClientRule, lines: FeeLine[], name: (id
             touches: research.map((l) => ({ entryID: l.entryID, label: short(l.description), detail: `${h(l.hours)}${l.hours > max ? `, over ${max.toFixed(1)} h: needs approval` : `, under ${max.toFixed(1)} h`}`, fail: l.hours > max })) };
     }
     if (rule.check === "clerical" || rule.check === "travel") {
-        const words = rule.words ?? [];
-        const hits = lines.filter((l) => words.some((x) => new RegExp(`\\b${x}`, "i").test(l.description)));
+        const words = rule.words?.length ? rule.words : CHECK_WORDS[rule.check];
+        const hits = lines.filter((l) => words.some((x) => new RegExp(`\\b${x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(l.description)));
         const what = rule.check === "travel" ? "travel" : "clerical work";
         if (rule.check === "travel" && !hits.length) return { rule, status: "none", summary: "No travel today", touches: [] };
         return { rule, status: hits.length ? "fail" : "pass", summary: hits.length ? `${plural(hits.length, "entry")} with ${what}` : `Checked ${plural(lines.length, "line")}, no ${what}`,

@@ -39,6 +39,29 @@ export const money = (n: number): string => `$${n.toLocaleString("en-US", { mini
 /** "$1,195" for a round rate, "$358.50" otherwise. */
 export const moneyShort = (n: number): string => (Number.isInteger(n) ? `$${n.toLocaleString("en-US")}` : money(n));
 
+/** One portable file name; editable billing text cannot introduce directories or Windows reserved characters. */
+export function billingFileName(stem: string, extension: "pdf" | "docx"): string {
+    let name = stem.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/\s+/g, " ").trim();
+    const encoder = new TextEncoder();
+    while (encoder.encode(name).length > 200) name = Array.from(name).slice(0, -1).join("");
+    name = name.replace(/[ .]+$/g, "") || "Billing";
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) name = `_${name}`;
+    return `${name}.${extension}`;
+}
+
+/** Divide a saved total across tasks without losing it to per-task rounding. */
+export function allocateHours(weights: number[], total: number): number[] {
+    if (!weights.length) return [];
+    const unit = Math.abs(total * 10 - Math.round(total * 10)) < 1e-8 ? 10 : 100;
+    const ticks = Math.round(total * unit);
+    const sum = weights.reduce((n, h) => n + h, 0);
+    const exact = weights.map((h) => ticks * (sum ? h / sum : 1 / weights.length));
+    const counts = exact.map(Math.floor);
+    const order = exact.map((x, n) => ({ n, remainder: x - counts[n] })).sort((a, b) => b.remainder - a.remainder || a.n - b.n);
+    for (let n = 0, left = ticks - counts.reduce((a, b) => a + b, 0); n < left; n++) counts[order[n].n]++;
+    return counts.map((n) => n / unit);
+}
+
 /** What a bill covers: one day (the Time page), or a matter over a period (an invoice), days YYYY-MM-DD, `to` inclusive. */
 export type BillScope = { day?: string | null; projectID?: string | null; from?: string | null; to?: string | null };
 
@@ -178,8 +201,8 @@ export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly Clie
         const recorded = e.hours ?? tenths(seconds(e) / 60);
         const stdRate = e.hourlyRate;
         const stdAmount = e.billable ? round2(recorded * stdRate) : 0;
-        const minutes = (e.work ?? []).reduce((n, x) => n + x.minutes, 0) || seconds(e) / 60;
-        let hours = rules.length ? hoursOf(minutes) : recorded;
+        // Evidence describes the work; the saved hours and kept intervals are authoritative for its amount.
+        let hours = e.hours !== undefined ? (has("tenths") ? tenths(e.hours * 60) : e.hours) : hoursOf(seconds(e) / 60);
         if (rules.length && hours !== recorded) effects.push({ rule: has("tenths")?.id ?? "tenths", what: "hours", before: hrs(recorded), after: hrs(hours) });
         const call = has("callCap");
         if (call?.maxHours != null && isCall(e) && hours > call.maxHours + 1e-9) {
@@ -211,8 +234,11 @@ export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly Clie
             effects: lineEffects, changes: [...new Set(lineEffects.filter((x) => x.what !== "kept").map((x) => x.rule))], split,
         });
         const tasks = tasksOf(e);
-        const taskHours = tasks?.map((t) => t.hours ?? (t.minutes != null ? hoursOf(t.minutes) : null)) ?? null;
+        let taskHours = tasks?.map((t) => t.hours ?? (t.minutes != null ? hoursOf(t.minutes) : null)) ?? null;
         const timed = !!tasks && !!taskHours && taskHours.every((h) => h != null);
+        if (timed && (e.hours !== undefined || hours < recorded) && Math.abs(taskHours!.reduce<number>((n, h) => n + h!, 0) - hours) > 1e-8) {
+            taskHours = allocateHours(taskHours as number[], hours);
+        }
         const split = has("split");
         const block = has("blockWithTimes");
         if (split && timed) {
@@ -233,7 +259,7 @@ export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly Clie
                 segs.push({ text: ` (${taskHours![n]!.toFixed(1)})`, ins: block.id });
             });
             segs.push({ text: "." });
-            const sum = round2(taskHours!.reduce((n, h) => n + h!, 0));
+            const sum = round2(taskHours!.reduce<number>((n, h) => n + h!, 0));
             if (sum !== hours) lineEffects.push({ rule: block.id, what: "hours", before: hrs(hours), after: hrs(sum) });
             lineEffects.push({ rule: block.id, what: "text", text: `Each task's time written in: ${taskHours!.map((h) => `(${h!.toFixed(1)})`).join(" and ")}` });
             out.push(line(withCode(codeFor(null, null), segs, lineEffects), sum, lineEffects));

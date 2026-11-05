@@ -7,7 +7,7 @@
    A part that cites an id the entry does not have is dropped; nothing is invented. */
 
 import type { DraftsBody } from "./matters";
-import type { DrafterKind, Evidence, NarrativePart, TimeEntry } from "./model";
+import type { DrafterKind, Evidence, NarrativePart, TimeEntry, Workspace } from "./model";
 
 export type Drafted = { parts: NarrativePart[]; narrative: string; drafter: DrafterKind };
 
@@ -120,4 +120,12 @@ export function evidenceFor(entry: TimeEntry, all: Record<string, Evidence> | un
     for (const p of entry.parts ?? []) p.evidence.forEach(add);
     for (const id of [...ids]) if (all[id].kind === "meeting") add(all[id].transcript);
     return ids.map((id) => all[id]);
+}
+
+/** Only a demo's stored rules draft may be replayed. An unavailable model leaves the entry untouched. */
+export async function draftEntry(w: Workspace, entry: TimeEntry, send: ((body: DraftsBody) => Promise<{ drafts: { id: string; text: string }[] }>) | null): Promise<Drafted> {
+    const useRules = !!w.demo && w.preferences.narrativeDrafter !== "model" && entry.drafter === "rules";
+    if (!useRules && !send) throw new Error("Connect this computer to Kiwi in Settings to draft the narrative from these sources.");
+    const drafter = useRules ? rulesDrafter : modelDrafter(send!, w.projects.find((p) => p.id === entry.projectID)?.name ?? null);
+    return drafter.draft(entry, evidenceFor(entry, w.evidence));
 }
