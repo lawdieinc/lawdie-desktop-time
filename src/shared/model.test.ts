@@ -992,13 +992,13 @@ describe("why a kept entry says what it says, from capture", () => {
         w.activities.push(doc, mail, page);
         const e = keepStretch(w, ["d1", "m1", "p1"], { description: "Revise lease and reply to D. Whitfield regarding renewal.", projectID: null, matter: "Whitfield v. Acme", billable: true, drafted: "kiwi" }, Date.parse(iso(3600)));
         expect(e.work).toEqual([
-            { app: "Microsoft Word", title: "Lease.docx", startedAt: iso(0), minutes: 30 },
-            { app: "Microsoft Outlook", title: "RE: Lease renewal", startedAt: iso(1800), minutes: 10 },
-            { app: "Google Chrome", title: "courtlistener.com", startedAt: iso(2400), minutes: 10, url: "https://www.courtlistener.com/docket/1" },
+            { app: "Microsoft Word", title: "Lease.docx", startedAt: iso(0), minutes: 30, sourceID: "d1" },
+            { app: "Microsoft Outlook", title: "RE: Lease renewal", startedAt: iso(1800), minutes: 10, sourceID: "m1" },
+            { app: "Google Chrome", title: "courtlistener.com", startedAt: iso(2400), minutes: 10, url: "https://www.courtlistener.com/docket/1", sourceID: "p1" },
         ]);
         expect(e.sources).toEqual([{ id: "d1", kind: "document", label: "Lease.docx" }, { id: "m1", kind: "email", label: "RE: Lease renewal" }, { id: "p1", kind: "page", label: "courtlistener.com" }]);
         expect(e.parts).toEqual([{ text: e.description, evidence: ["d1", "m1", "p1"], slot: null }]);
-        expect(e.reasons).toEqual(["Time Capture saw 30m in Word on Lease.docx, 10m in Outlook on RE: Lease renewal, 10m in Chrome on courtlistener.com.", "Kiwi's AI drafted the narrative from the window titles and document details above."]);
+        expect(e.reasons).toEqual(["Kiwi's AI drafted the narrative from the window titles and document details above."]);
         expect(e.matterReason).toBe("Kiwi's AI named the matter from the titles and documents; you kept it.");
         expect(w.evidence!.d1).toMatchObject({ id: "d1", kind: "document", file: "Lease.docx", path: "~/Matters/Lease.docx", facts: ["This Lease is made"] });
         expect(w.evidence!.m1).toMatchObject({ kind: "email", subject: "RE: Lease renewal", body: "From Dana Whitfield" });
@@ -1014,8 +1014,8 @@ describe("why a kept entry says what it says, from capture", () => {
         const w = emptyWorkspace();
         w.activities.push(activity({ id: "a1", app: "Word", title: "Memo.docx", startedAt: iso(0), endedAt: iso(3600), idle: [{ startedAt: iso(1800), endedAt: iso(3600) }] }));
         const e = keepStretch(w, ["a1"], { description: "Draft memo", projectID: null, matter: null, billable: true, leaveOutIdle: true }, Date.parse(iso(3600)));
-        expect(e.work).toEqual([{ app: "Word", title: "Memo.docx", startedAt: iso(0), minutes: 30 }]);
-        expect(e.reasons).toEqual(["Time Capture saw 30m in Word on Memo.docx.", "30 minutes without mouse or keyboard input were left out.", "The narrative is as you wrote it when you kept the time."]);
+        expect(e.work).toEqual([{ app: "Word", title: "Memo.docx", startedAt: iso(0), minutes: 30, sourceID: "a1" }]);
+        expect(e.reasons).toEqual(["30 minutes without mouse or keyboard input were left out.", "The narrative is as you wrote it when you kept the time."]);
         expect(e.matterReason).toBeUndefined();
         expect(e.sources![0]).toEqual({ id: "a1", kind: "window", label: "Memo.docx" });
     });

@@ -171,7 +171,8 @@ export const BILLING_LINES_MAX = 8;
 
 export type EntryTask = { stretch?: number | null; text: string; task?: string | null; activity?: string | null; hours?: number | null };
 
-export type WorkStretch = { app: string; title: string; startedAt: string; minutes: number; url?: string | null };
+/** `sourceID`: the source (and evidence) this stretch is, when capture made it, so the Why panel shows the two as one row. */
+export type WorkStretch = { app: string; title: string; startedAt: string; minutes: number; url?: string | null; sourceID?: string };
 
 /** A row typed into the firm's time system (an iTimeKeep export), matched back to the captured entry it describes. */
 export type ImportedRow = {
@@ -648,7 +649,7 @@ export function capturedWhy(picked: readonly Activity[], start: number, end: num
         const mail = a.sourceKind === "email" || matchesOwner(MAIL_OWNER_IDS, a.ownerID);
         const kind = a.document && !mail ? "document" : a.url ? "page" : mail ? "email" : a.sourceKind === "chat" ? "chat" : "window";
         const title = a.document?.name || a.title || host(a.url) || a.app;
-        work.push({ app: a.app, title, startedAt: kept[0].startedAt, minutes, ...(a.url ? { url: a.url } : {}) });
+        work.push({ app: a.app, title, startedAt: kept[0].startedAt, minutes, ...(a.url ? { url: a.url } : {}), sourceID: a.id });
         sources.push({ id: a.id, kind, label: title });
         const facts = [a.document?.excerpt, a.screenText].filter((x): x is string => !!x).map((x) => x.slice(0, 600));
         evidence[a.id] = {
@@ -659,8 +660,8 @@ export function capturedWhy(picked: readonly Activity[], start: number, end: num
             ...(facts.length && kind !== "email" ? { facts } : {}),
         };
     }
-    const where = work.map((x) => `${x.minutes}m in ${x.app.replace(/^(Microsoft|Google|Adobe)\s+/, "")}${x.title !== x.app ? ` on ${x.title}` : ""}`);
-    const reasons = where.length ? [`Time Capture saw ${where.join(", ")}.`] : [];
+    // The work rows say where the time went; the reasons say what is not on them.
+    const reasons: string[] = [];
     if (idleLeftOut >= 60) reasons.push(`${Math.round(idleLeftOut / 60)} minutes without mouse or keyboard input were left out.`);
     reasons.push(drafted === "kiwi" ? "Kiwi's AI drafted the narrative from the window titles and document details above."
         : drafted === "sample" ? "The narrative is a sample draft." : drafted === "capture" ? "The narrative is what capture named the work." : "The narrative is as you wrote it when you kept the time.");

@@ -167,6 +167,8 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
     const [message, setMessage] = useState<string | null>(null);
     const [drafting, setDrafting] = useState(false);
     const work = entry.work ?? [];
+    // Sources that are not a work stretch (a seed's emails, meetings and transcripts); the rest show on their work row.
+    const others = (entry.sources ?? []).filter((s) => !work.some((x) => x.sourceID === s.id));
     const total = work.reduce((n, x) => n + x.minutes, 0);
     const hours = entry.hours;
     const sum = work.length > 1 ? `${work.map((x) => `${x.minutes}m`).join(" + ")} = ${total}m` : work.length ? `${total}m` : "";
@@ -178,12 +180,22 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
                     <p className="why-head">Work done</p>
                     {work.map((x, n) => {
                         const end = new Date(Date.parse(x.startedAt) + x.minutes * 60_000).toISOString();
+                        // A stretch capture made is its own source: its link and its hover sit on this row, not on a second list.
+                        const ev = x.sourceID ? w.evidence?.[x.sourceID] : undefined;
+                        const hot = !!x.sourceID && asParts && rowLit(focus, parts, x.sourceID);
                         return (
-                            <div key={n} className="work-row" title={x.url ? `${x.app}: ${x.url}` : `What Time Capture saw in ${x.app}.`}>
+                            <div key={n} className={"work-row" + (x.sourceID ? " is-source" : "") + (hot ? " hot" : "")} title={x.url ? `${x.app}: ${x.url}` : `What Time Capture saw in ${x.app}.`}
+                                onMouseEnter={() => x.sourceID && setFocus({ source: x.sourceID })} onMouseLeave={() => x.sourceID && setFocus(null)}>
                                 <AppMark app={x.app} />
                                 <span className="work-what"><span className="strong">{x.app}</span> · {workTitle(x.title)}</span>
                                 <span className="work-when">{timeRange(x.startedAt, end)}</span>
                                 <span className="work-min mono">{x.minutes}m</span>
+                                {ev && (ev.path || ev.link) && (
+                                    <span className="source-links work-links">
+                                        {ev.path && <button type="button" className="link-btn" title={`Open ${ev.file ?? "this file"} on this Mac.`} onClick={() => void window.lawdie.openSource(ev.id, "path")}>Open file</button>}
+                                        {ev.link && <button type="button" className="link-btn" title={`Open ${ev.link} in the browser.`} onClick={() => void window.lawdie.openSource(ev.id, "link")}>Open page</button>}
+                                    </span>
+                                )}
                             </div>
                         );
                     })}
@@ -198,11 +210,11 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
                     </ul>
                 </section>
             )}
-            {(entry.sources?.length ?? 0) > 0 && (
+            {others.length > 0 && (
                 <section className="why-section">
                     <p className="why-head">Sources</p>
                     <div className="source-rows">
-                        {entry.sources!.map((s) => <SourceRow key={s.id} id={s.id} label={s.label} w={w} lit={asParts && rowLit(focus, parts, s.id)} onHover={(on) => setFocus(on ? { source: s.id } : null)} />)}
+                        {others.map((s) => <SourceRow key={s.id} id={s.id} label={s.label} w={w} lit={asParts && rowLit(focus, parts, s.id)} onHover={(on) => setFocus(on ? { source: s.id } : null)} />)}
                     </div>
                 </section>
             )}
