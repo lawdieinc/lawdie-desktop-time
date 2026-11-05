@@ -39,6 +39,17 @@ describe("where the time went, and idle", () => {
         expect(endedText(w.activities[1])).toBe("went to Google Chrome");
         expect(endedText({ endedBy: "switched", endedAt: iso(0) })).toBe("switched apps");
     });
+    it("names a browser on the private list too, since its name is all that is ever said of it", () => {
+        const w = capturing();
+        w.preferences.excludedOwnerIDs.push("com.google.Chrome");
+        observe(w, WORD, at(0), 0); observe(w, WORD, at(30), 0);
+        observe(w, CHROME, at(35), 0);
+        observe(w, WORD, at(40), 0); observe(w, WORD, at(70), 0);
+        observe(w, { app: "1Password", ownerID: "com.1password.1password", title: null }, at(75), 0);
+        expect(w.activities.map((a) => [a.endedBy, a.endedTo ?? null])).toEqual([["browser", "Google Chrome"], ["excluded", null]]);
+        expect(endedText(w.activities[0])).toBe("went to Google Chrome");
+        expect(endedText(w.activities[1])).toBe("opened a private app");
+    });
     it("names the site from browser time brought in from Kiwi that began as it ended", () => {
         const word = activity({ endedAt: iso(600), endedBy: "browser", endedTo: "Google Chrome" });
         const page = activity({ origin: "browser", url: "https://www.courtlistener.com/opinion/123/", startedAt: iso(603), endedAt: iso(900) });

@@ -1183,7 +1183,9 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         return;
     }
     if (isExcluded(w.preferences, foreground.ownerID)) {
-        closeActivity(w, now, "excluded");
+        // A browser on the private list is still a browser: its name is all that is ever said of it, so the
+        // row says "went to Google Chrome" rather than "opened a private app" (2026-11-04, after it confused the beta user).
+        if (isBrowser(foreground.ownerID)) closeActivity(w, now, "browser", foreground.app); else closeActivity(w, now, "excluded");
         return;
     }
     // Checked before anything about the window is used, as an exclusion is.
