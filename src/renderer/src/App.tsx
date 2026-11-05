@@ -124,7 +124,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} />}
                 </div>
             </main>
         </div>
@@ -1056,7 +1056,7 @@ const SETTINGS_TABS: { key: SettingsTab; label: string; tip: string }[] = [
     { key: "sync", label: "Sync", tip: "Kiwi and Lawdie CRM." },
     { key: "data", label: "Display & data", tip: "Text size, and where your data lives." },
 ];
-function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
+function Settings({ state, now, onRules }: { state: AppState; now: number; onRules: (book: string | null, rule?: string | null) => void }): ReactNode {
     const w = state.workspace, p = w.preferences;
     const [excluded, setExcluded] = useState("");
     const [tab, setTab] = useState<SettingsTab>("capture");
@@ -1146,7 +1146,7 @@ function Settings({ state, now }: { state: AppState; now: number }): ReactNode {
                     <select value={p.retentionDays} title="Choose how long raw activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
                 </Setting>
             </Panel>}
-            {tab === "billing" && <BillingSettings w={w} />}
+            {tab === "billing" && <BillingSettings w={w} onRules={onRules} />}
             {tab === "data" && <Panel>
                 <strong>Display</strong>
                 <Setting title="Text size" detail="Makes everything in this window larger, for reading on a laptop or from a distance.">

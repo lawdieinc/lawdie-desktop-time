@@ -11,6 +11,8 @@ import { ContextMenu, Menu } from "./Menu";
    client's rules. */
 
 type OpenRules = (book: string | null, rule?: string | null) => void;
+/** Passed as the rulebook key to open the Client rules page with the New rulebook sheet up. */
+export const NEW_RULEBOOK = "+new";
 
 /** "Apply client rules ▾": Generic, or one of the clients whose rules the workspace carries. */
 export function ApplyRulesMenu({ w, onRules }: { w: Workspace; onRules: OpenRules }): ReactNode {
@@ -30,14 +32,14 @@ export function ApplyRulesMenu({ w, onRules }: { w: Workspace; onRules: OpenRule
                     <span className="menu-check" aria-hidden="true">{current?.key === b.key ? "✓" : ""}</span>{b.client}
                 </button>
             ))}
+            <span className="menu-sep" role="presentation" />
             {current && (
-                <>
-                    <span className="menu-sep" role="presentation" />
-                    <button type="button" role="menuitem" title={`See each of ${current.client}'s rules, what it does today, and where it is written.`} onClick={() => onRules(current.key)}>
-                        <span className="menu-check" aria-hidden="true" />Open {shortName(current)} rules
-                    </button>
-                </>
+                <button type="button" role="menuitem" title={`See each of ${current.client}'s rules, what it does today, and where it is written.`} onClick={() => onRules(current.key)}>
+                    <span className="menu-check" aria-hidden="true" />Open {shortName(current)} rules
+                </button>
             )}
+            <button type="button" role="menuitem" title="Every client's rulebook: add, change or delete rules." onClick={() => onRules(current?.key ?? null)}><span className="menu-check" aria-hidden="true" />Manage client rules…</button>
+            <button type="button" role="menuitem" title="Make a rulebook for another client, then add its rules." onClick={() => onRules(NEW_RULEBOOK)}><span className="menu-check" aria-hidden="true" />New rulebook…</button>
         </Menu>
     );
 }
@@ -266,7 +268,7 @@ export function InvoiceSheet({ w, kind, day, onClose }: { w: Workspace; kind: "i
 
 const lines = (s: string): string[] => s.split("\n").map((l) => l.trim()).filter(Boolean);
 
-export function BillingSettings({ w }: { w: Workspace }): ReactNode {
+export function BillingSettings({ w, onRules }: { w: Workspace; onRules: OpenRules }): ReactNode {
     const b = w.billing ?? null;
     const [firm, setFirm] = useState(b?.firm.name ?? "");
     const [address, setAddress] = useState(b?.firm.address.join("\n") ?? "");
@@ -323,6 +325,13 @@ export function BillingSettings({ w }: { w: Workspace }): ReactNode {
                 <button type="button" className="quiet" disabled={!b || !site.trim() || !!busy} title={b ? "Look for the logo on that website and keep the best picture it offers." : "Save the firm's name first."} onClick={() => void act("fetch", () => window.lawdie.fetchLogo(site))}>{busy === "fetch" ? "Looking…" : "Fetch from website"}</button>
                 <button type="button" className="quiet" disabled={!b || !!busy} title={b ? "Choose a PNG or JPEG of the logo." : "Save the firm's name first."} onClick={() => void act("choose", () => window.lawdie.chooseLogo())}>Choose file…</button>
                 {logo && <button type="button" className="quiet" disabled={!!busy} title="Take the logo off the letterhead." onClick={() => void act("remove", () => window.lawdie.removeLogo())}>Remove</button>}
+            </div>
+            <div className="setting">
+                <div className="grow"><div className="small strong">Client rules</div><p className="muted tiny">{rulebooksOf(w).length ? `${rulebooksOf(w).map((b) => b.client).join(", ")}.` : "No client has rules yet."} A client's billing rules (its outside counsel guidelines) shape its invoices and check entries as you keep them.</p></div>
+                <span className="row gap">
+                    {rulebooksOf(w).length > 0 && <button type="button" className="quiet" title="Every client's rulebook: add, change or delete rules." onClick={() => onRules(null)}>Manage</button>}
+                    <button type="button" className="quiet" title="Make a rulebook for a client, then add its rules." onClick={() => onRules(NEW_RULEBOOK)}>New rulebook…</button>
+                </span>
             </div>
             <div className="setting">
                 <div className="grow"><div className="small strong">Where files go</div><p className="muted tiny mono">{b?.folder ?? "Asked for each time, and remembered."}</p></div>

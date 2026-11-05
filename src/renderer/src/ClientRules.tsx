@@ -5,6 +5,7 @@ import { bookOf, money, rulebooksOf, shortName, termsOf } from "@shared/invoice"
 import { applyRules } from "@shared/applyRules";
 import { ImageViewer, SourceIcon } from "./Narrative";
 import { RuleSheet, RulebookSheet } from "./RuleEditor";
+import { NEW_RULEBOOK } from "./Billing";
 
 /* A client's billing rules: the client, its guidelines and where they came from, then one card
    per rule with the client's words, what Lawdie does, what it does to today's entries, a switch,
@@ -29,14 +30,14 @@ const dayOf = (iso: string | undefined): string => (iso ? new Date(iso).toLocale
 
 export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Workspace; bookKey: string | null; focusRule: string | null; day: string | null; onBack: () => void }): ReactNode {
     // The rulebook shown: the one asked for, else the one applied, else the first; a person can switch among them here.
-    const [chosen, setChosen] = useState<string | null>(bookKey);
+    const [chosen, setChosen] = useState<string | null>(bookKey === NEW_RULEBOOK ? null : bookKey);
     const books = rulebooksOf(w);
     const book = bookOf(w, chosen) ?? bookOf(w, bookKey) ?? bookOf(w, w.billingClient) ?? books[0] ?? null;
     const [filter, setFilter] = useState<Filter>("all");
     const [shot, setShot] = useState<{ src: string; caption: string; id: string } | null>(null);
     const [problem, setProblem] = useState<string | null>(null);
     // Making and changing rules in the app: the rulebook sheet (new, or this one's details) and the rule sheet (new, or one rule).
-    const [bookSheet, setBookSheet] = useState<"new" | "edit" | null>(null);
+    const [bookSheet, setBookSheet] = useState<"new" | "edit" | null>(bookKey === NEW_RULEBOOK ? "new" : null);
     const [ruleSheet, setRuleSheet] = useState<ClientRule | "new" | null>(null);
     const list = useRef<HTMLDivElement>(null);
     useEffect(() => {
