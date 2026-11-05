@@ -178,8 +178,19 @@ narrative citing every source, so "Draft again" can ask Kiwi's model to write pa
 them (`evidenceLine` knows the capture kinds). Deleting the entry removes its evidence. The
 rules drafter only replays a seed's parts, so an entry kept from capture always goes to the
 model when Kiwi is connected.
-Not built yet: rules proposed by a model from an uploaded guidelines document (needs a Kiwi
-route), rejecting a bill, custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
+A rejection (`src/shared/rejection.ts`, the same day): every invoice made in the Invoice sheet
+is remembered (`Workspace.invoices`, `IssuedInvoice`: number, matter, period, mode, total, entry
+ids). Billing → Record a rejection… names one, takes the client's words, and
+`rejectionProposals()` reads each sentence for a rule it states (one task per entry, tenths,
+a rate cap with its figure, no charge for internal conferences, the vague, clerical and travel
+checks, a cap on calls, research needing approval), each proposed quoting the sentence;
+`recordRejection()` marks the invoice, sends its entries back as `flagged` with
+`why` "Sent back by …: …" (so they leave the bill until Fix and confirm → Save, which
+`editEntry` settles), and puts the approved rules on the client's rulebook (made if none)
+under "Rejection of invoice N". The next invoice for the matter says it resubmits
+(`resubmits()`). A model reading the note is the same open item as rules from a document.
+Not built yet: rules proposed by a model from an uploaded guidelines document or a rejection
+note (needs a Kiwi route), custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
 live Outlook/Teams sources (a seed's evidence; capture's own is above).
 
 ## Kiwi and Lawdie CRM
@@ -313,3 +324,5 @@ local server in 3 s (ShipIt log); 0.11.0 hung because the fix shipped after its 
 Same day: client rules made in the app (rulebook and rule sheets on the Client rules page; a
 rulebook made here also checks entries at keep). Settings in four tabs.
 Same day: "Why this entry" for entries kept from capture (work, sources, evidence, reasons).
+Same day: bill rejection (invoices remembered; a client's note sends entries back and proposes
+rules). The harness types into a textarea too.

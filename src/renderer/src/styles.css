@@ -409,3 +409,5 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 .section-label .add-rule { font-family: var(--body); font-size: 13px; letter-spacing: 0; text-transform: none; margin-left: auto; } .section-label:has(.add-rule)::after { order: 1; margin-right: 14px; }
 .rule-sheet { gap: 14px; } .rule-head button.icon { font-size: 14px; }
 .empty .primary { align-self: center; margin-top: 8px; }
+.proposal { align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); } .proposal:first-of-type { border-top: 0; } .proposal input { margin-top: 4px; }
+.sent-back { margin: 4px 0 2px; padding: 6px 10px; border-left: 2px solid var(--danger); background: rgba(176, 65, 62, 0.05); border-radius: 0 6px 6px 0; font-size: 13px; color: #5f574f; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

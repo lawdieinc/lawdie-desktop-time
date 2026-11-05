@@ -169,6 +169,34 @@ export type BillingSetup = {
 export const BILLING_LINE_MAX = 200;
 export const BILLING_LINES_MAX = 8;
 
+/** An invoice as it went out: what it covered and, when the client sent it back, their words (src/shared/rejection.ts). */
+export type IssuedInvoice = {
+    number: string;
+    projectID: string | null;
+    client: string;
+    matter: string;
+    /** YYYY-MM-DD, `to` inclusive; a day bill has both the same. */
+    from: string;
+    to: string;
+    /** "generic" or the rulebook's key. */
+    mode: string;
+    issuedAt: string;
+    total: number;
+    entryIDs: string[];
+    rejection?: { at: string; by: string; note: string; ruleIDs: string[] } | null;
+};
+export const REJECTION_NOTE_MAX = 4000;
+
+const invoicesValid = (list: unknown): boolean =>
+    list == null || (Array.isArray(list) && list.every((i) => !!i && typeof i.number === "string" && typeof i.from === "string" && typeof i.to === "string" && validIso(i.issuedAt) && Number.isFinite(i.total) && Array.isArray(i.entryIDs)
+        && (i.rejection == null || (validIso(i.rejection.at) && typeof i.rejection.note === "string" && i.rejection.note.length <= REJECTION_NOTE_MAX && Array.isArray(i.rejection.ruleIDs)))));
+
+/** An invoice made: remembered, so a rejection can name it and send its entries back. */
+export function issueInvoice(w: Workspace, record: Omit<IssuedInvoice, "rejection">): void {
+    (w.invoices ??= []).push({ ...record, entryIDs: [...new Set(record.entryIDs)] });
+    if (w.invoices.length > 500) w.invoices.splice(0, w.invoices.length - 500);
+}
+
 export type EntryTask = { stretch?: number | null; text: string; task?: string | null; activity?: string | null; hours?: number | null };
 
 /** `sourceID`: the source (and evidence) this stretch is, when capture made it, so the Why panel shows the two as one row. */
@@ -418,6 +446,8 @@ export type Workspace = {
     invoice?: InvoiceTerms | null;
     /** The firm's billing details, from Settings → Billing. */
     billing?: BillingSetup | null;
+    /** Every invoice made here (the Invoice sheet), newest last, and the client's rejection of it when there was one. */
+    invoices?: IssuedInvoice[];
     /** The client's billing rules (its outside counsel guidelines and engagement letter), each on or off. */
     clientRules?: ClientRules | null;
     /** Every client whose rules can be applied to the day, and the one applied now (its key), or null for generic billing. */
@@ -1519,7 +1549,7 @@ export function validate(w: Workspace): Workspace {
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&
         w.projects.every((x) => Number.isFinite(x.hourlyRate) && x.hourlyRate >= 0 && insightValid(x.insight) && linesValid(x.billTo) && (x.codeSet == null || CODE_SETS.has(x.codeSet))) &&
-        billingValid(w.billing) &&
+        billingValid(w.billing) && invoicesValid(w.invoices) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || DRAFT_SOURCES.has(e.drafted)) && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20) && (e.hours == null || (Number.isFinite(e.hours) && e.hours >= 0 && e.hours <= 24))) &&
         (w.rulebooks == null || (Array.isArray(w.rulebooks) && w.rulebooks.every((r) => r && typeof r.clientId === "string" && Array.isArray(r.rules)))) &&
         w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&

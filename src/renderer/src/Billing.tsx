@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "r
 import { applyRules, changesOf, type AppliedBill, type AppliedChange, type AppliedLine } from "@shared/applyRules";
 import { billable, citeOf, longDate, money, rulebooksOf, shortName, type BillScope, type Segment } from "@shared/invoice";
 import { nextInvoiceNumber, type BillingSetup, type ClientRulebook, type Workspace } from "@shared/model";
+import { rejectionProposals, resubmits } from "@shared/rejection";
+import { describeRule } from "@shared/clientRulebooks";
 import { ContextMenu, Menu } from "./Menu";
 
 /* Billing on the Time page: apply a client's rules to the day (or none), see each change
@@ -138,7 +140,7 @@ export function inlineNarrative(lines: AppliedLine[] | undefined, book: ClientRu
 /** "Billing ▾" for the mode on screen: the time sheet as PDF or DOCX, and the invoice. */
 export function BillingMenu({ w, bill, day, onProblem }: { w: Workspace; bill: AppliedBill; day: string; onProblem: (p: string | null) => void }): ReactNode {
     const [busy, setBusy] = useState<string | null>(null);
-    const [sheet, setSheet] = useState<"invoice" | "timesheet" | null>(null);
+    const [sheet, setSheet] = useState<"invoice" | "timesheet" | "rejection" | null>(null);
     // With the firm set up in Settings, a bill is one matter over a period, chosen in a sheet; a demo seed bills its day.
     if (w.billing) {
         return (
@@ -146,8 +148,9 @@ export function BillingMenu({ w, bill, day, onProblem }: { w: Workspace; bill: A
                 <Menu label="Billing" tip="Make an invoice or a time sheet for one matter over a period, saved as a file.">
                     <button type="button" role="menuitem" title={`Invoice ${nextInvoiceNumber(w)}: one matter, a period, your rules or a client's.`} onClick={() => setSheet("invoice")}>Invoice…</button>
                     <button type="button" role="menuitem" title="The time detail for one matter over a period, as PDF or Word." onClick={() => setSheet("timesheet")}>Time sheet…</button>
+                    {(w.invoices?.length ?? 0) > 0 && <><span className="menu-sep" role="presentation" /><button type="button" role="menuitem" title="A client sent an invoice back: its entries return to you to fix, and the rules the client states join their rulebook." onClick={() => setSheet("rejection")}>Record a rejection…</button></>}
                 </Menu>
-                {sheet && <InvoiceSheet w={w} kind={sheet} day={day} onClose={() => setSheet(null)} />}
+                {sheet === "rejection" ? <RejectionSheet w={w} onClose={() => setSheet(null)} /> : sheet && <InvoiceSheet w={w} kind={sheet} day={day} onClose={() => setSheet(null)} />}
             </>
         );
     }
@@ -210,6 +213,7 @@ export function InvoiceSheet({ w, kind, day, onClose }: { w: Workspace; kind: "i
         setBusy(null);
         if (p) setProblem(p); else onClose();
     };
+    const back = kind === "invoice" ? resubmits(w, projectID) : null;
     const title = kind === "invoice" ? `Invoice ${nextInvoiceNumber(w)}` : "Time sheet";
     return (
         <div className="scrim" onClick={onClose}>
@@ -241,6 +245,7 @@ export function InvoiceSheet({ w, kind, day, onClose }: { w: Workspace; kind: "i
                                 </label>
                             )}
                         </div>
+                        {back && <p className="small accent" title={`${back.rejection!.by} sent invoice ${back.number} back${back.rejection ? ` on ${new Date(back.rejection.at).toLocaleDateString()}` : ""}. Entries still flagged are not on this one until fixed and confirmed.`}>Resubmits invoice {back.number}, sent back by {back.rejection!.by}.</p>}
                         <p className="muted tiny">
                             {project ? `Bill to ${(project.billTo?.[0] || project.client) || "no one yet: set the client on the matter"}` : ""}{scope.to ? ` · through ${longDate(scope.to)}` : ""}
                             {bill.lines.length ? ` · ${bill.lines.length} ${bill.lines.length === 1 ? "line" : "lines"}, ${bill.totals.billedHours.toFixed(1)} h` : " · nothing kept on this matter in this period"}
@@ -338,6 +343,75 @@ export function BillingSettings({ w, onRules }: { w: Workspace; onRules: OpenRul
                 <button type="button" className="quiet" disabled={!b} title={b ? "Choose the folder invoices and time sheets are saved in." : "Save the firm's name first."} onClick={() => void act("folder", () => window.lawdie.chooseBillingFolder())}>Choose folder…</button>
             </div>
             {problem && <p className="danger small">{problem}</p>}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A client sent an invoice back
+
+export function RejectionSheet({ w, onClose }: { w: Workspace; onClose: () => void }): ReactNode {
+    const invoices = [...(w.invoices ?? [])].reverse();
+    const open = invoices.filter((i) => !i.rejection);
+    const [number, setNumber] = useState(open[0]?.number ?? "");
+    const inv = invoices.find((i) => i.number === number) ?? null;
+    const [by, setBy] = useState(inv?.client ?? "");
+    const [note, setNote] = useState("");
+    const [off, setOff] = useState<Set<number>>(new Set());
+    const [busy, setBusy] = useState(false);
+    const [problem, setProblem] = useState<string | null>(null);
+    const [done, setDone] = useState<{ flagged: number; ruleIDs: string[] } | null>(null);
+    const proposals = useMemo(() => rejectionProposals(note), [note]);
+    const approved = proposals.filter((_, n) => !off.has(n)).map((p) => p.rule);
+    const entries = inv ? inv.entryIDs.filter((id) => w.entries.some((e) => e.id === id)).length : 0;
+    const record = async (): Promise<void> => {
+        if (!inv) { setProblem("Choose the invoice that was sent back."); return; }
+        setBusy(true); setProblem(null);
+        const r = await window.lawdie.recordRejection({ number: inv.number, by, note }, approved);
+        setBusy(false);
+        if (r) setDone(r); else setProblem("That could not be recorded. Paste what the client said, and check the invoice was not already sent back.");
+    };
+    return (
+        <div className="scrim" onClick={onClose}>
+            <form className="sheet wide" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void record(); }}>
+                <div className="heading"><p className="eyebrow">Billing</p><h2 className="display">Invoice sent back</h2></div>
+                {done ? (
+                    <>
+                        <p className="small">{done.flagged} {done.flagged === 1 ? "entry is" : "entries are"} back with you on the Time page, marked with what {by.trim() || inv?.client || "the client"} said. Fix each and press Assign and edit → Save to confirm it; the next invoice for the matter is the resubmission.{done.ruleIDs.length ? ` ${done.ruleIDs.length} ${done.ruleIDs.length === 1 ? "rule" : "rules"} joined ${inv?.client}'s rulebook, each quoting the note, and will shape the resubmission.` : ""}</p>
+                        <div className="row between"><span /><button type="button" className="primary" title="Close." onClick={onClose}>Done</button></div>
+                    </>
+                ) : (
+                    <>
+                        <div className="row gap wrap">
+                            <label className="field grow"><span className="eyebrow">Invoice</span>
+                                <select value={number} title="The invoice the client sent back." onChange={(e) => { setNumber(e.target.value); const i = invoices.find((x) => x.number === e.target.value); if (i && !by) setBy(i.client); }}>
+                                    {!open.length && <option value="">Every invoice made here was already sent back</option>}
+                                    {open.map((i) => <option key={i.number} value={i.number}>{i.number} · {i.matter} · {money(i.total)} · {new Date(i.issuedAt).toLocaleDateString()}</option>)}
+                                </select>
+                            </label>
+                            <label className="field grow"><span className="eyebrow">From</span><input value={by} placeholder={inv?.client ?? "Who at the client"} title="Who sent it back, as the entries will say." onChange={(e) => setBy(e.target.value)} /></label>
+                        </div>
+                        <label className="field"><span className="eyebrow">What they said</span><textarea rows={6} autoFocus value={note} placeholder="Paste the client's email or note. Each sentence that states a rule is read and offered below." title="The client's words. They go on each entry sent back, and on each rule made from them." onChange={(e) => setNote(e.target.value)} /></label>
+                        {proposals.length > 0 && (
+                            <div className="field">
+                                <span className="eyebrow">Rules the note states</span>
+                                {proposals.map((p, n) => (
+                                    <label key={n} className="row gap check proposal" title={p.sentence}>
+                                        <input type="checkbox" checked={!off.has(n)} onChange={(e) => { const next = new Set(off); if (e.target.checked) next.delete(n); else next.add(n); setOff(next); }} />
+                                        <span className="grow"><span className="strong">{p.rule.title}</span> <span className="muted">· {describeRule(p.rule as never)}</span><br /><span className="tiny muted">“{p.sentence}”</span></span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                        <p className="muted tiny">{inv ? `${entries} ${entries === 1 ? "entry goes" : "entries go"} back to you to fix, off the bill until confirmed.` : ""}{approved.length ? ` ${approved.length} ${approved.length === 1 ? "rule joins" : "rules join"} ${inv?.client ?? "the client"}'s rulebook.` : proposals.length ? "" : note.trim() ? " No rule found in the note; the entries still go back." : ""}</p>
+                        {problem && <p className="danger small">{problem}</p>}
+                        <div className="row between">
+                            <span />
+                            <span className="row gap"><button type="button" className="quiet" title="Close without recording anything." onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={busy || !inv || !note.trim()} title="Send the entries back to review and make the approved rules.">{busy ? "Recording…" : "Record rejection"}</button></span>
+                        </div>
+                    </>
+                )}
+            </form>
         </div>
     );
 }

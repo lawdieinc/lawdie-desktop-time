@@ -15,9 +15,10 @@ import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoiceHtml"
 import { applyRules, type AppliedBill } from "@shared/applyRules";
 import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
-import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
+import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, issueInvoice, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
 import { LOGO_MIN_PX, logoCandidates, siteURL } from "@shared/logo";
 import { addRulebook, removeClientRule, removeRulebook, saveClientRule, updateRulebook, type ClientRuleInput, type RulebookInput } from "@shared/clientRulebooks";
+import { recordRejection, type RejectionInput } from "@shared/rejection";
 import { demoNow } from "@shared/demo";
 import type { AppState } from "@shared/state";
 import { entriesCsv } from "@shared/export";
@@ -419,8 +420,12 @@ app.whenReady().then(() => {
             await win.loadURL(`data:text/html;charset=utf-8;base64,${Buffer.from(html).toString("base64")}`);
             const pdf = await win.webContents.printToPDF({ pageSize: "Letter", printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: footerTemplate(terms) });
             saved(folder, name, pdf);
-            // The number is used up only once the invoice exists; the folder choice is remembered for next time.
-            if (kind === "invoice" && w.billing) store.change((x) => { invoiceIssued(x); if (!x.billing?.folder) setBillingFile(x, "folder", folder); });
+            // The number is used up only once the invoice exists, and the invoice is remembered (a rejection names it); the folder choice is kept for next time.
+            if (kind === "invoice" && w.billing) store.change((x) => {
+                invoiceIssued(x);
+                issueInvoice(x, { number: terms.number, projectID: scope.projectID ?? null, client: terms.client, matter: terms.matter, from: scope.from ?? scope.day ?? "", to: scope.to ?? scope.day ?? "", mode: bill.mode, issuedAt: new Date(clock()).toISOString(), total: bill.totals.fees, entryIDs: bill.lines.map((l) => l.entryId) });
+                if (!x.billing?.folder) setBillingFile(x, "folder", folder);
+            });
             return null;
         } catch (err) {
             return `The PDF could not be made. ${err instanceof Error ? err.message : ""}`.trim();
@@ -445,6 +450,12 @@ app.whenReady().then(() => {
         } catch (err) {
             return `The time sheet could not be made. ${err instanceof Error ? err.message : ""}`.trim();
         }
+    });
+    // A client sent an invoice back: its entries go back to the person, the approved rules join the client's rulebook.
+    ipcMain.handle("recordRejection", (_e, input: RejectionInput, approved: ClientRuleInput[]) => {
+        let result: { flagged: number; ruleIDs: string[] } | null = null;
+        const ok = store.change((w) => { result = recordRejection(w, { ...input, note: String(input?.note ?? ""), by: String(input?.by ?? ""), number: String(input?.number ?? ""), at: new Date(clock()).toISOString() }, Array.isArray(approved) ? approved : []); });
+        return ok ? result : null;
     });
     // Settings → Billing: the firm's details, where files go, and the logo (from the firm's website or a file).
     ipcMain.handle("setBilling", (_e, input: BillingSetup) => store.change((w) => setBilling(w, input)));
@@ -531,7 +542,7 @@ app.whenReady().then(() => {
                 console.log("--steps tips", bad.length ? bad.length + " without a tooltip: " + JSON.stringify(bad) : "every visible control has a tooltip"); return; }
             if (kind === "btn") { const el = [...document.querySelectorAll("button")].filter(visible).find((b) => b.textContent.trim().startsWith(arg)); console.log("--steps", s, el ? "ok" : "matched nothing"); el?.click(); return; }
             if (kind === "type") { const [sel, ...t] = arg.split("="); const el = [...document.querySelectorAll(sel)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); if (!el) return;
-                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, t.join("=")); el.dispatchEvent(new Event("input", { bubbles: true })); return; }
+                Object.getOwnPropertyDescriptor(el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value").set.call(el, t.join("=")); el.dispatchEvent(new Event("input", { bubbles: true })); return; }
             const el = [...document.querySelectorAll(arg)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); el?.click();
         })()`;
         mainWindow.webContents.once("did-finish-load", () => {

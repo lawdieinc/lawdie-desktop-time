@@ -80,7 +80,9 @@ export const SUGGESTED_TIP = "Lawdie drafted this from matter history. Confirm p
 
 /** What a flagged entry's Assign button says: why it waits, and what the button does. */
 export const flaggedTip = (entry: TimeEntry): string =>
-    `Needs you: no matter found.${entry.why ? ` ${entry.why.trim().replace(/\.?$/, ".")}` : ""} Choose the matter and write the narrative for this time.`;
+    entry.projectID && /^Sent back by/.test(entry.why ?? "")
+        ? `${entry.why!.trim().replace(/\.?$/, ".")} Fix the entry, then confirm it to put it on the next invoice.`
+        : `Needs you: no matter found.${entry.why ? ` ${entry.why.trim().replace(/\.?$/, ".")}` : ""} Choose the matter and write the narrative for this time.`;
 
 /** The ✦ AI tag's words: who drafted the narrative, and what is still to do (a status, kept off the page). */
 function aiTip(entry: TimeEntry): string {

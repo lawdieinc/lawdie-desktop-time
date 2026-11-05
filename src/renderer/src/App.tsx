@@ -282,7 +282,9 @@ function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: {
     const narrative = hasNarrative(entry);
     const inline = narrative && entry.status !== "flagged";
     // The matter is the group's title and the time sits in the minutes' tooltip; only a matter rulebook's check stays here.
-    const meta = <EntryRules w={w} entry={entry} />;
+    // A sent-back entry shows the client's words under it; a flag with no matter says so in its tooltip instead.
+    const sentBack = entry.status === "flagged" && entry.projectID && /^Sent back by/.test(entry.why ?? "");
+    const meta = <><EntryRules w={w} entry={entry} />{sentBack && <p className="sent-back" title={entry.why}>{entry.why}</p>}</>;
     // Under a client's rules: the narrative as the rules write it, and each change with its rule chip.
     const changes = book && lines ? <EntryChanges lines={lines} book={book} w={w} onRules={onRules} /> : null;
     return (
@@ -294,7 +296,7 @@ function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: {
                 <Shots names={entry.screenshots} />
             </div>
             {entry.status === "suggested" && <button type="button" className="fix" title={SUGGESTED_TIP} onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>}
-            {entry.status === "flagged" && <button type="button" className="fix" title={flaggedTip(entry)} onClick={() => setEditing(true)}>Assign and edit</button>}
+            {entry.status === "flagged" && <button type="button" className="fix" title={flaggedTip(entry)} onClick={() => setEditing(true)}>{entry.projectID ? "Fix and confirm" : "Assign and edit"}</button>}
             <span className="mono" title={timeBlock(entry)}>{duration(entrySeconds(entry))}</span>
             <button type="button" className="quiet" disabled={draft !== null} title={inline ? "Edit this narrative here, in the row." : "Change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}>Edit</button>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>

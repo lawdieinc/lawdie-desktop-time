@@ -3,6 +3,7 @@ import type { AppState } from "@shared/state";
 import type { BillingSetup, EntryChange, KeepInput, KeepLine, Preferences, ProjectChange } from "@shared/model";
 import type { BillScope } from "@shared/invoice";
 import type { ClientRuleInput, RulebookInput } from "@shared/clientRulebooks";
+import type { RejectionInput } from "@shared/rejection";
 import type { Destination, Product } from "@shared/kiwi";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
@@ -107,6 +108,8 @@ export const api = {
     /** The saved rule's id, or null when refused. */
     saveClientRule: (key: string, input: ClientRuleInput): Promise<string | null> => ipcRenderer.invoke("saveClientRule", key, input),
     removeClientRule: (key: string, id: string): Promise<boolean> => ipcRenderer.invoke("removeClientRule", key, id),
+    /** A client sent an invoice back: how many entries went back to review and which rules were made, or null when refused. */
+    recordRejection: (input: Omit<RejectionInput, "at">, approved: ClientRuleInput[]): Promise<{ flagged: number; ruleIDs: string[] } | null> => ipcRenderer.invoke("recordRejection", input, approved),
     officeStatus: (): Promise<{ supported: boolean; errors: Record<string, string> }> => ipcRenderer.invoke("officeStatus"),
     /** Whether on-screen text can be read here, and (macOS) whether Accessibility is allowed. */
     screenTextStatus: (): Promise<{ supported: boolean; trusted: boolean; error: string | null }> => ipcRenderer.invoke("screenTextStatus"),
