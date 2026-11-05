@@ -326,3 +326,5 @@ rulebook made here also checks entries at keep). Settings in four tabs.
 Same day: "Why this entry" for entries kept from capture (work, sources, evidence, reasons).
 Same day: bill rejection (invoices remembered; a client's note sends entries back and proposes
 rules). The harness types into a textarea too.
+2026-11-05: Codex's fixes (review decisions kept, billing workflow regressions; `review-regressions.test.ts`).
+Version 0.13.0 (schema 3; the first build that reads a version 3 file). Tests 202.
