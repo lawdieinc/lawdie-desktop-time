@@ -259,7 +259,7 @@ function SourceRow({ id, label, w, lit: on, onHover }: { id: string; label: stri
                 {ev?.screenshot && <button type="button" className="link-btn" title="See a picture of this source as it looked." onClick={() => void viewShot()}>Screenshot</button>}
                 {ev?.path && <button type="button" className="link-btn" title={`Open ${ev.file ?? "this file"} on this Mac.`} onClick={() => void open("path")}>Open file</button>}
                 {ev?.kind === "transcript" && <button type="button" className="link-btn" aria-expanded={lines} title={lines ? "Hide the transcript lines." : "Show the transcript lines here."} onClick={() => setLines(!lines)}>{lines ? "Hide transcript" : "Show transcript"}</button>}
-                {ev && !ev.link && !ev.screenshot && !ev.path && (ev.kind === "email" || ev.kind === "meeting" || ev.kind === "document") && <span className="tiny muted" title={ev.kind === "document" ? "Capture did not see where the file is saved. Switch on Office document details in Settings." : "Links are added when the mailbox is seeded."}>No link</span>}
+                {ev && !ev.link && !ev.screenshot && !ev.path && (ev.kind === "email" || ev.kind === "meeting" || ev.kind === "document") && <span className="tiny muted" title={ev.kind === "document" ? "Capture did not see where the file is saved. Switch on Office document details in Settings." : ev.kind === "email" ? "Capture saw this message's subject and sender; opening it in Outlook is not built yet." : "Nothing to open for this source."}>No link</span>}
             </span>
             {problem && <div className="danger tiny source-wide">{problem}</div>}
             {lines && ev?.lines && (

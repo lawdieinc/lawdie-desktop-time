@@ -993,7 +993,7 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
                         </div>
                         <div className="row gap wrap">
                         <label className="field rate"><span className="eyebrow">Matter number</span><input value={number} placeholder="104882-0001" title="The client's or the firm's number for this matter, printed on the invoice." onChange={(e) => setNumber(e.target.value)} /></label>
-                        <label className="field grow"><span className="eyebrow">Bill to</span><textarea rows={2} value={billTo} placeholder={"Rosa Delacroix, Acme Inc.\n200 Peachtree Street, Atlanta, GA 30303"} title="The invoice's Bill to lines: the client's billing contact and address. The client's name alone without them." onChange={(e) => setBillTo(e.target.value)} /></label>
+                        <label className="field grow"><span className="eyebrow">Bill to</span><textarea rows={2} value={billTo} placeholder={"Billing contact, Client Inc.\n200 Main Street, Suite 100, City, ST 00000"} title="The invoice's Bill to lines: the client's billing contact and address. The client's name alone without them." onChange={(e) => setBillTo(e.target.value)} /></label>
                         <label className="field rate"><span className="eyebrow">Code set</span>
                             <select value={codeSet} title="The UTBMS code set the client bills this matter under, for its rules." onChange={(e) => setCodeSet(e.target.value)}>
                                 <option value="">None</option><option value="project">Project (P)</option><option value="counseling">Counseling (C)</option><option value="litigation">Litigation (L)</option>
