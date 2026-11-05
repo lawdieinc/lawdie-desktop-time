@@ -1126,21 +1126,20 @@ function Settings({ state, now, onRules }: { state: AppState; now: number; onRul
                 <Setting title="AI suggestions" detail="Kiwi's AI names the matter of your finished, unreviewed activity (so the inbox shows a matter's day across every app as one row), drafts a billing description for each row, and writes an insight on each matter's page. It sees titles, Office document details and on-screen text with personal details already removed, and your kept entries' descriptions and times. The activity in progress is never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
                     <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" tip={{ on: "Stop asking Kiwi's AI for matters and descriptions.", off: "Let Kiwi's AI name matters and draft descriptions." }} />
                 </Setting>
-                <div className="row between wrap gap">
-                    <div><p className="small strong">Bring in browser and Kiwi time</p><p className="muted tiny">Import captured titles and page addresses from Kiwi for review here. AI suggestions also use imported titles. Pausing stops new imports; time already brought in stays assigned to this workspace.</p></div>
+                <Setting title="Bring in browser and Kiwi time" detail="Import captured titles and page addresses from Kiwi for review here. AI suggestions also use imported titles. Pausing stops new imports; time already brought in stays assigned to this workspace.">
                     <Toggle on={p.importKiwiTime === true} onChange={(v) => set("importKiwiTime", v)} label="Bring in browser and Kiwi time" tip={{ on: "Stop bringing in browser and Kiwi time.", off: "Bring the browser extension's and Kiwi's time into the Activity inbox." }} />
-                </div>
+                </Setting>
                 {p.importKiwiTime && <div className="row between wrap gap"><p className="muted tiny">{w.feed?.lastImportedAt ? `Last imported ${ago(w.feed.lastImportedAt, now)}` : "No imports yet"}. {w.sync?.targets.some((t) => t.product === "kiwi") ? "Browser uploads arrive while Kiwi is open." : "Connect to Kiwi below to import."}</p><button className="quiet" type="button" disabled={state.feed.running} onClick={() => void window.lawdie.importNow()}>{state.feed.running ? "Importing…" : "Import now"}</button></div>}
                 {state.feed.error && <p className="danger tiny">{state.feed.error}</p>}
                 {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to get AI suggestions.</p>}
-                <Setting title="Narrative drafter" detail="Who writes each entry's narrative from its sources (emails, meetings, transcripts, documents). Rules (demo) uses the narratives drafted ahead of time. Model asks Kiwi's model to write them from the same sources; each part must name the source it rests on, and a part that names an unknown source is dropped. Use Draft again in an entry's Why this entry list.">
+                {w.demo && <Setting title="Narrative drafter" detail="Who writes each entry's narrative in this demo: the narratives its seed drafted ahead of time, or Kiwi's model from the same sources (each part must name the source it rests on). Entries kept from capture always go to the model.">
                     <div className="segmented" role="radiogroup" aria-label="Narrative drafter">
                         {([["rules", "Rules (demo)", "Use the narratives drafted ahead of time from the sources."], ["model", "Model", "Ask Kiwi's model to write narratives from the sources. Needs this computer connected to Kiwi."]] as const).map(([k, text, tip]) => (
                             <button key={k} type="button" role="radio" aria-checked={(p.narrativeDrafter ?? "rules") === k} className={(p.narrativeDrafter ?? "rules") === k ? "active" : ""} title={tip} onClick={() => set("narrativeDrafter", k)}>{text}</button>
                         ))}
                     </div>
-                </Setting>
-                {p.narrativeDrafter === "model" && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Model not connected. Narratives stay with the rules until this {label} is connected to Kiwi below.</p>}
+                </Setting>}
+                {w.demo && p.narrativeDrafter === "model" && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Model not connected. Narratives stay with the rules until this {label} is connected to Kiwi below.</p>}
                 <Setting title="Timer idle timeout" detail="Stops a running timer at your last input after this much inactivity. Capture counts the app in front for as long as it is in front, and a call even behind other windows.">
                     <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>
