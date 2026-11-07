@@ -519,7 +519,7 @@ app.whenReady().then(() => {
         const click = argValue("--click");
         // `--steps "btn:Keep time||type:input[autofocus]=Review draft||click:.fix"` walks a flow first, one step a second:
         // btn: presses the first visible button whose text starts with it, click: a CSS selector, hover: points at one, type: sets an input's value,
-        // context: right-clicks one, wait: lets a second pass, tips: logs each visible control that has no tooltip.
+        // context: right-clicks one, key: sends a key (key:input=Enter), wait: lets a second pass, tips: logs each visible control that has no tooltip.
         const steps = (argValue("--steps") ?? "").split("||").filter(Boolean);
         const run = (step: string): string => `(() => {
             const s = ${JSON.stringify(step)}; const [kind, ...rest] = s.split(":"); const arg = rest.join(":");
@@ -529,6 +529,8 @@ app.whenReady().then(() => {
             if (kind === "context") { const el = [...document.querySelectorAll(arg)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing"); if (!el) return;
                 const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: r.left + r.width / 2, clientY: r.bottom - 2 })); return; }
             if (kind === "wait") return;
+            if (kind === "key") { const [sel, ...k] = arg.split("="); const el = [...document.querySelectorAll(sel)].filter(visible)[0]; console.log("--steps", s, el ? "ok" : "matched nothing");
+                el?.dispatchEvent(new KeyboardEvent("keydown", { key: k.join("="), bubbles: true, cancelable: true })); return; }
             if (kind === "tips") { const bad = [...document.querySelectorAll("button, a[href], select, input:not([type=hidden]), textarea, summary, [role=button], [role=tab], [role=link]")].filter(visible)
                 .filter((e) => !(e.getAttribute("title") || e.getAttribute("data-tip") || e.closest("label[title]") || "").toString().trim()).map((e) => e.outerHTML.slice(0, 140));
                 console.log("--steps tips", bad.length ? bad.length + " without a tooltip: " + JSON.stringify(bad) : "every visible control has a tooltip"); return; }

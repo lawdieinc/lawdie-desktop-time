@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 /** A button that opens a small menu below it. A choice, a click outside it (including on another menu), or Escape
     closes it, so only one menu is ever open. `active` marks the button as showing something applied. */
-export function Menu({ label, tip, children, active = false }: { label: ReactNode; tip: string; children: ReactNode; active?: boolean }): ReactNode {
+export function Menu({ label, tip, children, active = false, className = "quiet" }: { label: ReactNode; tip: string; children: ReactNode; active?: boolean; className?: string }): ReactNode {
     const [open, setOpen] = useState(false);
     const root = useRef<HTMLSpanElement>(null);
     useEffect(() => {
@@ -16,7 +16,7 @@ export function Menu({ label, tip, children, active = false }: { label: ReactNod
     }, [open]);
     return (
         <span className="menu" ref={root}>
-            <button type="button" className={"quiet menu-button" + (open ? " open" : "") + (active ? " applied" : "")} aria-haspopup="menu" aria-expanded={open} title={tip} onClick={() => setOpen(!open)}>
+            <button type="button" className={className + " menu-button" + (open ? " open" : "") + (active ? " applied" : "")} aria-haspopup="menu" aria-expanded={open} title={tip} onClick={() => setOpen(!open)}>
                 {label}
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>

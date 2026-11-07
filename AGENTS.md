@@ -53,7 +53,10 @@ npm run dev | npm test | npm run typecheck | npm run package:mac|win|linux
 ```
 
 Verification flags: `--workspace <path>`, `--route activity|matters|settings|today`, `--click <selector>`,
-`--screenshot <file.png>` (also echoes the renderer console to stdout). **Look at the
+`--steps "btn:Keep time||type:input.inline-edit=Text||key:input.inline-edit=Enter"` (a flow, one step a
+second; the kinds are listed in index.ts), `--screenshot <file.png>` (also echoes the renderer console to
+stdout). A hand-written workspace fails validation easily (`matterBy` is `ai`/`person`); build one through
+`emptyWorkspace()` + `validate()` in a throwaway vitest file instead. **Look at the
 screenshot** after a renderer change: a blank cream window is a silent failure (a wrong
 preload path or CSP did exactly that on 2026-09-26). Idleness (no input for longer than
 `idleMinutes`) stops only a running timer; capture goes on while a window is in front.
@@ -112,7 +115,13 @@ nothing. A person's name (`matterBy: "person"`) is never overwritten and is fed 
 examples. The Matters screen (`MattersView` in `App.tsx`) lists them with time, billable
 value and what waits for review, and edits name, client and rate (`updateProject`, a new
 rate applies from then on), merges (`mergeProjects`) and archives; every Activity row
-names its matter or says "No matter". Keeping a
+names its matter or says "No matter", and its "Matter ▾" menu (`MatterMenu`, 2026-11-06) moves the row,
+or one document inside a matter ("Move…"), to a known matter, off any matter, or to a new one named in
+place (`setMatter`, so it is the person's and never suggested over); the matter moved into unfolds and
+a toast (`notify`, `NoticeContext`) says what happened. A name that is already another matter's, from
+the row's pencil, the Matters page or "New matter…", merges into it rather than clashing
+(`existingMatter()`, `renameMatterNamed()` returns the matter merged into; kept entries follow through
+`mergeProjects`) and the toast says so. Keeping a
 matter makes or reuses the local project of that name, so it reaches Kiwi/the CRM as the
 entry's `project_name`; mapping that name to a real matter (or logging it under the name
 when none matches) is the destinations' job and not built yet — Kiwi still matches from

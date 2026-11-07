@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { IDLE_FLAG_SECONDS, NOISE_SECONDS, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
-import { inboxOf, matterStretch, toReview, type MatterGroup } from "@shared/matters";
+import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeBlock, timeValue } from "@shared/format";
 import { viewNow } from "@shared/demo";
@@ -39,6 +39,13 @@ export function App(): ReactNode {
     const page = useRef<HTMLDivElement>(null);
     const timeScroll = useRef<number | null>(null);
     const [rulesView, setRulesView] = useState<{ book: string | null; rule: string | null }>({ book: null, rule: null });
+    // Toasts: a line saying what just happened (a move, a merge), gone on its own after a few seconds.
+    const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
+    const notify = (text: string): void => {
+        const id = Date.now() + Math.random();
+        setToasts((t) => [...t.slice(-2), { id, text }]);
+        setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
+    };
     const openRules = (book: string | null, rule: string | null = null): void => {
         if (route === "today") timeScroll.current = page.current?.scrollTop ?? 0;
         setRulesView({ book, rule });
@@ -64,6 +71,7 @@ export function App(): ReactNode {
     const pending = toReview(w.activities); // no hook: this sits after the early return above
 
     return (
+        <NoticeContext.Provider value={notify}>
         <div className="shell">
             <aside className="sidebar">
                 <div className="brand">
@@ -127,9 +135,19 @@ export function App(): ReactNode {
                     ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} />}
                 </div>
             </main>
+            {toasts.length > 0 && (
+                <div className="toasts" role="status" aria-live="polite">
+                    {toasts.map((t) => <div key={t.id} className="toast">{t.text}</div>)}
+                </div>
+            )}
         </div>
+        </NoticeContext.Provider>
     );
 }
+
+/** `notify(text)`: a toast from anywhere in the window. */
+const NoticeContext = createContext<(text: string) => void>(() => undefined);
+const useNotify = (): ((text: string) => void) => useContext(NoticeContext);
 
 function statusLine(state: AppState, now: number): string {
     const sync = state.workspace.sync;
@@ -357,6 +375,14 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
     const { groups, stretches, short, personal } = useMemo(() => inboxOf(w.activities), [w.activities]);
+    // Time moved onto a matter lands inside that matter's row: the row unfolds so the move can be seen.
+    const [moved, setMoved] = useState<string | null>(null);
+    useEffect(() => {
+        if (!moved) return;
+        const g = groups.find((x) => x.activityIDs.includes(moved));
+        if (g) { setOpen((o) => ({ ...o, [g.id]: true })); setMoved(null); }
+    }, [groups, moved]);
+    const onMoved = (ids: string[]): void => setMoved(ids[0] ?? null);
     // Opening the inbox freshens it; the main process skips this when it ran in the last ten minutes.
     useEffect(() => { if (w.preferences.suggestMatters) void window.lawdie.suggestMatters(); }, [w.preferences.suggestMatters]);
     // Matters and stretches are one list, so the newest work is on top whether or not it has a matter yet.
@@ -418,7 +444,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
-                            <MatterRow key={r.group.id} group={r.group} match={matches.get(r.group.activityIDs[0]) ?? null} merged={r.group.activityIDs.some((id) => byID.get(id)?.mergeKey)} described={descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
+                            <MatterRow key={r.group.id} w={w} onMoved={onMoved} group={r.group} match={matches.get(r.group.activityIDs[0]) ?? null} merged={r.group.activityIDs.some((id) => byID.get(id)?.mergeKey)} described={descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
                                 onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
                         ) : ((st, own) => (
                             <div key={st.id}>
@@ -437,6 +463,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                                         <MergeLine match={matches.get(st.activityIDs[0]) ?? null} merged={st.activityIDs.some((id) => byID.get(id)?.mergeKey)} />
                                     </div>
                                     <span className="mono">{duration(st.seconds)}</span>
+                                    <MatterMenu w={w} ids={st.activityIDs} current={null} what={own?.text ?? st.name} onMoved={onMoved} />
                                     {matches.get(st.activityIDs[0]) ? <MergeButtons ids={st.activityIDs} match={matches.get(st.activityIDs[0])!} /> : <>
                                         <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(st.activityIDs, PERSONAL)}>Personal</button>
                                         <button type="button" className="quiet" title="Take this stretch out of review without keeping time." onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
@@ -579,6 +606,8 @@ function Shots({ names, max = 6 }: { names: string[] | undefined; max?: number }
 /**
  * Text with a pencil beside it: the pencil (or a click on the text) turns it into a field;
  * Enter or leaving the field saves, Escape cancels. Saving the text unchanged saves nothing.
+ * With no text yet (a matter row without a description or draft), a full line says what to
+ * add, in the draft line's place, so it reads as the field it is and not a stray pencil.
  */
 function Editable({ initial, placeholder, title = "Rename: the description this is kept as", onSave, children }: { initial: string; placeholder?: string; title?: string; onSave: (text: string) => void; children: ReactNode }): ReactNode {
     const [editing, setEditing] = useState(false);
@@ -593,7 +622,8 @@ function Editable({ initial, placeholder, title = "Rename: the description this 
     return (
         <div className="editable">
             {children && <div className="editable-text" onClick={begin}>{children}</div>}
-            <button type="button" className="pencil" title={title} aria-label={title} onClick={begin}>✎{children ? "" : <span> Describe</span>}</button>
+            {children ? <button type="button" className="pencil" title={title} aria-label={title} onClick={begin}>✎</button>
+                : <button type="button" className="pencil describe" title={title} onClick={begin}><span aria-hidden="true">✎</span> Add a description</button>}
         </div>
     );
 }
@@ -615,17 +645,60 @@ function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
     return name ? <span className="matter-label">{name}</span> : <span className="matter-label none">No matter</span>;
 }
 
+/**
+ * "Matter ▾" on a review row or a document inside a matter: moves that activity to a matter the app
+ * knows (open projects and names on pending activity), off any matter, or to a new one named right
+ * here. The person's choice (`setMatter`, `matterBy: "person"`) is never suggested over.
+ */
+function MatterMenu({ w, ids, current, what, label = "Matter", className, onMoved }: { w: Workspace; ids: string[]; current: string | null; what: string; label?: string; className?: string; onMoved?: (ids: string[]) => void }): ReactNode {
+    const [naming, setNaming] = useState(false);
+    const [name, setName] = useState("");
+    const notify = useNotify();
+    const names = knownMatters(w).filter((n) => n.toLowerCase() !== current?.toLowerCase() && n.toLowerCase() !== PERSONAL.toLowerCase());
+    // A new name that is already a matter's joins that matter, spelt its way, and says so.
+    const move = (matter: string | null): void => {
+        const known = matter ? existingMatter(w, matter) : null;
+        const target = known ?? matter?.trim() ?? null;
+        void window.lawdie.setMatter(ids, target).then((ok) => {
+            if (!ok) return;
+            if (!target) notify(`${what} is back in review on its own.`);
+            else if (known) notify(`${what} added to “${known}”${current ? `, from “${current}”` : ""}.`);
+            else notify(`${what} put on a new matter, “${target}”. It is made when you keep the time.`);
+            if (target) onMoved?.(ids);
+        });
+    };
+    const finish = (save: boolean): void => { setNaming(false); if (save && name.trim()) move(name); setName(""); };
+    if (naming) return (
+        <input className="inline-edit matter-new" autoFocus value={name} placeholder="New matter's name" aria-label="New matter" maxLength={MATTER_MAX}
+            onChange={(e) => setName(e.target.value)} onBlur={() => finish(true)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } }} />
+    );
+    return (
+        <Menu label={label} className={className} tip={current ? "Move this time to another matter, off any matter, or to a new one." : "Put this time on one of your matters, or name a new one."}>
+            {names.map((n) => <button key={n} type="button" role="menuitem" title={`Move this time to ${n}.`} onClick={() => move(n)}>{n}</button>)}
+            {names.length > 0 && <span className="menu-sep" aria-hidden="true" />}
+            <button type="button" role="menuitem" title="Name a matter the app does not know yet; it is made when you keep the time." onClick={() => setNaming(true)}>New matter…</button>
+            {current && <button type="button" role="menuitem" title="Take this time off the matter; it goes back to review on its own." onClick={() => move(null)}>No matter</button>}
+        </Menu>
+    );
+}
+
 /** One matter's day: every app and document it was in, as one row to keep. */
-function MatterRow({ group: g, match, merged, described, idle, shots, open, onToggle, onKeep }: { group: MatterGroup; match: TimeEntry | null; merged: boolean; described: ReturnType<typeof descriptionOf>; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+function MatterRow({ w, onMoved, group: g, match, merged, described, idle, shots, open, onToggle, onKeep }: { w: Workspace; onMoved: (ids: string[]) => void; group: MatterGroup; match: TimeEntry | null; merged: boolean; described: ReturnType<typeof descriptionOf>; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+    const notify = useNotify();
     return (
         <div>
             <div className="activity">
                 <span className="app-icon matter-icon" aria-hidden="true">§</span>
                 <div className="grow">
-                    <Editable initial={g.matter} title="Rename this matter, everywhere it appears" onSave={(name) => { if (name) void window.lawdie.renameMatter(g.matter, name); }}>
+                    <Editable initial={g.matter} title="Rename this matter, everywhere it appears; another matter's name merges the two" onSave={(name) => {
+                        if (!name) return;
+                        const into = name.toLowerCase() === g.matter.toLowerCase() ? null : existingMatter(w, name);
+                        void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok && into) notify(`“${g.matter}” merged into “${into}”: its time is on that matter now.`); });
+                    }}>
                         <div className="small strong">{g.matter}</div>
                     </Editable>
-                    <Editable initial={described?.text ?? ""} placeholder="Describe this work" onSave={(text) => void window.lawdie.describeActivities(g.activityIDs, text)}>
+                    <Editable initial={described?.text ?? ""} placeholder="Describe this work" title="Describe this work: the description it is kept as, or the start of one" onSave={(text) => void window.lawdie.describeActivities(g.activityIDs, text)}>
                         {described?.by === "person" ? <div className="draft-line own">{described.text}</div> : g.draft ? <DraftLine draft={g.draft} /> : null}
                     </Editable>
                     <Shots names={shots} />
@@ -636,6 +709,7 @@ function MatterRow({ group: g, match, merged, described, idle, shots, open, onTo
                     <MergeLine match={match} merged={merged} />
                 </div>
                 <span className="mono">{duration(g.seconds)}</span>
+                <MatterMenu w={w} ids={g.activityIDs} current={g.matter} what={`${g.matter}'s time`} onMoved={onMoved} />
                 {match ? <MergeButtons ids={g.activityIDs} match={match} /> : <>
                     <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(g.activityIDs, PERSONAL)}>Personal</button>
                     <button type="button" className="quiet" title="Take this matter's activity out of review without keeping time." onClick={() => void window.lawdie.dismissActivity(g.activityIDs)}>Dismiss</button>
@@ -651,7 +725,7 @@ function MatterRow({ group: g, match, merged, described, idle, shots, open, onTo
                             <span className="tiny muted">{d.app}{d.activityIDs.length > 1 ? ` · ${d.activityIDs.length} sittings` : ""}</span>
                             <span className="grow" />
                             <span className="mono small">{duration(d.seconds)}</span>
-                            <button type="button" className="link sitting-dismiss" title="Take this out of the matter; it goes back to review on its own" onClick={() => void window.lawdie.setMatter(d.activityIDs, null)}>Not this matter</button>
+                            <MatterMenu w={w} ids={d.activityIDs} current={g.matter} what={d.name} label="Move…" className="link sitting-dismiss" onMoved={onMoved} />
                             <button type="button" className="link sitting-dismiss" title={`Dismiss ${d.activityIDs.length === 1 ? "this sitting" : `these ${d.activityIDs.length} sittings`}; the rest of the matter stays to review`} onClick={() => void window.lawdie.dismissActivity(d.activityIDs)}>Dismiss</button>
                         </div>
                     ))}
@@ -962,7 +1036,17 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
     const others = w.projects.filter((x) => p && x.id !== p.id && !x.archived).sort((a, b) => a.name.localeCompare(b.name));
     const days = new Map<string, TimeEntry[]>();
     for (const e of stats.entries) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
-    const save = (): void => { if (p) void window.lawdie.updateProject(p.id, { name, client, hourlyRate: Number(rate), matterNumber: number, billTo: billToLines, codeSet: (codeSet || null) as Project["codeSet"] | null }); };
+    const notify = useNotify();
+    const save = (): void => {
+        if (!p) return;
+        const into = name.trim().toLowerCase() === p.name.toLowerCase() ? null : existingMatter(w, name);
+        if (into) {
+            // Another matter's name: the two merge (entries and review rows move there) rather than clash.
+            void window.lawdie.renameMatter(p.name, name).then((ok) => { if (ok) { notify(`“${p.name}” merged into “${into}”: its entries and review rows are on that matter now.`); onBack(); } });
+            return;
+        }
+        void window.lawdie.updateProject(p.id, { name, client, hourlyRate: Number(rate), matterNumber: number, billTo: billToLines, codeSet: (codeSet || null) as Project["codeSet"] | null });
+    };
     return (
         <>
             <button type="button" className="link back" title="Go back to the list of matters." onClick={onBack}>‹ All matters</button>

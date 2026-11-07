@@ -4,7 +4,7 @@ import {
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
-import { keepSeparate, keptMatch, mergeIntoEntry, renameMatterNamed, describeActivities, descriptionOf, IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCHEMA_VERSION, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
+import { existingMatter, keepSeparate, keptMatch, mergeIntoEntry, renameMatterNamed, describeActivities, descriptionOf, IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCHEMA_VERSION, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { duration, keepBounds } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, isDestination, normalizeServerURL, productsFor, type Product } from "./kiwi";
@@ -167,6 +167,34 @@ describe("describing a row before keeping it", () => {
         renameMatterNamed(w, "whitfield v. acme", "Whitfield v. Acme Corp");
         expect([w.projects[0].name, a.matter]).toEqual(["Whitfield v. Acme Corp", "Whitfield v. Acme Corp"]);
         expect(() => renameMatterNamed(w, "Whitfield v. Acme Corp", "personal")).toThrow(WorkspaceError);
+    });
+    it("renaming to a name that is already a matter merges into it, in review or kept", () => {
+        const w = emptyWorkspace();
+        const a = activity({ matter: "Acme Lease", matterBy: "ai" });
+        const b = activity({ matter: "Harmon", matterBy: "ai" });
+        w.activities.push(a, b);
+        expect(existingMatter(w, "acme lease")).toBe("Acme Lease");
+        expect(existingMatter(w, "Nobody")).toBeNull();
+        // Activity to activity: the row takes the other's spelling.
+        expect(renameMatterNamed(w, "Harmon", "acme lease")).toBe("Acme Lease");
+        expect([b.matter, b.matterBy]).toEqual(["Acme Lease", "person"]);
+        // The same name, differently cased, is a rename and not a merge.
+        expect(renameMatterNamed(w, "Acme Lease", "Acme lease")).toBeNull();
+        expect(a.matter).toBe("Acme lease");
+        // Activity to a kept matter, and a kept matter to a kept matter: entries follow.
+        w.projects.push({ id: "p1", name: "Whitfield", client: "", color: "gold", hourlyRate: 0, archived: false }, { id: "p2", name: "Harbor", client: "", color: "gold", hourlyRate: 0, archived: false });
+        w.entries.push(entry({ projectID: "p2" }));
+        expect(renameMatterNamed(w, "Acme lease", "whitfield")).toBe("Whitfield");
+        expect([a.matter, b.matter]).toEqual(["Whitfield", "Whitfield"]);
+        expect(renameMatterNamed(w, "Harbor", "Whitfield")).toBe("Whitfield");
+        expect(w.projects.map((p) => p.id)).toEqual(["p1"]);
+        expect(w.entries[0].projectID).toBe("p1");
+        expect(w.projects[0].aliases).toContain("Harbor");
+        // A kept matter renamed to a name only in review keeps its project; the review rows now match it.
+        w.activities.push(activity({ matter: "Princess Pillow", matterBy: "ai" }));
+        expect(renameMatterNamed(w, "Whitfield", "princess pillow")).toBe("Princess Pillow");
+        expect(w.projects[0].name).toBe("Princess Pillow");
+        expect(w.activities.every((x) => x.matter === "Princess Pillow")).toBe(true);
     });
     it("the person's description wins over the draft, is never drafted over, and clears", () => {
         const w = emptyWorkspace();

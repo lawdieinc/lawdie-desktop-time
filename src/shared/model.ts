@@ -1007,14 +1007,42 @@ const billingValid = (b: BillingSetup | null | undefined): boolean =>
  * kept entries follow), else every activity named after it. Personal is not renamed, and
  * nothing is renamed to it.
  */
-export function renameMatterNamed(w: Workspace, from: string, to: string): void {
+/**
+ * The matter a name already means, as it is spelt: an open project's, else a name on pending
+ * activity (a matter still in review). Null when the name is new. Case does not matter.
+ */
+export function existingMatter(w: Workspace, name: string): string | null {
+    const key = name.trim().toLowerCase();
+    if (!key) return null;
+    const p = w.projects.find((x) => !x.archived && x.name.trim().toLowerCase() === key);
+    if (p) return p.name;
+    const a = w.activities.find((x) => x.disposition === "pending" && x.matter && x.matter.toLowerCase() === key);
+    return a?.matter ?? null;
+}
+
+/**
+ * Rename a matter from its row or page: the project when there is one, else its activity. A
+ * name that is already another matter's merges the two instead (2026-11-06): the kept entries
+ * move (`mergeProjects`) and the activity takes the other's name as it is spelt. Returns the
+ * matter merged into, or null for a plain rename.
+ */
+export function renameMatterNamed(w: Workspace, from: string, to: string): string | null {
     const name = to.trim().slice(0, MATTER_MAX);
     if (!name) throw new WorkspaceError("Give the matter a name.");
     if (isPersonal(from) || isPersonal(name)) throw new WorkspaceError("Personal is not renamed. Use the Personal button instead.");
     const key = from.trim().toLowerCase();
     const p = w.projects.find((x) => !x.archived && x.name.trim().toLowerCase() === key);
+    const into = key === name.toLowerCase() ? null : existingMatter(w, name);
+    if (into) {
+        const target = w.projects.find((x) => !x.archived && x.name.trim().toLowerCase() === into.toLowerCase());
+        if (p && target) mergeProjects(w, p.id, target.id);
+        else if (p) updateProject(w, p.id, { name: into });
+        else renameMatter(w, from, into);
+        return into;
+    }
     if (p) updateProject(w, p.id, { name });
     else renameMatter(w, from, name);
+    return null;
 }
 
 /** One matter becomes another: its entries move (times and rates untouched), its activity takes the other's name, and it is gone. */
