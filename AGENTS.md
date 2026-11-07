@@ -340,3 +340,7 @@ Same day: bill rejection (invoices remembered; a client's note sends entries bac
 rules). The harness types into a textarea too.
 2026-11-05: Codex's fixes (review decisions kept, billing workflow regressions; `review-regressions.test.ts`).
 Version 0.13.0 (schema 3; the first build that reads a version 3 file). Tests 202.
+2026-11-06: review rows take a matter. "Add a description" on a matter row without one; a Matter menu
+on every row and item (known matters, No matter, New matter… in place); a name that is already a
+matter's merges into it; toasts say what a move or merge did and the target unfolds; each item inside
+a matter says what the work was (`describeItem`). Version 0.14.0. Tests 204.
