@@ -20,11 +20,11 @@ export type TourStep = {
 
 /**
  * The welcome shows once, on a workspace nobody has used: no kept time, no captured activity, not
- * connected, not a demo, and not yet welcomed or skipped (`preferences.onboardedAt`). Someone who was
+ * connected, no firm set up, not a demo, and not yet welcomed or skipped (`preferences.onboardedAt`). Someone who was
  * using the app before the welcome existed is never interrupted by it.
  */
 export function needsWelcome(w: Workspace): boolean {
-    return !w.preferences.onboardedAt && !w.demo && w.entries.length === 0 && w.activities.length === 0 && w.sync === null && (w.imported ?? []).length === 0;
+    return !w.preferences.onboardedAt && !w.demo && w.entries.length === 0 && w.activities.length === 0 && w.sync === null && !w.billing && (w.imported ?? []).length === 0;
 }
 
 export const TUTORIAL_PREFIX = "tutorial-";
@@ -63,10 +63,14 @@ export const TOUR_STEPS: readonly TourStep[] = [
     { id: "row", route: "activity", target: "review-row", title: "A stretch of work, to review", body: "This sample row is what capture turns into: the sittings on one document within fifteen minutes of each other, grouped as one stretch with its time. The matter and the description are suggested when AI suggestions are on; the pencil renames either. Idle minutes are flagged, never hidden." },
     { id: "actions", route: "activity", target: "review-actions", title: "Keep, dismiss, or set apart", body: `Keep time saves the stretch as a time entry. Dismiss drops it. ${PERSONAL} keeps it out of billing and sync for good. Matter moves it to another matter, or a new one. Press Keep time on the sample to see the sheet.`, advanceOn: "keep-open" },
     { id: "sheet", route: "activity", target: "keep-sheet", title: "The Keep sheet", body: "Name the matter, write or accept the description, trim the times or leave the idle minutes out, and mark it billable. Only the sittings count as time, and kept time never overlaps. The sample saves nothing: press Keep time or Cancel to go on.", advanceOn: "keep-closed" },
-    { id: "time", route: "today", target: "entries", title: "Your day, kept", body: "Kept entries land here by day and by matter, with tracked and billable totals above. Edit or delete an entry, export the range as CSV, or add a typed entry for work the computer did not see." },
-    { id: "matters", route: "matters", target: "matters", title: "Matters", body: "A matter is made the first time you keep time on it. Open one to set its client, rate, matter number and bill-to; the rate applies from then on, and entries already kept keep theirs." },
-    { id: "settings", route: "settings", target: "settings-tabs", title: "Settings", body: "Capture: titles, Office details, screenshots, AI suggestions and the apps that stay private. Billing: the firm's details for invoices. Sync: connect this computer to Kiwi or Lawdie CRM with a token; until you do, nothing leaves it. Display & data: text size and where the file lives." },
-    { id: "done", route: "settings", target: null, title: "That is the whole loop", body: "Enable capture, work as usual, review the Activity inbox when you like, keep what matters. You can run this tutorial again from Settings → Display & data." },
+    { id: "time", route: "today", target: "entries", title: "Your day, kept", body: "Kept entries land here by day and by matter, with tracked and billable totals above. Edit or delete an entry, or export the range as CSV. Each entry carries the rate it was kept at." },
+    { id: "rules", route: "today", target: "client-rules", title: "Client rules", body: "A client's outside counsel guidelines become a rulebook: tenths, one task per entry, task codes, no charge for clerical work, vague narratives flagged, a rate cap. Apply it to the day and every change shows under its entry with the rule that made it; the Keep sheet checks each entry against it as you type. Make one here, or let a rejected invoice propose its rules." },
+    { id: "import", route: "today", target: "entries-menu", title: "Typed and imported entries", body: "Add entry takes a short note and its hours for work the computer did not see. Import entries brings in a .csv or .xlsx from iTimeKeep or another time system and matches each row to the work Time Capture saw, so a typed line gains its captured time and narrative without adding hours." },
+    { id: "bill", route: "today", target: "billing-menu", title: "Time sheets and invoices", body: "Billing makes an invoice or a time sheet for one matter over a period: a PDF with the firm's letterhead and logo, or a Word file with the client's rules as tracked changes, each with a comment quoting the rule. Invoices are numbered from your prefix and remembered, so a client's rejection can send its entries back to you with the rules it states." },
+    { id: "matters", route: "matters", target: "matters", title: "Matters", body: "A matter is made the first time you keep time on it. Open one to set its client, rate, matter number, bill-to address and UTBMS code set; the rate applies from then on, and entries already kept keep theirs." },
+    { id: "settings", route: "settings", target: "settings-tabs", title: "Settings", body: "Capture: titles, Office details, screenshots, AI suggestions and the apps that stay private. Sync: connect this computer to Kiwi or Lawdie CRM with a token; until you do, nothing leaves it. Display & data: text size, where the file lives, and this tutorial." },
+    { id: "billing-settings", route: "settings", target: "settings-billing", title: "The firm, on every bill", body: "What every invoice and time sheet prints for the firm: name, address, timekeeper, payment terms, invoice prefix and next number, remittance and contact lines, the logo fetched from the firm's website or chosen as a file, the folder files are saved in, and each client's rulebook." },
+    { id: "done", route: "settings", target: null, title: "That is the whole loop", body: "Enable capture, work as usual, review the Activity inbox when you like, keep what matters, and bill it under the client's rules. You can run this tutorial again from Settings → Display & data." },
 ];
 
 /** The next step to show from `index` once `event` happened, or null when the current step is not waiting on it. */

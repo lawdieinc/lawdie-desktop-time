@@ -225,3 +225,12 @@ panel) is therefore not yet done; it needs Office signed in once and Kiwi's
   captured activity and no flag opened without the welcome.
 - Not verified: the welcome's Connect against a live Kiwi or CRM (the same `connectKiwi` as
   Settings), and the Windows and Linux builds.
+- Later the same day, billing: the welcome's firm step typed a firm, timekeeper, title and address,
+  Save firm wrote `workspace.billing`, and Fetch from website with `lawdie.co` fetched a real logo to
+  `billing-logo.png` beside the workspace (looked at in the preview); the closing step named the firm
+  and its logo. The tour's three billing steps spotlit Client rules…, Entries and Billing on the Time
+  page (the real menu with a firm set up; the disabled stand-in on a fresh workspace) and the Billing
+  tab in Settings. Found this way and fixed: the harness's `type:` step cannot take `=` in a selector
+  (the fields got ids); a saved firm now counts as a used workspace; a tour started by `--route` on a
+  fresh workspace was covered by the welcome arriving with the state; an arrow in a card title in the
+  display font. Tests 216.

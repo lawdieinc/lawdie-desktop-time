@@ -65,7 +65,7 @@ export function App(): ReactNode {
     const decided = useRef(false);
     const [tour, setTour] = useState<number | null>(null);
     const [keepOpen, setKeepOpen] = useState(false);
-    const startTour = (): void => { setKeepOpen(false); setTour(0); };
+    const startTour = (): void => { setWelcome(false); setKeepOpen(false); setTour(0); };
     const endTour = (): void => { setTour(null); setKeepOpen(false); };
     useEffect(() => { if (tour !== null) setRoute(TOUR_STEPS[tour].route); }, [tour]);
     useEffect(() => { if (tour === null) return; const n = stepAfter(TOUR_STEPS, tour, keepOpen ? "keep-open" : "keep-closed"); if (n !== null) setTour(n); }, [keepOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,8 +85,8 @@ export function App(): ReactNode {
     useEffect(() => {
         if (!state || decided.current) return;
         decided.current = true;
-        if (!state.loadFailed && needsWelcome(state.workspace)) setWelcome(true);
-    }, [state]);
+        if (!state.loadFailed && tour === null && needsWelcome(state.workspace)) setWelcome(true);
+    }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!state) return <div className="loading">Opening your workspace…</div>;
     const w = state.workspace;
@@ -160,7 +160,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} tutorial={tour !== null} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} />}
                 </div>
             </main>
             {toasts.length > 0 && (
@@ -210,7 +210,7 @@ function rangeBounds(key: RangeKey, now: number, from: string, to: string): { st
     return { start: f, end: Math.max(t, f + 86_400_000), label: `${new Date(f).toLocaleDateString([], { month: "short", day: "numeric" })} – ${new Date(t - 1).toLocaleDateString([], { month: "short", day: "numeric" })}` };
 }
 
-function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book: string | null, rule?: string | null) => void }): ReactNode {
+function Today({ w, now, onRules, tutorial = false }: { w: Workspace; now: number; onRules: (book: string | null, rule?: string | null) => void; tutorial?: boolean }): ReactNode {
     const [range, setRange] = useState<RangeKey>("today");
     const [from, setFrom] = useState(dayKey(now - 6 * 86_400_000));
     const [to, setTo] = useState(dayKey(now));
@@ -257,12 +257,15 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
                 )}
                 <span className="grow" />
                 <span className="row gap">
-                    <ApplyRulesMenu w={w} onRules={onRules} />
+                    <span data-tour="client-rules"><ApplyRulesMenu w={w} onRules={onRules} /></span>
+                    <span data-tour="entries-menu">
                     <Menu label="Entries" tip="Add a simple entry, or bring in entries typed in another time system.">
                         <button type="button" role="menuitem" title="Type a short note and its hours, such as .9 call w/ client. It shows as typed until you expand it into a narrative." onClick={() => setAdding(true)}>Add entry</button>
                         <button type="button" role="menuitem" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
                     </Menu>
-                    {(w.invoice || w.billing) && <BillingMenu w={w} bill={dayBill} day={day} onProblem={setPdfProblem} />}
+                    </span>
+                    {(w.invoice || w.billing) ? <span data-tour="billing-menu"><BillingMenu w={w} bill={dayBill} day={day} onProblem={setPdfProblem} /></span>
+                        : tutorial && <span data-tour="billing-menu"><button type="button" className="quiet menu-button" disabled title="Appears once the firm is set up in Settings → Billing: an invoice or a time sheet for one matter over a period.">Billing <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg></button></span>}
                 </span>
             </div>
             {range === "today" && (w.invoice || w.billing) && <TotalsLine bill={dayBill} onRules={onRules} />}
@@ -1264,7 +1267,7 @@ function Settings({ state, now, onRules, onTour, onWelcome }: { state: AppState;
         <>
             <Heading title="Settings" />
             <div className="segmented settings-tabs" role="tablist" aria-label="Settings" data-tour="settings-tabs">
-                {SETTINGS_TABS.map((t) => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "active" : ""} title={t.tip} onClick={() => setTab(t.key)}>{t.label}</button>)}
+                {SETTINGS_TABS.map((t) => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "active" : ""} title={t.tip} data-tour={t.key === "billing" ? "settings-billing" : undefined} onClick={() => setTab(t.key)}>{t.label}</button>)}
             </div>
             {tab === "capture" && <Panel>
                 <strong>Desktop capture</strong>
@@ -1341,10 +1344,10 @@ function Settings({ state, now, onRules, onTour, onWelcome }: { state: AppState;
             </Panel>}
             {tab === "data" && <Panel>
                 <strong>Learn the app</strong>
-                <Setting title="Tutorial" detail="Walks the four screens with a sample stretch of work in the Activity inbox: what capture records, how a stretch is kept, where kept time goes. Nothing it does is saved.">
+                <Setting title="Tutorial" detail="Walks the four screens with a sample stretch of work in the Activity inbox: what capture records, how a stretch is kept, where kept time goes, client rules, imports, time sheets and invoices. Nothing it does is saved.">
                     <button type="button" className="quiet" title="Start the tutorial on the Activity screen." onClick={onTour}>Start the tutorial</button>
                 </Setting>
-                <Setting title="Welcome" detail="The welcome shown the first time the app opened: what it does, what to capture, and connecting to Kiwi or Lawdie CRM.">
+                <Setting title="Welcome" detail="The welcome shown the first time the app opened: what it does, what to capture, connecting to Kiwi or Lawdie CRM, and the firm's details for the bill.">
                     <button type="button" className="quiet" title="Show the welcome again." onClick={onWelcome}>Show the welcome</button>
                 </Setting>
             </Panel>}

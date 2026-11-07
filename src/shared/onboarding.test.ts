@@ -17,6 +17,9 @@ describe("the welcome", () => {
         const connected = emptyWorkspace();
         connected.sync = { targets: [{ product: "kiwi", serverURL: "https://lawdie.co/kiwi-api", deviceID: "d", deviceName: "Mac", accountEmail: null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] }], autoSync: true };
         expect(needsWelcome(connected)).toBe(false);
+        const firm = emptyWorkspace();
+        firm.billing = { firm: { name: "Harbor & Vale LLP", address: [] }, timekeeper: { name: "", title: "" } };
+        expect(needsWelcome(firm)).toBe(false);
         const demo = emptyWorkspace();
         demo.demo = { seed: "s", epoch: 1, stage: "day", day: "2026-10-22" };
         expect(needsWelcome(demo)).toBe(false);
@@ -46,6 +49,9 @@ describe("the tutorial", () => {
         expect(stepAfter(TOUR_STEPS, open, "keep-closed")).toBeNull();
         expect(stepAfter(TOUR_STEPS, open + 1, "keep-closed")).toBe(open + 2);
         expect(stepAfter(TOUR_STEPS, 0, "keep-open")).toBeNull();
+        // Billing has its own steps, on the Time page's controls and the Billing tab of Settings.
+        expect(TOUR_STEPS.filter((s) => ["rules", "import", "bill"].includes(s.id)).map((s) => s.route)).toEqual(["today", "today", "today"]);
+        expect(TOUR_STEPS.find((s) => s.id === "billing-settings")?.target).toBe("settings-billing");
         expect(stepAfter(TOUR_STEPS, TOUR_STEPS.length - 1, "keep-closed")).toBeNull();
     });
 

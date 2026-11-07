@@ -10,8 +10,8 @@ import { Setting, Toggle } from "./ui";
    spotlight. The steps are data in src/shared/onboarding.ts; the sample row the Keep steps use is
    the Activity screen's (App.tsx), shown only while the tutorial runs. */
 
-type WelcomeStep = "welcome" | "capture" | "connect" | "done";
-const WELCOME_STEPS: WelcomeStep[] = ["welcome", "capture", "connect", "done"];
+type WelcomeStep = "welcome" | "capture" | "connect" | "billing" | "done";
+const WELCOME_STEPS: WelcomeStep[] = ["welcome", "capture", "connect", "billing", "done"];
 
 export function Welcome({ state, onDone }: { state: AppState; onDone: (startTour: boolean) => void }): ReactNode {
     const [step, setStep] = useState<WelcomeStep>("welcome");
@@ -27,6 +27,7 @@ export function Welcome({ state, onDone }: { state: AppState; onDone: (startTour
     const [servers] = useState<Record<Product, string>>({ kiwi: PRODUCTS.kiwi.defaultServerURL, crm: PRODUCTS.crm.defaultServerURL });
     const product = destinationLabel(w.sync ? w.sync.targets.map((t) => t.product) : productsFor(destination));
     const on = [p.captureEnabled && "capture", p.captureTitles && "window titles", p.captureDocuments && "Office document details", atLogin && "start at login"].filter(Boolean) as string[];
+    const optional = step === "connect" ? !w.sync : step === "billing" ? !w.billing : false;
     return (
         <div className="scrim welcome-scrim" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
             <div className="sheet welcome">
@@ -92,28 +93,85 @@ export function Welcome({ state, onDone }: { state: AppState; onDone: (startTour
                         )}
                     </>
                 )}
+                {step === "billing" && <WelcomeBilling w={w} machine={machine} />}
                 {step === "done" && (
                     <>
-                        <div className="heading"><h2 className="display" id="welcome-title">You're set.</h2><p className="muted">{on.length ? `On: ${on.join(", ")}.` : "Capture is still off; switch it on from the sidebar when you are ready."} {w.sync ? `Kept time syncs to ${product}.` : "Nothing leaves this " + machine + " until you connect."}</p></div>
+                        <div className="heading"><h2 className="display" id="welcome-title">You're set.</h2><p className="muted">{on.length ? `On: ${on.join(", ")}.` : "Capture is still off; switch it on from the sidebar when you are ready."} {w.sync ? `Kept time syncs to ${product}.` : "Nothing leaves this " + machine + " until you connect."} {w.billing ? `Invoices and time sheets print for ${w.billing.firm.name}${w.billing.logo ? ", with its logo" : ""}.` : "Set the firm up in Settings → Billing before the first invoice."}</p></div>
                         <p className="small">Work as usual. When you like, open <strong>Activity</strong>: each stretch of work waits there with its time, and <strong>Keep time</strong> turns it into an entry. A two-minute tutorial walks the screens with a sample stretch; nothing it does is saved.</p>
                     </>
                 )}
                 <div className="row between welcome-actions">
                     {n > 0 ? <button type="button" className="quiet" title="Go back a step." onClick={() => setStep(WELCOME_STEPS[n - 1])}>Back</button> : <span />}
                     <span className="row gap">
-                        {step !== "done" && (step !== "connect" || w.sync) && <button type="button" className="link" title="Close the welcome. Everything here is in Settings." onClick={() => onDone(false)}>Skip</button>}
+                        {step !== "done" && !optional && <button type="button" className="link" title="Close the welcome. Everything here is in Settings." onClick={() => onDone(false)}>Skip</button>}
                         {step === "done" ? (
                             <>
                                 <button type="button" className="quiet" title="Close the welcome and use the app." onClick={() => onDone(false)}>Start working</button>
                                 <button type="button" className="primary" title="Walk the screens with a sample stretch of work. Nothing is saved." onClick={() => onDone(true)}>Take the tutorial</button>
                             </>
                         ) : (
-                            <button type="button" className="primary" title={step === "connect" && !w.sync ? "Go on without connecting; you can connect later in Settings." : "Next step."} onClick={() => setStep(WELCOME_STEPS[n + 1])}>{step === "connect" && !w.sync ? "Skip for now" : "Next"}</button>
+                            <button type="button" className="primary" title={optional ? (step === "connect" ? "Go on without connecting; you can connect later in Settings → Sync." : "Go on without the firm's details; they are in Settings → Billing.") : "Next step."} onClick={() => setStep(WELCOME_STEPS[n + 1])}>{optional ? "Skip for now" : "Next"}</button>
                         )}
                     </span>
                 </div>
             </div>
         </div>
+    );
+}
+
+const lines = (text: string): string[] => text.split("\n").map((l) => l.trim()).filter(Boolean);
+
+/**
+ * The welcome's billing step: the firm as every invoice and time sheet prints it, saved here, then the
+ * logo from the firm's website or a file. The rest (terms, numbering, remittance, folder) waits in
+ * Settings → Billing, as the step says. The layouts are the app's own; there is nothing to pick.
+ */
+function WelcomeBilling({ w, machine }: { w: AppState["workspace"]; machine: string }): ReactNode {
+    const b = w.billing ?? null;
+    const [firm, setFirm] = useState(b?.firm.name ?? "");
+    const [address, setAddress] = useState(b?.firm.address.join("\n") ?? "");
+    const [name, setName] = useState(b?.timekeeper.name ?? w.profile?.name ?? "");
+    const [title, setTitle] = useState(b?.timekeeper.title ?? w.profile?.title ?? "");
+    const [site, setSite] = useState("");
+    const [logo, setLogo] = useState<string | null>(null);
+    const [busy, setBusy] = useState<string | null>(null);
+    const [problem, setProblem] = useState<string | null>(null);
+    useEffect(() => { void window.lawdie.billingLogo().then(setLogo); }, [b?.logo]);
+    const saved = !!b && b.firm.name === firm.trim() && b.firm.address.join("\n") === lines(address).join("\n") && b.timekeeper.name === name.trim() && b.timekeeper.title === title.trim();
+    const act = async (what: string, run: () => Promise<string | null | boolean>): Promise<void> => {
+        setBusy(what); setProblem(null);
+        const r = await run();
+        setBusy(null);
+        if (typeof r === "string") setProblem(r);
+    };
+    const save = (): void => void act("save", () => window.lawdie.setBilling({ firm: { name: firm, address: lines(address) }, timekeeper: { name, title }, terms: b?.terms ?? "Net 30", remit: b?.remit ?? [], contact: b?.contact ?? "", invoicePrefix: b?.invoicePrefix ?? `${new Date().getFullYear()}-`, nextInvoice: b?.nextInvoice ?? 1 }));
+    return (
+        <>
+            <div className="heading"><h2 className="display" id="welcome-title">Your firm, on the bill</h2><p className="muted">Optional. What every invoice and time sheet prints on its letterhead. The layouts are built in: a PDF invoice and time sheet, and a Word time sheet with a client's rules as tracked changes. Payment terms, invoice numbering, remittance lines and the folder files go in are in Settings → Billing.</p></div>
+            <form className="billing-form welcome-billing" onSubmit={(e) => { e.preventDefault(); if (firm.trim() && !saved) save(); }}>
+                <div className="row gap">
+                    <label className="field grow"><span className="eyebrow">Firm</span><input id="wb-firm" value={firm} placeholder="Firm name" title="The firm's name, at the top of every invoice." onChange={(e) => setFirm(e.target.value)} /></label>
+                    <label className="field grow"><span className="eyebrow">Timekeeper</span><input id="wb-name" value={name} placeholder="Your name" title="Your name as the invoice's timekeeper summary prints it." onChange={(e) => setName(e.target.value)} /></label>
+                    <label className="field short"><span className="eyebrow">Title</span><input id="wb-title" value={title} placeholder="Partner" title="Your title on the invoice." onChange={(e) => setTitle(e.target.value)} /></label>
+                </div>
+                <div className="row gap">
+                    <label className="field grow"><span className="eyebrow">Address</span><textarea id="wb-address" rows={2} value={address} placeholder={"100 Main Street, Suite 400\nAtlanta, GA 30303"} title="The firm's address, one line per line." onChange={(e) => setAddress(e.target.value)} /></label>
+                    <button type="submit" className="quiet" disabled={!firm.trim() || saved || busy === "save"} title={saved ? "Saved." : firm.trim() ? "Save the firm's details." : "Enter the firm's name first."}>{busy === "save" ? "Saving…" : saved ? "Saved" : "Save firm"}</button>
+                </div>
+            </form>
+            <div className="setting">
+                <div className="grow"><div className="small strong">Logo</div><p className="muted tiny">On the letterhead. Fetched from the firm's website (its icon or share image), or chosen as a PNG or JPEG. It stays on this {machine}.</p></div>
+                {logo ? <img className="logo-preview" src={logo} alt="The firm's logo" /> : <span className="logo-preview none muted tiny">None</span>}
+            </div>
+            <div className="row gap wrap">
+                <input id="wb-site" value={site} placeholder="firm.com" title="The firm's website, to fetch its logo from." disabled={!b} onChange={(e) => setSite(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void act("fetch", () => window.lawdie.fetchLogo(site)); } }} />
+                <button type="button" className="quiet" disabled={!b || !site.trim() || !!busy} title={b ? "Look for the logo on that website and keep the best picture it offers." : "Save the firm first."} onClick={() => void act("fetch", () => window.lawdie.fetchLogo(site))}>{busy === "fetch" ? "Looking…" : "Fetch from website"}</button>
+                <button type="button" className="quiet" disabled={!b || !!busy} title={b ? "Choose a PNG or JPEG of the logo." : "Save the firm first."} onClick={() => void act("choose", () => window.lawdie.chooseLogo())}>Choose file…</button>
+                {logo && <button type="button" className="quiet" disabled={!!busy} title="Take the logo off the letterhead." onClick={() => void act("remove", () => window.lawdie.removeLogo())}>Remove</button>}
+            </div>
+            {!b && <p className="muted tiny">Save the firm to fetch or choose a logo.</p>}
+            {problem && <p className="danger small">{problem}</p>}
+        </>
     );
 }
 
