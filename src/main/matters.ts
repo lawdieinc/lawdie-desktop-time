@@ -1,4 +1,5 @@
 import { applyJoins, joinRequest } from "@shared/feed";
+import { report } from "./errors";
 /* AI suggestions, main-process side: requests to Kiwi, which asks its own server-side
    model. In order: name the matter of new activity, draft a billing description for each
    row waiting in review, and refresh the insight of each matter whose time changed. Off
@@ -80,7 +81,7 @@ export class Matters {
             // A slow or failed answer only means suggestions come later (the next round is
             // at most 30 minutes away), so it is not the person's problem: logged, not shown.
             // Only a disconnected computer is theirs to fix.
-            console.warn("[matters]", err instanceof Error ? err.message : err);
+            report("matters", err);
             const theirs = err instanceof KiwiFailure && (err.code === "device_revoked" || err.code === "invalid_token");
             this.store.setMatterStatus(false, theirs ? err.message : null);
         } finally {

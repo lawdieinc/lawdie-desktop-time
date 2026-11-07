@@ -1,5 +1,7 @@
 import { joinMatter, undoJoin } from "@shared/feed";
 import { Feed } from "./feed";
+import { flushErrorReports, report, reportFromWindow, startErrorReports } from "./errors";
+import { featuresOn } from "@shared/errorReport";
 import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -164,6 +166,16 @@ app.whenReady().then(() => {
     }
 
     const store = new Store(new WorkspaceFile(workspacePath), app.getVersion());
+    // Errors go to Honeybadger from a release build, unless the person switches reports off; the harness and demo runs never send.
+    // LAWDIE_REPORT_ERRORS=1 lets an unpackaged build send (to prove the key and the path); LAWDIE_TEST_ERROR=1 reports one test error at launch.
+    startErrorReports({ version: app.getVersion(), packaged: process.env.LAWDIE_REPORT_ERRORS === "1" || (app.isPackaged && !argValue("--screenshot") && !process.env.LAWDIE_USER_DATA), userData, enabled: () => store.workspace.preferences.crashReports !== false, features: () => featuresOn(store.workspace.preferences, (store.workspace.sync?.targets ?? []).map((t) => t.product)) });
+    store.onError = report;
+    if (process.env.LAWDIE_TEST_ERROR === "1") setTimeout(() => report("test", new Error("Honeybadger test from Lawdie Time Capture"), { reason: "LAWDIE_TEST_ERROR" }), 3000);
+    if (store.loadFailed) report("store", new Error("The workspace could not be loaded"), { reason: "loadFailed" });
+    // A crash, not a quit: "clean-exit" is normal and "killed" is the OS or the person (force quit, a SIGTERM).
+    app.on("render-process-gone", (_e, _wc, details) => { if (details.reason !== "clean-exit" && details.reason !== "killed") report("renderer", new Error(`Renderer process gone: ${details.reason}`), { reason: String(details.exitCode) }); });
+    app.on("child-process-gone", (_e, details) => { if (details.reason !== "clean-exit" && details.reason !== "killed") report("child", new Error(`${details.type} process gone: ${details.reason}`), { reason: String(details.exitCode) }); });
+    ipcMain.on("reportError", (_e, payload: unknown) => reportFromWindow(payload));
     const shots = new Screenshots(join(workspacePath, "..", "screenshots"));
     shots.serve();
     const capture = new Capture(store, shots);
@@ -296,7 +308,7 @@ app.whenReady().then(() => {
             if (d.parts.length) store.change((x) => { setNarrative(x, entry.id, d.parts, d.drafter, clock()); });
             return { drafter: d.drafter, message: null };
         } catch (err) {
-            console.warn("[drafter]", err instanceof Error ? err.message : err);
+            report("drafter", err);
             return { drafter: entry.drafter ?? "model", message: `The narrative was not changed. ${err instanceof Error ? err.message : "The model could not draft this entry."}`.trim() };
         }
     });
@@ -599,7 +611,10 @@ app.whenReady().then(() => {
 
     app.on("second-instance", () => showWindow(store));
     app.on("activate", () => showWindow(store));
-    app.on("before-quit", () => { quitting = true; sync.stop(); feed.stop(); matters.stop(); rulesFeed?.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); });
+    app.on("before-quit", () => { quitting = true; sync.stop(); feed.stop(); matters.stop(); rulesFeed?.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); void flushErrorReports(); });
+    // A signal (a kill, the harness's timeout) quits like a person would, so the cleanup above runs; it also keeps the
+    // Honeybadger SDK's own signal listener from exiting the process on its own, which it does only when no one else listens.
+    for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => app.quit());
 });
 
 // Closing the last window keeps the process (and capture) alive on every platform; Quit is explicit.

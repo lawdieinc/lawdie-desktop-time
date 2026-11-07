@@ -5,6 +5,7 @@
    Everything it learns goes through observe() in the shared model; nothing is decided here. */
 
 import { powerMonitor, systemPreferences } from "electron";
+import { report } from "./errors";
 import { activeCall, callApp, type CallApp } from "@shared/calls";
 import { addScreenshot, closeActivity, isBrowser, isExcluded, observe, prune, screenRecordingAttempt, screenshotDue, stopTimer, type Observation } from "@shared/model";
 import { MicrophoneProbe } from "./calls";
@@ -100,7 +101,7 @@ export class Capture {
                         }
                     }
                 } catch (err) {
-                    console.warn("[capture] foreground unavailable", err instanceof Error ? err.message : err);
+                    report("capture", err, { reason: "foreground unavailable" });
                 }
             }
             this.lastForeground = foreground;
@@ -135,7 +136,7 @@ export class Capture {
                 this.titlesRefused = false;
                 return win;
             } catch (err) {
-                console.warn("[capture] titles unavailable", err instanceof Error ? err.message : err);
+                report("capture", err, { reason: "titles unavailable" });
             }
         }
         const win = await ask({ screenRecordingPermission: false, accessibilityPermission: false });
@@ -154,7 +155,7 @@ export class Capture {
             const win = windows.find((w) => callApp(ownerOf(w))?.key === call.app.key);
             if (win) return { app: win.owner.name || call.app.name, ownerID: ownerOf(win), title: titles && win.title ? win.title.slice(0, 300) : null };
         } catch (err) {
-            console.warn("[capture] call window unavailable", err instanceof Error ? err.message : err);
+            report("capture", err, { reason: "call window unavailable" });
         }
         return { app: call.app.name, ownerID: call.ownerID, title: null };
     }

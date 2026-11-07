@@ -1257,8 +1257,14 @@ function Settings({ state, now, onRules }: { state: AppState; now: number; onRul
                 </form>
             </Panel>}
             {tab === "data" && <Panel>
+                <strong>Diagnostics</strong>
+                <Setting title="Send crash reports to Lawdie" detail="When something in the app fails, the error and which features were on are sent to Lawdie so it can be fixed. A report never includes what was on your screen: no titles, documents, text, matters or descriptions.">
+                    <Toggle on={p.crashReports !== false} onChange={(v) => set("crashReports", v)} label="Send crash reports" tip={{ on: "Stop sending crash reports to Lawdie.", off: "Send crash reports to Lawdie when the app fails." }} />
+                </Setting>
+            </Panel>}
+            {tab === "data" && <Panel>
                 <strong>Your data belongs here</strong>
-                <p className="muted small">No telemetry, keystroke recording, or local network service, and no screenshots unless you switch them on above; they never leave this {label}. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
+                <p className="muted small">No usage tracking, keystroke recording, or local network service, and no screenshots unless you switch them on above; they never leave this {label}. A crash report, if you leave them on above, carries the error alone. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
                 <p className="mono tiny muted">{state.workspacePath}</p>
                 <div className="row gap">
                     <button type="button" className="quiet" title="Open the folder that holds the workspace file." onClick={() => void window.lawdie.showDataFolder()}>Show data folder</button>

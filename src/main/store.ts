@@ -67,10 +67,16 @@ export class Store {
             return true;
         } catch (err) {
             this.error = err instanceof WorkspaceError || err instanceof Error ? err.message : String(err);
+            // A WorkspaceError is a message for the person (a refusal), not a bug, except the one
+            // that says a change produced a file the validator rejects: that is always a bug.
+            if (!(err instanceof WorkspaceError) || /invalid data/.test(err.message)) this.onError?.("store", err);
             this.publish();
             return false;
         }
     }
+
+    /** Where a failed change is reported (src/main/errors.ts); set by index.ts. */
+    onError: ((scope: string, err: unknown) => void) | null = null;
 
     setFeedStatus(running: boolean, error: string | null): void { this.feedStatus = { running, error }; this.publish(); }
 

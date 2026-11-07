@@ -12,6 +12,7 @@
    never shown. The person hears only that an update is ready (`onReady`). */
 
 import { existsSync } from "node:fs";
+import { report } from "./errors";
 import { join } from "node:path";
 import { app } from "electron";
 // CommonJS, and this bundle is an ES module: a named import fails at launch.
@@ -44,7 +45,7 @@ export class Updater {
             this.store.setUpdateReady(info.version);
             if (first) this.onReady(info.version);
         });
-        autoUpdater.on("error", (err) => console.warn("[updater]", err instanceof Error ? err.message : err));
+        autoUpdater.on("error", (err) => report("updater", err));
         setTimeout(() => void this.check(), FIRST_CHECK_MS);
         this.timer = setInterval(() => void this.check(), CHECK_EVERY_MS);
     }
@@ -63,7 +64,7 @@ export class Updater {
         try {
             await autoUpdater.checkForUpdates();
         } catch (err) {
-            console.warn("[updater]", err instanceof Error ? err.message : err);
+            report("updater", err);
         }
     }
 }

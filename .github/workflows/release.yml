@@ -46,6 +46,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       # From scripts/mac-signing-cert.sh. Without them macOS builds stay ad hoc signed.
+      HONEYBADGER_API_KEY: ${{ secrets.HONEYBADGER_API_KEY }}
       MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
       MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
     steps:

@@ -59,6 +59,8 @@ export const api = {
     /** Resolves to what the OS now reports, which may differ if it refused. */
     setOpenAtLogin: (on: boolean): Promise<boolean> => ipcRenderer.invoke("setOpenAtLogin", on),
     dismissMessage: (): Promise<void> => ipcRenderer.invoke("dismissMessage"),
+    /** An error in the window, for the main process to report (src/main/errors.ts); the window itself never sends anything. */
+    reportError: (payload: { scope: string; name?: string; message: string; stack?: string }): void => ipcRenderer.send("reportError", payload),
     /** Kept entries (by id) as a CSV file the person saves: project, date, hours, description. */
     exportCsv: (ids: string[], name: string): Promise<boolean> => ipcRenderer.invoke("exportCsv", ids, name),
     /** A screenshot, full size, in the system's viewer. */

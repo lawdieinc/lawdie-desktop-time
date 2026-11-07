@@ -7,6 +7,7 @@
    more (dismissed, pruned, cleared, its entry deleted) is deleted by collect(). */
 
 import { mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { report } from "./errors";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -67,7 +68,7 @@ export class Screenshots {
     }
 
     private fail(kind: string, message: string): false {
-        if (!this.warned.has(kind)) console.warn("[screenshots]", message);
+        if (!this.warned.has(kind)) report("screenshots", new Error(message), { reason: kind });
         this.warned.add(kind);
         return false;
     }

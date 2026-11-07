@@ -4,6 +4,7 @@
    is "no call", logged once. Linux has neither, so a call there counts only in front. */
 
 import { execFile } from "node:child_process";
+import { report } from "./errors";
 import { join } from "node:path";
 import { app } from "electron";
 import { parseMacRecording, parseWindowsRecording } from "@shared/calls";
@@ -31,7 +32,7 @@ export class MicrophoneProbe {
             if (process.platform === "darwin") return parseMacRecording(await run(helperPath(), []));
             if (process.platform === "win32") return parseWindowsRecording(await run("reg.exe", ["query", WIN_KEY, "/s"]));
         } catch (err) {
-            if (!this.warned) console.warn("[calls] microphone use unavailable", err instanceof Error ? err.message : err);
+            if (!this.warned) report("calls", err, { reason: "microphone use unavailable" });
             this.warned = true;
         }
         return [];

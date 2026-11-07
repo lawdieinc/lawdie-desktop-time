@@ -205,6 +205,34 @@ Not built yet: rules proposed by a model from an uploaded guidelines document or
 note (needs a Kiwi route), custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
 live Outlook/Teams sources (a seed's evidence; capture's own is above).
 
+## Error reports
+
+Errors go to Honeybadger (project "Time Capture Desktop", 2026-11-06), the way Kiwi's do. The rules are
+pure and tested in `src/shared/errorReport.ts`: `scrubText` (secrets, emails, ids, long hex, numbers
+of 3+ digits, and the home folder → `~`), frames only from a stack, causes three deep, an allow-list
+of context keys (`CONTEXT_KEYS`: source, scope, version, platform, features, install, reason), the
+SDK's parsed backtrace scrubbed too, ten notices a group an hour (`createGroupBudget`). A report
+never carries what was on screen: no titles, documents, paths, excerpts, screen text, matter names,
+descriptions, emails or tokens. `src/main/errors.ts` is the one client, in the main process:
+`report(scope, err, extra?)` always logs and sends only when the key is baked in
+(`__HONEYBADGER_API_KEY__`, a Vite `define` from the release workflow's `HONEYBADGER_API_KEY`
+secret), the app is packaged, and Settings → Display & data → "Send crash reports" is on
+(`preferences.crashReports`, absent = on). The window never talks to the network: `main.tsx`
+forwards `error`, `unhandledrejection` and a render boundary through the preload's `reportError`
+(`reportFromWindow` caps the strings). `store.onError` reports a failed change that is not a
+`WorkspaceError`, plus the "invalid data" one; the capture, calls, screenshots, matters, drafter and
+updater catch sites call `report`; `render-process-gone`/`child-process-gone` report crashes
+(not `clean-exit`/`killed`); `process` uncaught and rejection handlers are ours (the SDK's would
+exit), and SIGTERM/SIGINT call `app.quit()` (the SDK's own signal listener exits the process only
+when no other listener exists; ours runs the before-quit cleanup instead). A notice that fails to send waits in `userData/errors.jsonl` (`QUEUE_MAX`) and is retried
+every 5 minutes. `install-id` in userData is a random per-install id, never the device token.
+Bundles are not minified so frames read without source maps. Sync and feed network failures are not
+reported (a laptop offline is not a bug). Proving the path without a release: build with
+`HONEYBADGER_API_KEY=<key>`, run with `LAWDIE_REPORT_ERRORS=1` (sends from an unpackaged build)
+and `LAWDIE_TEST_ERROR=1` (one test error 3 s after launch); `HONEYBADGER_ENDPOINT=http://localhost:8787`
+points at a local server (the SDK's transport drops the port, so that case goes through fetch).
+A dev build, `npm test`, the screenshot harness and demo runs have no key and send nothing.
+
 ## Kiwi and Lawdie CRM
 
 Kiwi, the CRM, or both (`SyncState.targets`, one per product, 2026-09-27; before that
