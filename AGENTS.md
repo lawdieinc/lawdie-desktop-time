@@ -205,6 +205,23 @@ Not built yet: rules proposed by a model from an uploaded guidelines document or
 note (needs a Kiwi route), custom DOCX templates (layouts are in `invoiceHtml.ts`/`docx.ts`),
 live Outlook/Teams sources (a seed's evidence; capture's own is above).
 
+## Welcome and tutorial
+
+For a new person (2026-11-07). `src/shared/onboarding.ts` is pure and tested: `needsWelcome()` shows the
+welcome once, on a workspace nobody has used (no entries, activity, imports or sync, not a demo, and
+`preferences.onboardedAt` unset; someone who used the app before it existed is never interrupted);
+`TOUR_STEPS` is the tutorial (route, `data-tour` target, title, body; the Keep steps `advanceOn` the
+sheet opening and closing, `stepAfter()`); `tutorialStretch()` is the one sample stretch the tutorial
+shows. `Onboarding.tsx` holds both: `Welcome` (a sheet, four steps, its switches live: capture, titles,
+Office details, start at login, then connect with a token or skip; finishing or skipping writes
+`onboardedAt` and can start the tutorial) and `Tour` (a spotlight hole over the step's control and a
+card beside it, clicks pass through; measured every 150 ms since the control moves; a step whose
+control is not on screen says so). The sample row (`SampleRow` in App.tsx) is the window's only:
+`isTutorialID` ids never enter the workspace, its Keep time opens the real `KeepSheet` with a `keep`
+override that saves nothing and says so in a toast, and `keepStretch` refuses its ids (tested). The
+small blocks shared by both files live in `ui.tsx`. Entry points: the welcome itself, Settings → Display
+& data → "Learn the app", and `--route welcome|tutorial` for the harness.
+
 ## Error reports
 
 Errors go to Honeybadger (project "Time Capture Desktop", 2026-11-06), the way Kiwi's do. The rules are
@@ -377,3 +394,6 @@ Settings. Version 0.15.0. Tests 211.
 2026-11-06, later: GitHub retired the `macos-14` runner label (jobs cancelled at start: "configuration
 'macos-14-arm64-us-default' is not supported"), so 0.14.0 and 0.15.0 shipped for Windows and Linux only;
 both workflows moved to `macos-15`. Version 0.15.1 is the first Mac build since 0.13.0.
+2026-11-07: a welcome for a new person (four steps, switches live, connect or skip) and a tutorial that walks
+the real screens with a sample stretch that is never saved (section above). Both verified through the harness
+on an empty workspace and on one with history. Tests 216.

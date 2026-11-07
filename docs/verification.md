@@ -204,3 +204,24 @@ panel) is therefore not yet done; it needs Office signed in once and Kiwi's
   to the span (`stretchSpan`), a single sitting takes the span as given.
 - `npm test` (37), typecheck clean; built app opened on the workspace copy and looked at.
 
+
+## 2026-11-07 — welcome and tutorial
+
+- `npm test` (216), `npm run typecheck` clean. New: `onboarding.test.ts` (the welcome shows only on
+  an unused workspace and the flag validates; the tutorial's steps are unique and on real screens
+  with the Keep steps waiting on the sheet; the sample stretch groups as one matter row; keeping
+  its ids is refused and leaves the workspace untouched).
+- The built app through the harness (`LAWDIE_USER_DATA`, `--workspace`, `--screenshot`, `--steps`),
+  each screenshot looked at: an empty workspace opened on the welcome; step 2's capture switch
+  turned capture on in the file; step 3's connect form and "Skip for now"; step 4 → "Take the
+  tutorial" wrote `onboardedAt` and started the tour on Activity with the sample row (43m, two
+  sittings, 6m idle, the draft). Steps 1–5 spotlit the nav, the capture card, the status panel,
+  the row and its buttons; Keep time opened the real Keep sheet (step 6) and both Keep time and
+  Cancel moved the tour to the Time screen, Keep time with the "nothing was saved" toast and the
+  file still at 0 entries, 0 projects, 0 activities; steps 7–10 on Time, Matters, Settings and the
+  closing card (a stale spotlight on the last step was found this way and fixed); "End tutorial"
+  from inside the sheet closed it and removed the sample row; `--route welcome` reopened the
+  welcome and `tips:` found every control on it and the tour with a tooltip; a workspace with
+  captured activity and no flag opened without the welcome.
+- Not verified: the welcome's Connect against a live Kiwi or CRM (the same `connectKiwi` as
+  Settings), and the Windows and Linux builds.

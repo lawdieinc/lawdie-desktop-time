@@ -397,6 +397,8 @@ export type Preferences = {
     narrativeDrafter?: DrafterKind;
     /** Send errors to Lawdie (src/main/errors.ts): the error and which features were on, never what was on screen. Absent is on. */
     crashReports?: boolean;
+    /** When the welcome was finished or skipped (src/shared/onboarding.ts). Absent on a workspace nobody has used: the welcome shows. */
+    onboardedAt?: string | null;
 };
 
 /** The text sizes Settings offers. */
@@ -1618,7 +1620,7 @@ export function validate(w: Workspace): Workspace {
             && (r.origin == null || r.origin === "import" || r.origin === "manual") && (r.prior == null || typeof r.prior === "object")))) &&
         (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&
-        p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) && (p.textSize == null || (TEXT_SIZES as readonly number[]).includes(p.textSize)) && (p.crashReports == null || typeof p.crashReports === "boolean") &&
+        p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) && (p.textSize == null || (TEXT_SIZES as readonly number[]).includes(p.textSize)) && (p.crashReports == null || typeof p.crashReports === "boolean") && (p.onboardedAt == null || validIso(p.onboardedAt)) &&
         new Set(w.entries.map((e) => e.id)).size === w.entries.length &&
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&

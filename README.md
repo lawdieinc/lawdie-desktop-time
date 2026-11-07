@@ -78,6 +78,12 @@ and attaches the installers to the GitHub Release. Locally, `npm run package:mac
   sync every minute. Off until you connect.
 - Reads a workspace written by the Swift app (`schemaVersion` 1) and migrates it in place.
 
+The first time the app opens on a new workspace, a short welcome explains what it does, lets
+you switch capture, window titles and Office details on, and connects it to Kiwi or Lawdie
+CRM (or not). A tutorial then walks the four screens with a sample stretch of work in the
+Activity inbox, through to the Keep sheet; nothing it does is saved. Both are in Settings →
+Display & data → Learn the app whenever you want them again.
+
 Capture starts **off**. Enable it from the sidebar, the tray, or Settings; use another
 app; switch apps to see a completed segment. Closing the window keeps capturing; the tray
 item reopens it. Quit from the tray to stop.

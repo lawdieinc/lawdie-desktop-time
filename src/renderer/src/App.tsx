@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeBlock, timeValue } from "@shared/format";
@@ -17,6 +17,9 @@ import { money as dollars, shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
 import kiwiMark from "../../../resources/brand/kiwi.png";
+import { Empty, Heading, Panel, Setting, Toggle } from "./ui";
+import { Tour, Welcome } from "./Onboarding";
+import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
 
 /* The window. Four screens (Time, Activity, Matters, Settings) and the Kiwi
    connection. Everything it shows is the main process's AppState; everything it does
@@ -56,17 +59,42 @@ export function App(): ReactNode {
         if (route === "today" && timeScroll.current != null) { page.current.scrollTop = timeScroll.current; timeScroll.current = null; }
         else if (route === "rules") page.current.scrollTop = 0;
     }, [route]);
+    // The welcome, once, on a workspace nobody has used (decided when the state first arrives, so finishing it never
+    // brings it back); and the tutorial, a step index into TOUR_STEPS, which opens each step's screen itself.
+    const [welcome, setWelcome] = useState(false);
+    const decided = useRef(false);
+    const [tour, setTour] = useState<number | null>(null);
+    const [keepOpen, setKeepOpen] = useState(false);
+    const startTour = (): void => { setKeepOpen(false); setTour(0); };
+    const endTour = (): void => { setTour(null); setKeepOpen(false); };
+    useEffect(() => { if (tour !== null) setRoute(TOUR_STEPS[tour].route); }, [tour]);
+    useEffect(() => { if (tour === null) return; const n = stepAfter(TOUR_STEPS, tour, keepOpen ? "keep-open" : "keep-closed"); if (n !== null) setTour(n); }, [keepOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    const sample = useMemo(() => tutorialStretch(Date.now()), [tour === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         void window.lawdie.getState().then(setState);
         const offState = window.lawdie.onState(setState);
-        const offRoute = window.lawdie.onRoute((r) => { if (r === "rules" || ROUTES.some((x) => x.key === r)) setRoute(r as Route); });
+        const offRoute = window.lawdie.onRoute((r) => {
+            if (r === "welcome") setWelcome(true);
+            else if (r === "tutorial") startTour();
+            else if (r === "rules" || ROUTES.some((x) => x.key === r)) setRoute(r as Route);
+        });
         const tick = setInterval(() => setNow(Date.now()), 1000);
         return () => { offState(); offRoute(); clearInterval(tick); };
     }, []);
+    useEffect(() => {
+        if (!state || decided.current) return;
+        decided.current = true;
+        if (!state.loadFailed && needsWelcome(state.workspace)) setWelcome(true);
+    }, [state]);
 
     if (!state) return <div className="loading">Opening your workspace…</div>;
     const w = state.workspace;
+    const finishWelcome = (takeTour: boolean): void => {
+        void window.lawdie.setPreference("onboardedAt", new Date().toISOString());
+        setWelcome(false);
+        if (takeTour) startTour();
+    };
     const connected = w.sync !== null;
     const pending = toReview(w.activities); // no hook: this sits after the early return above
 
@@ -79,7 +107,7 @@ export function App(): ReactNode {
                     <h1 className="display">Time capture</h1>
                 </div>
                 <p className="eyebrow">Workspace</p>
-                <nav>
+                <nav data-tour="nav">
                     {ROUTES.map((r) => (
                         <button key={r.key} type="button" className={"nav" + (route === r.key || (route === "rules" && r.key === "today") ? " active" : "")} title={r.tip} onClick={() => setRoute(r.key)} aria-current={route === r.key ? "page" : undefined}>
                             <span className="nav-icon" aria-hidden="true">{r.icon}</span>
@@ -88,7 +116,7 @@ export function App(): ReactNode {
                         </button>
                     ))}
                 </nav>
-                <div className="capture-card">
+                <div className="capture-card" data-tour="capture">
                     <div className="row"><span className={"dot" + (w.preferences.captureEnabled ? " on" : "")} /> <strong>{w.preferences.captureEnabled ? "Capture is on" : "Capture is paused"}</strong></div>
                     <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}.` : "Your time. On your machine."}</p>
                     {state.missing.screenRecording && <p className="danger small strong">Window titles are not being captured: macOS needs Screen Recording.</p>}
@@ -132,7 +160,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} />}
                 </div>
             </main>
             {toasts.length > 0 && (
@@ -140,6 +168,8 @@ export function App(): ReactNode {
                     {toasts.map((t) => <div key={t.id} className="toast">{t.text}</div>)}
                 </div>
             )}
+            {welcome && <Welcome state={state} onDone={finishWelcome} />}
+            {!welcome && tour !== null && <Tour step={tour} onStep={setTour} onEnd={endTour} />}
         </div>
         </NoticeContext.Provider>
     );
@@ -251,7 +281,7 @@ function Today({ w, now, onRules }: { w: Workspace; now: number; onRules: (book:
                 </Panel>
             )}
             {imported.length > 0 && <ImportedPanel w={w} />}
-            <Panel>
+            <Panel tour="entries">
                 <div className="row between">
                     <strong>{range === "today" ? "Your day, in focus" : "Entries"}</strong>
                     <span className="row gap">
@@ -368,10 +398,19 @@ function sortBy<T>(items: readonly T[], by: SortBy, key: (item: T) => { at: stri
     });
 }
 
-function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNode {
+/** The tutorial's sample stretch (src/shared/onboarding.ts) while it runs: a row in To review that opens the real Keep sheet and saves nothing. */
+type Tutorial = { stretch: Stretch; sittings: Activity[]; onSheet: (open: boolean) => void };
+
+function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppState; tutorial?: Tutorial | null }): ReactNode {
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
     const [sort, setSort] = useState<SortBy>("newest");
     const [reviewing, setReviewing] = useState<{ stretch: Stretch; matter: string | null; description: string } | null>(null);
+    const notify = useNotify();
+    // The sample's sheet: the tutorial follows it opening and closing; ending the tutorial closes it.
+    const sampleOpen = !!reviewing && isTutorialID(reviewing.stretch.id);
+    useEffect(() => { tutorial?.onSheet(sampleOpen); }, [sampleOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { if (!tutorial && sampleOpen) setReviewing(null); }, [tutorial, sampleOpen]);
+    const keepSample = async (): Promise<boolean> => { notify("That was the tutorial's sample: nothing was saved. A real stretch becomes an entry on the Time screen."); return true; };
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
     const { groups, stretches, short, personal } = useMemo(() => inboxOf(w.activities), [w.activities]);
@@ -412,7 +451,7 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                 <Heading title="Activity" />
                 <button type="button" className="primary" disabled={state.loadFailed} title={w.preferences.captureEnabled ? "Stop recording app activity until you start it again." : "Start recording app activity."} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>{w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}</button>
             </div>
-            <Panel>
+            <Panel tour="capture-status">
                 <div className="row gap">
                     <span className="big-icon">{w.preferences.captureEnabled ? "∿" : "‖"}</span>
                     <div className="grow">
@@ -440,7 +479,8 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
             <Panel>
                 {filter === "pending" ? (
                     <>
-                        {groups.length === 0 && stretches.length === 0 && short.length === 0 && personal.length === 0 && (
+                        {tutorial && <SampleRow tutorial={tutorial} open={!!open[tutorial.stretch.id]} onToggle={() => toggle(tutorial.stretch.id)} notify={notify} onKeep={() => setReviewing({ stretch: tutorial.stretch, matter: tutorial.sittings[0].matter ?? null, description: tutorial.stretch.draft?.text ?? tutorial.stretch.name })} />}
+                        {!tutorial && groups.length === 0 && stretches.length === 0 && short.length === 0 && personal.length === 0 && (
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
                         {pendingRows.map((r) => "group" in r ? (
@@ -531,8 +571,51 @@ function ActivityView({ w, state }: { w: Workspace; state: AppState }): ReactNod
                     </div>
                 ))}
             </Panel>
-            {reviewing && <KeepSheet key={reviewing.stretch.id} w={w} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onClose={() => setReviewing(null)} />}
+            {reviewing && <KeepSheet key={reviewing.stretch.id} w={w} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={sampleOpen && tutorial ? tutorial.sittings : reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} keep={sampleOpen ? keepSample : undefined} onClose={() => setReviewing(null)} />}
         </>
+    );
+}
+
+/**
+ * The tutorial's sample stretch, laid out like a matter's row so the tutorial can point at its parts.
+ * Its buttons say what the real ones do; only Keep time opens anything, and that sheet saves nothing.
+ */
+function SampleRow({ tutorial: { stretch: st, sittings }, open, onToggle, notify, onKeep }: { tutorial: Tutorial; open: boolean; onToggle: () => void; notify: (text: string) => void; onKeep: () => void }): ReactNode {
+    const idle = idleSeconds(sittings);
+    const explain = (what: string): void => notify(`On a real row, ${what}. This sample row stays until the tutorial ends.`);
+    return (
+        <div data-tour="review-row">
+            <div className="activity">
+                <span className="app-icon matter-icon" aria-hidden="true">§</span>
+                <div className="grow">
+                    <div className="small strong">{sittings[0].matter} <span className="sample-tag" title="A sample the tutorial shows. It is not in your workspace and nothing done to it is saved.">Sample</span></div>
+                    {st.draft && <DraftLine draft={st.draft} />}
+                    <div className="muted tiny meta">
+                        <span>{st.app} · {dayLabel(st.startedAt)} {spanLabel(st.startedAt, st.endedAt, st.sittings)} · {st.sittings} sittings<IdleTag seconds={idle} /></span>
+                        <SittingsToggle label="1 item" open={open} what="the documents in this matter" onClick={onToggle} />
+                    </div>
+                </div>
+                <span className="mono">{duration(st.seconds)}</span>
+                <span className="row gap" data-tour="review-actions">
+                    <button type="button" className="quiet menu-button" title="Move this time to another matter, off any matter, or to a new one." onClick={() => explain("Matter moves this time to another matter, off any matter, or to a new one you name in place")}>Matter <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
+                    <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => explain(`${PERSONAL} keeps the time out of billing and sync for good`)}>Personal</button>
+                    <button type="button" className="quiet" title="Take this stretch out of review without keeping time." onClick={() => explain("Dismiss takes the stretch out of review without keeping time")}>Dismiss</button>
+                    <button type="button" className="primary" title="Check this stretch and save it as a time entry. The sample saves nothing." onClick={onKeep}>Keep time</button>
+                </span>
+            </div>
+            {open && (
+                <div className="sittings">
+                    <div className="sitting">
+                        <span className="sitting-dot" aria-hidden="true" />
+                        <div className="grow item-body">
+                            <div><span className="small">{st.name}</span> <span className="tiny muted">{st.app} · {st.sittings} sittings</span></div>
+                            <div className="tiny muted">{describeItem(sittings, sittings).facts}</div>
+                        </div>
+                        <span className="mono small">{duration(st.seconds)}</span>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -814,7 +897,7 @@ function Sittings({ items, all, onDismiss }: { items: (Interval & { id?: string;
 
 /** "HH:MM" in local time, and back onto the stretch's day (an end before the start rolls to the next day). */
 
-function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects, sittings, onClose }: { w: Workspace; stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; onClose: () => void }): ReactNode {
+function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects, sittings, keep = (ids, input) => window.lawdie.keepActivity(ids, input), onClose }: { w: Workspace; stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; keep?: (ids: string[], input: KeepInput) => Promise<boolean>; onClose: () => void }): ReactNode {
     const [matter, setMatter] = useState(suggested ?? "");
     const project = projectByName(w, matter);
     const rc = rulesContext(w, project);
@@ -867,13 +950,13 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
         if (!preview) { setProblem(span ? "All of this time was idle. Dismiss it instead." : "No captured time falls between those times."); return; }
         const input = { description, projectID: null, matter: matter.trim() || null, billable, ...(asDrafted ? { drafted: (stretch.draft?.source ?? "capture") as DraftSource } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}), ...(leaveOutIdle && idle > 0 ? { leaveOutIdle: true } : {}), ...(rc.book ? { hours, ...codes, hourlyRate } : {}) };
         // Folded into the day's email entry: the sittings join that entry, which takes the summed hours.
-        const ok = foldTarget ? await window.lawdie.keepLines([{ activityIDs: stretch.activityIDs, input, foldInto: foldTarget }]) : await window.lawdie.keepActivity(stretch.activityIDs, input);
+        const ok = foldTarget ? await window.lawdie.keepLines([{ activityIDs: stretch.activityIDs, input, foldInto: foldTarget }]) : await keep(stretch.activityIDs, input);
         if (ok) onClose();
         else setProblem("That could not be saved. It may overlap time you already kept.");
     };
     return (
         <div className="scrim" onClick={onClose}>
-            <form className={"sheet" + (lines || rc.book ? " wide" : "")} onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
+            <form className={"sheet" + (lines || rc.book ? " wide" : "")} data-tour="keep-sheet" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
                 <Heading eyebrow={imported ? "From captured activity" : "From desktop activity"} title={lines ? `Keep ${lines.length} entries` : "Keep time"} subtitle={lines ? `${matter}: one entry per task, each with its captured time.` : suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
                 {lines ? (
                     <>
@@ -1006,7 +1089,7 @@ function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview
                 <Metric label="Open matters" value={String(open.length)} detail={archived.length ? `${archived.length} archived` : "Made when you keep time on a matter"} />
                 <Metric label="No matter" value={cardTime(none.tracked)} detail={none.entries.length ? `${none.entries.length} ${none.entries.length === 1 ? "entry" : "entries"} kept without one` : "Everything kept is on a matter"} />
             </div>
-            <Panel>
+            <Panel tour="matters">
                 <div className="matter-row head eyebrow" aria-hidden="true"><span /><span>Matter</span><span>Tracked</span><span>Billable</span><span>Value</span><span>Review</span></div>
                 {open.length === 0 && <Empty title="No matters yet." detail="Keep time from the Activity inbox with a matter named, and the matter appears here with its time and rate." />}
                 {open.map(row)}
@@ -1147,7 +1230,7 @@ const SETTINGS_TABS: { key: SettingsTab; label: string; tip: string }[] = [
     { key: "sync", label: "Sync", tip: "Kiwi and Lawdie CRM." },
     { key: "data", label: "Display & data", tip: "Text size, and where your data lives." },
 ];
-function Settings({ state, now, onRules }: { state: AppState; now: number; onRules: (book: string | null, rule?: string | null) => void }): ReactNode {
+function Settings({ state, now, onRules, onTour, onWelcome }: { state: AppState; now: number; onRules: (book: string | null, rule?: string | null) => void; onTour: () => void; onWelcome: () => void }): ReactNode {
     const w = state.workspace, p = w.preferences;
     const [excluded, setExcluded] = useState("");
     const [tab, setTab] = useState<SettingsTab>("capture");
@@ -1180,7 +1263,7 @@ function Settings({ state, now, onRules }: { state: AppState; now: number; onRul
     return (
         <>
             <Heading title="Settings" />
-            <div className="segmented settings-tabs" role="tablist" aria-label="Settings">
+            <div className="segmented settings-tabs" role="tablist" aria-label="Settings" data-tour="settings-tabs">
                 {SETTINGS_TABS.map((t) => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "active" : ""} title={t.tip} onClick={() => setTab(t.key)}>{t.label}</button>)}
             </div>
             {tab === "capture" && <Panel>
@@ -1230,7 +1313,7 @@ function Settings({ state, now, onRules }: { state: AppState; now: number; onRul
                 </Setting>}
                 {w.demo && p.narrativeDrafter === "model" && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Model not connected. Narratives stay with the rules until this {label} is connected to Kiwi below.</p>}
                 <Setting title="Timer idle timeout" detail="Stops a running timer at your last input after this much inactivity. Capture counts the app in front for as long as it is in front, and a call even behind other windows.">
-                    <select value={p.idleMinutes} onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
+                    <select value={p.idleMinutes} title="How long without input before a running timer stops." onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>
                 <Setting title="Activity retention" detail="Older raw activity is removed automatically. Saved time entries are kept.">
                     <select value={p.retentionDays} title="Choose how long raw activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
@@ -1255,6 +1338,15 @@ function Settings({ state, now, onRules }: { state: AppState; now: number; onRul
                     <input value={excluded} title={isMac ? "Type an app's bundle identifier to keep it private." : "Type a program's file name to keep it private."} onChange={(e) => setExcluded(e.target.value)} placeholder={isMac ? "com.example.private-app" : "private-app.exe"} />
                     <button type="submit" className="quiet" title="Skip this app when capture runs.">Exclude</button>
                 </form>
+            </Panel>}
+            {tab === "data" && <Panel>
+                <strong>Learn the app</strong>
+                <Setting title="Tutorial" detail="Walks the four screens with a sample stretch of work in the Activity inbox: what capture records, how a stretch is kept, where kept time goes. Nothing it does is saved.">
+                    <button type="button" className="quiet" title="Start the tutorial on the Activity screen." onClick={onTour}>Start the tutorial</button>
+                </Setting>
+                <Setting title="Welcome" detail="The welcome shown the first time the app opened: what it does, what to capture, and connecting to Kiwi or Lawdie CRM.">
+                    <button type="button" className="quiet" title="Show the welcome again." onClick={onWelcome}>Show the welcome</button>
+                </Setting>
             </Panel>}
             {tab === "data" && <Panel>
                 <strong>Diagnostics</strong>
@@ -1322,9 +1414,6 @@ function Settings({ state, now, onRules }: { state: AppState; now: number; onRul
 
 // ---------------------------------------------------------------------------
 
-function Heading({ eyebrow, title, subtitle }: { eyebrow?: string; title: string; subtitle?: string }): ReactNode {
-    return <div className="heading">{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 className="display">{title}</h2>{subtitle && <p className="muted">{subtitle}</p>}</div>;
-}
 /** A permission a switched-on feature needs: stays until macOS allows it, since dismissing it would not. */
 function PermissionCallout({ pane, title, what }: { pane: "screen" | "accessibility"; title: string; what: string }): ReactNode {
     const name = pane === "screen" ? "Screen Recording" : "Accessibility";
@@ -1346,19 +1435,11 @@ function PermissionCallout({ pane, title, what }: { pane: "screen" | "accessibil
         </section>
     );
 }
-function Panel({ children }: { children: ReactNode }): ReactNode { return <section className="panel">{children}</section>; }
 /** Time on a card: "None" when there is none, else hours and minutes ("1h 05m", "12m"), never seconds. */
 const cardTime = (secs: number): string => (secs < 30 ? "None" : duration(Math.max(60, Math.round(secs / 60) * 60)));
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }): ReactNode {
     return <section className="panel metric"><p className="muted small">{label}</p><p className="value">{value}</p><p className="muted tiny">{detail}</p></section>;
 }
-function Empty({ title, detail }: { title: string; detail: string }): ReactNode { return <div className="empty"><strong>{title}</strong><p className="muted small">{detail}</p></div>; }
 function Banner({ children, tone, onClose }: { children: ReactNode; tone?: "danger"; onClose: () => void }): ReactNode {
     return <div className={"banner" + (tone ? " " + tone : "")} role={tone ? "alert" : "status"}><span className="grow">{children}</span><button type="button" className="icon" aria-label="Dismiss" title="Close this message." onClick={onClose}>×</button></div>;
-}
-function Setting({ title, detail, children }: { title: string; detail: string; children: ReactNode }): ReactNode {
-    return <div className="setting"><div className="grow"><div className="small strong">{title}</div><p className="muted tiny">{detail}</p></div>{children}</div>;
-}
-function Toggle({ on, onChange, label, tip }: { on: boolean; onChange: (v: boolean) => void; label: string; tip: { on: string; off: string } }): ReactNode {
-    return <button type="button" role="switch" aria-checked={on} aria-label={label} title={on ? tip.on : tip.off} className={"toggle" + (on ? " on" : "")} onClick={() => onChange(!on)}><span /></button>;
 }

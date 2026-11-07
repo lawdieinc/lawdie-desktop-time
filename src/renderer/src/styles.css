@@ -420,3 +420,19 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 .empty .primary { align-self: center; margin-top: 8px; }
 .proposal { align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); } .proposal:first-of-type { border-top: 0; } .proposal input { margin-top: 4px; }
 .sent-back { margin: 4px 0 2px; padding: 6px 10px; border-left: 2px solid var(--danger); background: rgba(176, 65, 62, 0.05); border-radius: 0 6px 6px 0; font-size: 13px; color: #5f574f; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* The welcome (Onboarding.tsx): a sheet over the window the first time, its switches live. */
+.welcome-scrim { z-index: 40; background: rgba(61, 55, 49, 0.4); }
+.sheet.welcome { width: 660px; max-height: calc(100vh - 48px); overflow: auto; gap: 22px; }
+.sheet.welcome .heading h2 { font-size: 30px; }
+.welcome-dots { display: flex; gap: 6px; } .welcome-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--line); } .welcome-dots span.on { background: var(--accent); }
+.welcome-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5; } .welcome-list strong { color: var(--accent); }
+.welcome-settings .setting { gap: 24px; } .welcome-settings .setting:first-child { border-top: 0; padding-top: 0; }
+.welcome-actions { padding-top: 6px; border-top: 1px solid var(--line); }
+/* The tutorial: a hole in a dim layer over the control the step describes, and the card beside it. Clicks pass through. */
+.tour-spot { position: fixed; z-index: 30; border-radius: 12px; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(61, 55, 49, 0.32); pointer-events: none; transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease; }
+.tour-dim { position: fixed; inset: 0; z-index: 30; background: rgba(61, 55, 49, 0.32); pointer-events: none; }
+.tour-card { position: fixed; z-index: 31; padding: 20px 22px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(61, 55, 49, 0.3); display: flex; flex-direction: column; gap: 10px; }
+.tour-card h3 { margin: 0; font-size: 21px; } .tour-card .small { line-height: 1.5; } .tour-card .row.between { padding-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .tour-spot { transition: none; } }
+/* The tutorial's sample row in the Activity inbox: marked as such; nothing it does is saved. */
+.sample-tag { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(139, 92, 42, 0.1); color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; vertical-align: 1px; letter-spacing: 0.04em; text-transform: uppercase; }
