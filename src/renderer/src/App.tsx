@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
 import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
-import { inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
+import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeBlock, timeValue } from "@shared/format";
 import { viewNow } from "@shared/demo";
@@ -721,9 +721,13 @@ function MatterRow({ w, onMoved, group: g, match, merged, described, idle, shots
                     {g.documents.map((d) => (
                         <div className="sitting" key={`${d.app}\n${d.name}`}>
                             <span className="sitting-dot" aria-hidden="true" />
-                            <span className="small">{d.name}</span>
-                            <span className="tiny muted">{d.app}{d.activityIDs.length > 1 ? ` · ${d.activityIDs.length} sittings` : ""}</span>
-                            <span className="grow" />
+                            <div className="grow item-body">
+                                <div><span className="small">{d.name}</span> <span className="tiny muted">{d.app}{d.activityIDs.length > 1 ? ` · ${d.activityIDs.length} sittings` : ""}</span></div>
+                                {((item) => <>
+                                    <div className="tiny muted">{item.facts}</div>
+                                    {item.text && <div className="tiny muted item-text">{item.text}</div>}
+                                </>)(describeItem(w.activities.filter((a) => d.activityIDs.includes(a.id)), w.activities))}
+                            </div>
                             <span className="mono small">{duration(d.seconds)}</span>
                             <MatterMenu w={w} ids={d.activityIDs} current={g.matter} what={d.name} label="Move…" className="link sitting-dismiss" onMoved={onMoved} />
                             <button type="button" className="link sitting-dismiss" title={`Dismiss ${d.activityIDs.length === 1 ? "this sitting" : `these ${d.activityIDs.length} sittings`}; the rest of the matter stays to review`} onClick={() => void window.lawdie.dismissActivity(d.activityIDs)}>Dismiss</button>

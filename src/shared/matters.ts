@@ -10,8 +10,9 @@
    that has something to read (a title or a document) is ever sent; never the segment in
    progress, never kept or dismissed time. A person's answer is never overwritten. */
 
-import { duration } from "./format";
-import { DRAFT_MAX, INSIGHT_MAX, MATTER_MAX, NOISE_SECONDS, PERSONAL, isPersonal, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
+import { duration, spanLabel } from "./format";
+import { callApp } from "./calls";
+import { DRAFT_MAX, INSIGHT_MAX, MATTER_MAX, NOISE_SECONDS, PERSONAL, endedText, idleSeconds, intervals, isMail, isPersonal, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
 
 /** Activities per request (Kiwi's limit); the rest wait for the next round. */
 export const MATTER_BATCH = 150;
@@ -125,6 +126,42 @@ export type MatterGroup = {
     /** The first AI draft among its sittings. */
     draft: Draft | null;
 };
+
+/** Up to this many characters of a document's or window's text under an item. */
+const ITEM_TEXT_MAX = 160;
+
+/**
+ * What one item inside a matter's row shows of the work (2026-11-06, "a brief description of
+ * what happened inside the app"): what it was (a document's folder, an email, a call, a web
+ * page's site, a chat), some of its text (the Office excerpt or the on-screen text, when those
+ * are switched on), when it was, where the time went next, and idle time flagged on it.
+ */
+export function describeItem(items: readonly Activity[], all: readonly Activity[] = []): { facts: string; text: string | null } {
+    const sorted = [...items].sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
+    const first = sorted[0];
+    if (!first) return { facts: "", text: null };
+    const parts: string[] = [];
+    const mail = first.sourceKind === "email" || isMail(first.ownerID);
+    const call = callApp(first.ownerID);
+    const host = (url: string | undefined): string | null => { try { return url ? new URL(url).hostname.replace(/^www\./, "") || null : null; } catch { return null; } };
+    if (call) parts.push("a call");
+    else if (mail) parts.push("email");
+    else if (first.document?.path) { const folder = first.document.path.replace(/[\\/][^\\/]*$/, "").split(/[\\/]/).filter(Boolean).pop(); if (folder) parts.push(`in ${folder}`); }
+    else if (first.document) parts.push("unsaved");
+    else if (first.url) { const h = host(first.url); if (h) parts.push(h); }
+    else if (first.sourceKind === "chat") parts.push("chat");
+    // The text seen: the first sitting with some, so the item says what the work was about.
+    const seen = sorted.map((a) => (a.document?.excerpt || a.screenText || "").replace(/\s+/g, " ").trim()).find(Boolean);
+    const text = seen ? (seen.length > ITEM_TEXT_MAX ? `“${seen.slice(0, ITEM_TEXT_MAX - 1).trimEnd()}…”` : `“${seen}”`) : null;
+    const spans = sorted.flatMap((a) => intervals(a)).sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
+    parts.push(spanLabel(spans[0].startedAt, spans[spans.length - 1].endedAt, spans.length));
+    const last = sorted[sorted.length - 1];
+    const next = endedText(last, all);
+    if (next) parts.push(next);
+    const idle = idleSeconds(sorted);
+    if (idle >= 60) parts.push(`${Math.round(idle / 60)} min idle`);
+    return { facts: parts.join(" · "), text };
+}
 
 /** A matter's day as a stretch: for the keep sheet, and for a day too short to be its own row. */
 export const matterStretch = (g: MatterGroup): Stretch => ({ id: g.id, app: g.apps.join(", "), ownerID: "", name: g.matter, document: null, activityIDs: g.activityIDs, startedAt: g.startedAt, endedAt: g.endedAt, seconds: g.seconds, sittings: g.sittings, endedBy: "", draft: g.draft });

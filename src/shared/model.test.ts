@@ -3,7 +3,7 @@ import {
     closeActivity, deleteEntry, dismissActivities, emptyWorkspace, keepActivity, keepStretch, markSynced, migrateV1, observe, parseWorkspace, prune,
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
 } from "./model";
-import { applyDrafts, applyInsights, applyMatters, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
+import { applyDrafts, applyInsights, applyMatters, describeItem, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
 import { existingMatter, keepSeparate, keptMatch, mergeIntoEntry, renameMatterNamed, describeActivities, descriptionOf, IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCHEMA_VERSION, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { duration, keepBounds } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
@@ -1046,5 +1046,24 @@ describe("why a kept entry says what it says, from capture", () => {
         expect(e.reasons).toEqual(["30 minutes without mouse or keyboard input were left out.", "The narrative is as you wrote it when you kept the time."]);
         expect(e.matterReason).toBeUndefined();
         expect(e.sources![0]).toEqual({ id: "a1", kind: "window", label: "Memo.docx" });
+    });
+});
+
+describe("an item inside a matter's row", () => {
+    it("says what it was, when, where the time went and idle, with some of its text apart", () => {
+        const doc = activity({ document: { name: "Lease v3.docx", path: "/Users/me/Clients/Acme/Lease v3.docx", excerpt: "  LEASE AGREEMENT between Acme Corp,   as tenant " }, endedTo: "Outlook", idle: [{ startedAt: iso(60), endedAt: iso(600) }] });
+        const item = describeItem([doc]);
+        expect(item.facts).toMatch(/^in Acme · [\d:]+ [AP]M–[\d:]+ [AP]M · switched to Outlook · 9 min idle$/);
+        expect(item.text).toBe("“LEASE AGREEMENT between Acme Corp, as tenant”");
+        expect(describeItem([activity({ document: { name: "x", path: null, excerpt: "a".repeat(300) } })]).text).toBe(`“${"a".repeat(159)}…”`);
+        expect(describeItem([activity({ app: "Outlook", ownerID: "com.microsoft.outlook", document: { name: "Re: closing", path: null, excerpt: "From: Dana Whitfield · Re: closing" } })])).toMatchObject({ facts: expect.stringMatching(/^email · /), text: "“From: Dana Whitfield · Re: closing”" });
+        expect(describeItem([activity({ app: "Microsoft Teams", ownerID: "com.microsoft.teams2" })]).facts).toMatch(/^a call · /);
+        expect(describeItem([activity({ url: "https://www.westlaw.com/Document/123", origin: "browser", sourceKind: "browser" })]).facts).toMatch(/^westlaw\.com · /);
+        expect(describeItem([activity({ document: { name: "Document1", path: null, excerpt: null } })]).facts).toMatch(/^unsaved · /);
+        expect(describeItem([activity({ screenText: "Slack: #acme-lease thread" })]).text).toBe("“Slack: #acme-lease thread”");
+        // Several sittings: "between"; a plain window with nothing read: the time alone.
+        expect(describeItem([activity({ startedAt: iso(0), endedAt: iso(600) }), activity({ startedAt: iso(1200), endedAt: iso(1800) })]).facts).toMatch(/^between .* and .* · switched apps$/);
+        expect(describeItem([activity({ endedBy: "" })])).toEqual({ facts: expect.stringMatching(/^[\d:]+ [AP]M–[\d:]+ [AP]M$/), text: null });
+        expect(describeItem([])).toEqual({ facts: "", text: null });
     });
 });

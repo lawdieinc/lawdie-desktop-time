@@ -121,7 +121,10 @@ place (`setMatter`, so it is the person's and never suggested over); the matter 
 a toast (`notify`, `NoticeContext`) says what happened. A name that is already another matter's, from
 the row's pencil, the Matters page or "New matter…", merges into it rather than clashing
 (`existingMatter()`, `renameMatterNamed()` returns the matter merged into; kept entries follow through
-`mergeProjects`) and the toast says so. Keeping a
+`mergeProjects`) and the toast says so. Each item inside a matter's row says what it was and shows
+some of its text (`describeItem()` in matters.ts, tested: the document's folder, email, a call, a
+page's site, the Office excerpt or on-screen text when those are on, when, where the time went next,
+idle). Keeping a
 matter makes or reuses the local project of that name, so it reaches Kiwi/the CRM as the
 entry's `project_name`; mapping that name to a real matter (or logging it under the name
 when none matches) is the destinations' job and not built yet — Kiwi still matches from
