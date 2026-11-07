@@ -372,3 +372,5 @@ Version 0.13.0 (schema 3; the first build that reads a version 3 file). Tests 20
 on every row and item (known matters, No matter, New matter… in place); a name that is already a
 matter's merges into it; toasts say what a move or merge did and the target unfolds; each item inside
 a matter says what the work was (`describeItem`). Version 0.14.0. Tests 204.
+2026-11-06, later: errors go to Honeybadger, project "Time Capture Desktop" (section above), opt-out in
+Settings. Version 0.15.0. Tests 211.
