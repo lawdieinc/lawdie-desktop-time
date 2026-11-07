@@ -374,3 +374,6 @@ matter's merges into it; toasts say what a move or merge did and the target unfo
 a matter says what the work was (`describeItem`). Version 0.14.0. Tests 204.
 2026-11-06, later: errors go to Honeybadger, project "Time Capture Desktop" (section above), opt-out in
 Settings. Version 0.15.0. Tests 211.
+2026-11-06, later: GitHub retired the `macos-14` runner label (jobs cancelled at start: "configuration
+'macos-14-arm64-us-default' is not supported"), so 0.14.0 and 0.15.0 shipped for Windows and Linux only;
+both workflows moved to `macos-15`. Version 0.15.1 is the first Mac build since 0.13.0.

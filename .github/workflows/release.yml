@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             target: mac
             # The .zip, latest-mac.yml and block maps are what the app's updater reads.
             assets: |
