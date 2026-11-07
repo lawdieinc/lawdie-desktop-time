@@ -437,3 +437,5 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 /* The tutorial's sample row in the Activity inbox: marked as such; nothing it does is saved. */
 .sample-tag { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(139, 92, 42, 0.1); color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; vertical-align: 1px; letter-spacing: 0.04em; text-transform: uppercase; }
 .welcome-billing { padding: 0; } .welcome-billing .row { align-items: flex-end; } .welcome-billing textarea { min-height: 40px; }
+/* A menu the tutorial holds open sits above the tutorial's dim layer, with the control it belongs to. */
+.menu-list.tour-held { z-index: 32; }

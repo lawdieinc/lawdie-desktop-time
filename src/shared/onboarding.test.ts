@@ -39,7 +39,7 @@ describe("the tutorial", () => {
     it("has unique steps, each on a screen the window has, and the Keep steps wait on the sheet", () => {
         expect(new Set(TOUR_STEPS.map((s) => s.id)).size).toBe(TOUR_STEPS.length);
         for (const s of TOUR_STEPS) {
-            expect(["today", "activity", "matters", "settings"]).toContain(s.route);
+            expect(["today", "activity", "matters", "settings", "rules"]).toContain(s.route);
             expect(s.title.length).toBeGreaterThan(0);
             expect(s.body.length).toBeGreaterThan(40);
         }
@@ -50,7 +50,7 @@ describe("the tutorial", () => {
         expect(stepAfter(TOUR_STEPS, open + 1, "keep-closed")).toBe(open + 2);
         expect(stepAfter(TOUR_STEPS, 0, "keep-open")).toBeNull();
         // Billing has its own steps, on the Time page's controls and the Billing tab of Settings.
-        expect(TOUR_STEPS.filter((s) => ["rules", "import", "bill"].includes(s.id)).map((s) => s.route)).toEqual(["today", "today", "today"]);
+        expect(TOUR_STEPS.filter((s) => ["rules", "import", "bill"].includes(s.id)).map((s) => s.route)).toEqual(["rules", "today", "today"]);
         expect(TOUR_STEPS.find((s) => s.id === "billing-settings")?.target).toBe("settings-billing");
         expect(stepAfter(TOUR_STEPS, TOUR_STEPS.length - 1, "keep-closed")).toBeNull();
     });

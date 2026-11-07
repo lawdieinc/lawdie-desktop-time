@@ -219,7 +219,11 @@ name, timekeeper, address saved through `setBilling`, then the logo fetched from
 or chosen, the same calls as Settings → Billing) or skip; finishing or skipping writes
 `onboardedAt` and can start the tutorial) and `Tour` (a spotlight hole over the step's control and a
 card beside it, clicks pass through; measured every 150 ms since the control moves; a step whose
-control is not on screen says so). The sample row (`SampleRow` in App.tsx) is the window's only:
+control is not on screen says so). A step opens what it describes: `TourStepContext` (Menu.tsx)
+carries the step id, a `Menu` whose `tourStep` it is stays open (Entries, Billing) and is spotlit
+with its button above the dim layer, Settings switches to the Billing tab, the sample row unfolds
+its item, and the rules step routes to the Client rules page (the New rulebook sheet when no client
+has rules yet; a rulebook made there is real). The sample row (`SampleRow` in App.tsx) is the window's only:
 `isTutorialID` ids never enter the workspace, its Keep time opens the real `KeepSheet` with a `keep`
 override that saves nothing and says so in a toast, and `keepStretch` refuses its ids (tested). The
 small blocks shared by both files live in `ui.tsx`. Entry points: the welcome itself, Settings → Display

@@ -10,8 +10,9 @@ import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesCont
 import { NarrativeEntry, PrivateRow, SUGGESTED_TIP, flaggedTip, hasNarrative } from "./Narrative";
 import { AddEntryForm, ImportedPanel, TypedEntries } from "./Imported";
 import { ClientRulesView } from "./ClientRules";
-import { Menu } from "./Menu";
-import { ApplyRulesMenu, BillingMenu, BillingSettings, EntryChanges, TotalsLine, inlineNarrative } from "./Billing";
+import { Menu, TourStepContext } from "./Menu";
+import { ApplyRulesMenu, BillingMenu, BillingSettings, EntryChanges, NEW_RULEBOOK, TotalsLine, inlineNarrative } from "./Billing";
+import { rulebooksOf } from "@shared/invoice";
 import { applyRules, linesByEntry, type AppliedBill, type AppliedLine } from "@shared/applyRules";
 import { money as dollars, shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
@@ -67,7 +68,12 @@ export function App(): ReactNode {
     const [keepOpen, setKeepOpen] = useState(false);
     const startTour = (): void => { setWelcome(false); setKeepOpen(false); setTour(0); };
     const endTour = (): void => { setTour(null); setKeepOpen(false); };
-    useEffect(() => { if (tour !== null) setRoute(TOUR_STEPS[tour].route); }, [tour]);
+    // Each step opens its screen; the rules step opens the Client rules page (the New rulebook sheet when no client has rules yet).
+    useEffect(() => {
+        if (tour === null) return;
+        const r = TOUR_STEPS[tour].route;
+        if (r === "rules") openRules(state && rulebooksOf(state.workspace).length ? null : NEW_RULEBOOK); else setRoute(r);
+    }, [tour]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { if (tour === null) return; const n = stepAfter(TOUR_STEPS, tour, keepOpen ? "keep-open" : "keep-closed"); if (n !== null) setTour(n); }, [keepOpen]); // eslint-disable-line react-hooks/exhaustive-deps
     const sample = useMemo(() => tutorialStretch(Date.now()), [tour === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,6 +106,7 @@ export function App(): ReactNode {
 
     return (
         <NoticeContext.Provider value={notify}>
+        <TourStepContext.Provider value={tour !== null ? TOUR_STEPS[tour].id : null}>
         <div className="shell">
             <aside className="sidebar">
                 <div className="brand">
@@ -171,6 +178,7 @@ export function App(): ReactNode {
             {welcome && <Welcome state={state} onDone={finishWelcome} />}
             {!welcome && tour !== null && <Tour step={tour} onStep={setTour} onEnd={endTour} />}
         </div>
+        </TourStepContext.Provider>
         </NoticeContext.Provider>
     );
 }
@@ -259,7 +267,7 @@ function Today({ w, now, onRules, tutorial = false }: { w: Workspace; now: numbe
                 <span className="row gap">
                     <span data-tour="client-rules"><ApplyRulesMenu w={w} onRules={onRules} /></span>
                     <span data-tour="entries-menu">
-                    <Menu label="Entries" tip="Add a simple entry, or bring in entries typed in another time system.">
+                    <Menu label="Entries" tip="Add a simple entry, or bring in entries typed in another time system." tourStep="import">
                         <button type="button" role="menuitem" title="Type a short note and its hours, such as .9 call w/ client. It shows as typed until you expand it into a narrative." onClick={() => setAdding(true)}>Add entry</button>
                         <button type="button" role="menuitem" title="Import entries typed into iTimeKeep or another time system (.csv or .xlsx). Each one is matched to the work Time Capture saw." onClick={() => void window.lawdie.importEntries()}>Import entries</button>
                     </Menu>
@@ -413,6 +421,7 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
     const sampleOpen = !!reviewing && isTutorialID(reviewing.stretch.id);
     useEffect(() => { tutorial?.onSheet(sampleOpen); }, [sampleOpen]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { if (!tutorial && sampleOpen) setReviewing(null); }, [tutorial, sampleOpen]);
+    const tourStep = useContext(TourStepContext);
     const keepSample = async (): Promise<boolean> => { notify("That was the tutorial's sample: nothing was saved. A real stretch becomes an entry on the Time screen."); return true; };
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
@@ -482,7 +491,7 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
             <Panel>
                 {filter === "pending" ? (
                     <>
-                        {tutorial && <SampleRow tutorial={tutorial} open={!!open[tutorial.stretch.id]} onToggle={() => toggle(tutorial.stretch.id)} notify={notify} onKeep={() => setReviewing({ stretch: tutorial.stretch, matter: tutorial.sittings[0].matter ?? null, description: tutorial.stretch.draft?.text ?? tutorial.stretch.name })} />}
+                        {tutorial && <SampleRow tutorial={tutorial} open={!!open[tutorial.stretch.id] || tourStep === "row"} onToggle={() => toggle(tutorial.stretch.id)} notify={notify} onKeep={() => setReviewing({ stretch: tutorial.stretch, matter: tutorial.sittings[0].matter ?? null, description: tutorial.stretch.draft?.text ?? tutorial.stretch.name })} />}
                         {!tutorial && groups.length === 0 && stretches.length === 0 && short.length === 0 && personal.length === 0 && (
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
@@ -1237,6 +1246,8 @@ function Settings({ state, now, onRules, onTour, onWelcome }: { state: AppState;
     const w = state.workspace, p = w.preferences;
     const [excluded, setExcluded] = useState("");
     const [tab, setTab] = useState<SettingsTab>("capture");
+    const tourStep = useContext(TourStepContext);
+    useEffect(() => { if (tourStep === "billing-settings") setTab("billing"); }, [tourStep]);
     const [office, setOffice] = useState<{ supported: boolean; errors: Record<string, string> } | null>(null);
     useEffect(() => {
         if (!p.captureDocuments) return undefined;

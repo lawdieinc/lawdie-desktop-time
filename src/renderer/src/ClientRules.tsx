@@ -101,7 +101,7 @@ export function ClientRulesView({ w, bookKey, focusRule, day, onBack }: { w: Wor
     return (
         <div className="rules-page">
             <button type="button" className="link-btn back-link" title="Back to Time, where you were, with these rules still applied." onClick={onBack}>‹ Back to Time</button>
-            <header className="rules-hero">
+            <header className="rules-hero" data-tour="client-rules">
                 <div className="row between wrap gap">
                     <p className="eyebrow">Client rules</p>
                     <span className="row gap">

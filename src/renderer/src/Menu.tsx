@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+
+/** The tutorial's current step id, or null (App.tsx provides it): a menu whose `tourStep` it is stays open, so the step shows what is in it. */
+export const TourStepContext = createContext<string | null>(null);
 
 /** A button that opens a small menu below it. A choice, a click outside it (including on another menu), or Escape
     closes it, so only one menu is ever open. `active` marks the button as showing something applied. */
-export function Menu({ label, tip, children, active = false, className = "quiet" }: { label: ReactNode; tip: string; children: ReactNode; active?: boolean; className?: string }): ReactNode {
-    const [open, setOpen] = useState(false);
+export function Menu({ label, tip, children, active = false, className = "quiet", tourStep }: { label: ReactNode; tip: string; children: ReactNode; active?: boolean; className?: string; tourStep?: string }): ReactNode {
+    const [chosen, setOpen] = useState(false);
+    const current = useContext(TourStepContext);
+    const held = tourStep !== undefined && current === tourStep;
+    const open = chosen || held;
     const root = useRef<HTMLSpanElement>(null);
     useEffect(() => {
         if (!open) return;
@@ -20,7 +26,7 @@ export function Menu({ label, tip, children, active = false, className = "quiet"
                 {label}
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            {open && <span className="menu-list" role="menu" onClick={() => setOpen(false)}>{children}</span>}
+            {open && <span className={"menu-list" + (held ? " tour-held" : "")} role="menu" onClick={() => setOpen(false)}>{children}</span>}
         </span>
     );
 }

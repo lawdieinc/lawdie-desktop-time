@@ -145,7 +145,7 @@ export function BillingMenu({ w, bill, day, onProblem }: { w: Workspace; bill: A
     if (w.billing) {
         return (
             <>
-                <Menu label="Billing" tip="Make an invoice or a time sheet for one matter over a period, saved as a file.">
+                <Menu label="Billing" tip="Make an invoice or a time sheet for one matter over a period, saved as a file." tourStep="bill">
                     <button type="button" role="menuitem" title={`Invoice ${nextInvoiceNumber(w)}: one matter, a period, your rules or a client's.`} onClick={() => setSheet("invoice")}>Invoice…</button>
                     <button type="button" role="menuitem" title="The time detail for one matter over a period, as PDF or Word." onClick={() => setSheet("timesheet")}>Time sheet…</button>
                     {(w.invoices?.length ?? 0) > 0 && <><span className="menu-sep" role="presentation" /><button type="button" role="menuitem" title="A client sent an invoice back: its entries return to you to fix, and the rules the client states join their rulebook." onClick={() => setSheet("rejection")}>Record a rejection…</button></>}
@@ -163,7 +163,7 @@ export function BillingMenu({ w, bill, day, onProblem }: { w: Workspace; bill: A
     };
     const how = bill.book ? `with ${bill.book.client}'s rules` : "generic, at standard rates";
     return (
-        <Menu label={busy ? "Making…" : "Billing"} tip={`Make the time sheet or the invoice for this day, ${how}. Saved in the matter folder and opened.`}>
+        <Menu label={busy ? "Making…" : "Billing"} tip={`Make the time sheet or the invoice for this day, ${how}. Saved in the matter folder and opened.`} tourStep="bill">
             <span className="menu-group" role="presentation">{bill.book ? `${shortName(bill.book)} rules` : "Generic"}</span>
             <span className="menu-row" role="presentation">
                 <span>Time sheet</span>

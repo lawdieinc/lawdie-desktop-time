@@ -234,3 +234,9 @@ panel) is therefore not yet done; it needs Office signed in once and Kiwi's
   (the fields got ids); a saved firm now counts as a used workspace; a tour started by `--route` on a
   fresh workspace was covered by the welcome arriving with the state; an arrow in a card title in the
   display font. Tests 216.
+- Later again: each step opens what it describes. Looked at through the harness: the sample row
+  unfolded on step 4; the Client rules page on step 8, as the New rulebook sheet on a workspace with
+  no rules and as the rulebook's page after one was made through the sheet (a real rulebook,
+  "Northlake Insurance", landed in the file); the Entries and Billing menus held open and spotlit with
+  their buttons on steps 9 and 10, the card beside them; the Billing tab open on step 13. Found and
+  fixed: a held-open menu sat under the tutorial's dim layer, and its list overlapped the card.

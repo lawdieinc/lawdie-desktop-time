@@ -28,7 +28,7 @@ export function RulebookSheet({ book, onClose, onSaved }: { book: ClientRulebook
     };
     return (
         <div className="scrim" onClick={onClose}>
-            <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
+            <form className="sheet" data-tour="client-rules" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
                 <div className="heading"><p className="eyebrow">Client rules</p><h2 className="display">{book ? "Rulebook" : "New rulebook"}</h2></div>
                 <label className="field"><span className="eyebrow">Client</span><input autoFocus value={client} placeholder="Client name, as it is on the matter" title="The client whose billing rules these are; its matters are matched by this name." onChange={(e) => setClient(e.target.value)} /></label>
                 <label className="field"><span className="eyebrow">Guidelines</span><input value={title} placeholder="Outside Counsel Guidelines (2026)" title="What the rules are written in, as the rules page names it." onChange={(e) => setTitle(e.target.value)} /></label>

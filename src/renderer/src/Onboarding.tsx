@@ -184,8 +184,11 @@ function measure(target: string | null): Rect | null {
     if (!target) return null;
     const el = [...document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`)].find((e) => e.offsetParent !== null || getComputedStyle(e).position === "fixed");
     if (!el) return null;
-    const r = el.getBoundingClientRect();
+    let r = el.getBoundingClientRect();
     if (!r.width && !r.height) return null;
+    // A menu the step holds open belongs to its button: the spotlight takes both, and the card stays clear of them.
+    const menu = el.querySelector<HTMLElement>(".menu-list.tour-held")?.getBoundingClientRect();
+    if (menu && menu.width) r = new DOMRect(Math.min(r.left, menu.left), Math.min(r.top, menu.top), Math.max(r.right, menu.right) - Math.min(r.left, menu.left), Math.max(r.bottom, menu.bottom) - Math.min(r.top, menu.top));
     return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
 }
 
@@ -221,7 +224,8 @@ export function Tour({ step, onStep, onEnd }: { step: number; onStep: (n: number
         const h = el.offsetHeight, W = window.innerWidth, H = window.innerHeight, gap = 14;
         if (!rect) { setPos({ left: Math.round((W - CARD_WIDTH) / 2), top: Math.round((H - h) / 2) }); return; }
         let left = rect.left, top: number;
-        if (rect.left + rect.width + gap + CARD_WIDTH <= W && rect.width < 320) { left = rect.left + rect.width + gap; top = rect.top; }
+        if (rect.width < 320 && rect.left + rect.width + gap + CARD_WIDTH <= W) { left = rect.left + rect.width + gap; top = rect.top; }
+        else if (rect.width < 320 && rect.left - gap - CARD_WIDTH >= 8) { left = rect.left - gap - CARD_WIDTH; top = rect.top; }
         else if (rect.top + rect.height + gap + h <= H) top = rect.top + rect.height + gap;
         else if (rect.top - gap - h >= 8) top = rect.top - gap - h;
         else top = Math.max(8, H - h - 8);
