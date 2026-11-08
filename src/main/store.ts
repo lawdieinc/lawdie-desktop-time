@@ -13,6 +13,7 @@ export class Store {
     workspace: Workspace = emptyWorkspace();
     syncing = false;
     feedStatus: AppState["feed"] = { running: false, error: null };
+    meetingsStatus: AppState["meetings"] = { running: false, error: null };
     loadFailed = false;
     error: string | null = null;
     notice: string | null = null;
@@ -35,7 +36,7 @@ export class Store {
     }
 
     snapshot(): AppState {
-        return { workspace: this.workspace, feed: this.feedStatus, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, missing: this.missing, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
+        return { workspace: this.workspace, feed: this.feedStatus, meetings: this.meetingsStatus, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, missing: this.missing, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
     }
 
     subscribe(listener: (state: AppState) => void): () => void {
@@ -79,6 +80,7 @@ export class Store {
     onError: ((scope: string, err: unknown) => void) | null = null;
 
     setFeedStatus(running: boolean, error: string | null): void { this.feedStatus = { running, error }; this.publish(); }
+    setMeetingsStatus(running: boolean, error: string | null): void { this.meetingsStatus = { running, error }; this.publish(); }
 
     setSyncing(on: boolean): void {
         this.syncing = on;

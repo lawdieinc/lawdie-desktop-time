@@ -112,6 +112,15 @@ export class KiwiClient {
         return this.send("POST", "desktop-time/insights", body);
     }
 
+    /** The person's calendar meetings in the window, read by Kiwi with its Google and Microsoft grants (src/shared/meetings.ts). */
+    meetings(from: string, to: string): Promise<unknown> {
+        return this.send("GET", `desktop-time/meetings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    }
+    /** A Teams meeting's transcript, when Teams made one and the person may read it. */
+    meetingTranscript(joinUrl: string): Promise<unknown> {
+        return this.send("GET", `desktop-time/meetings/transcript?join_url=${encodeURIComponent(joinUrl)}`);
+    }
+
     feed(since: string, workspaceID: string, cursor: string | null): Promise<FeedPage> {
         return this.send("GET", `desktop-time/feed?since=${encodeURIComponent(since)}&workspace_id=${encodeURIComponent(workspaceID)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
     }

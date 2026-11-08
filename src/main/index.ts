@@ -1,5 +1,6 @@
 import { joinMatter, undoJoin } from "@shared/feed";
 import { Feed } from "./feed";
+import { Meetings } from "./meetings";
 import { flushErrorReports, report, reportFromWindow, startErrorReports } from "./errors";
 import { featuresOn } from "@shared/errorReport";
 import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
@@ -197,6 +198,7 @@ app.whenReady().then(() => {
     const sync = new Sync(store, tokens, deviceLabel);
     const matters = new Matters(store, tokens);
     const feed = new Feed(store, tokens);
+    const meetings = new Meetings(store, tokens);
     const updater = new Updater(store);
     // `--rules-feed <url|file>`: client billing rules from the billing system; `--demo <seed.json>`: a demo workspace the feed's console drives.
     let rulesFeed: RulesFeed | null = null;
@@ -210,6 +212,7 @@ app.whenReady().then(() => {
 
     // IPC: the window asks, the store answers. Every mutation goes through store.change.
     ipcMain.handle("importNow", () => feed.pull());
+    ipcMain.handle("meetingsNow", () => meetings.pull());
     ipcMain.handle("joinMatter", (_e, localID: string, remoteID: string) => store.change((w) => joinMatter(w, localID, remoteID)));
     ipcMain.handle("undoJoin", (_e, localID: string) => store.change((w) => undoJoin(w, localID)));
     ipcMain.handle("declineJoin", (_e, localID: string) => store.change((w) => { const j = w.feed?.joins.find((j) => j.local_id === localID && !j.status); if (j) j.status = "declined"; }));
@@ -225,6 +228,7 @@ app.whenReady().then(() => {
         });
         if (ok && key === "textSize") for (const window of BrowserWindow.getAllWindows()) applyTextSize(window, store);
         if (ok && key === "importKiwiTime") { feed.cancel(); if (value === true) void feed.pull(); }
+        if (ok && (key === "importMeetings" || key === "meetingTranscripts")) { meetings.cancel(); if (value === true) void meetings.pull(); }
         if (ok && key === "suggestMatters" && value === true) void matters.suggest();
         // macOS shows its Accessibility prompt (once) when on-screen text is switched on.
         if (ok && key === "captureScreenText" && value === true && process.platform === "darwin") systemPreferences.isTrustedAccessibilityClient(true);
@@ -253,7 +257,7 @@ app.whenReady().then(() => {
     ipcMain.handle("archiveProject", (_e, id: string, archived: boolean) => store.change((w) => archiveProject(w, String(id), archived === true)));
     ipcMain.handle("clearActivity", () => { const ok = store.change((w) => { w.activities = []; w.currentActivity = null; w.preferences.captureEnabled = false; }); if (ok) store.say("Activity cleared and capture paused. Saved time entries are unchanged."); return ok; });
     ipcMain.handle("connectKiwi", (_e, destination: Destination, servers: Partial<Record<Product, string>>, token: string) => sync.connect(isDestination(destination) ? destination : "kiwi", servers ?? {}, token));
-    ipcMain.handle("disconnectKiwi", () => { feed.cancel(); sync.disconnect(); });
+    ipcMain.handle("disconnectKiwi", () => { feed.cancel(); meetings.cancel(); sync.disconnect(); });
     ipcMain.handle("syncNow", () => sync.syncNow());
     ipcMain.handle("installUpdate", () => updater.install());
     ipcMain.handle("setAutoSync", (_e, on: boolean) => store.change((w) => { if (w.sync) w.sync.autoSync = on; }));
@@ -588,6 +592,7 @@ app.whenReady().then(() => {
     sync.start();
     matters.start();
     feed.start();
+    meetings.start();
     updater.start();
     rulesFeed?.start();
     // `--import <file.csv|.xlsx>` imports time entries at launch, as the Time page's Import entries does (verification, demos).
@@ -611,7 +616,7 @@ app.whenReady().then(() => {
 
     app.on("second-instance", () => showWindow(store));
     app.on("activate", () => showWindow(store));
-    app.on("before-quit", () => { quitting = true; sync.stop(); feed.stop(); matters.stop(); rulesFeed?.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); void flushErrorReports(); });
+    app.on("before-quit", () => { quitting = true; sync.stop(); feed.stop(); meetings.stop(); matters.stop(); rulesFeed?.stop(); updater.stop(); capture.shutdown(); releaseLock?.(); void flushErrorReports(); });
     // A signal (a kill, the harness's timeout) quits like a person would, so the cleanup above runs; it also keeps the
     // Honeybadger SDK's own signal listener from exiting the process on its own, which it does only when no one else listens.
     for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => app.quit());

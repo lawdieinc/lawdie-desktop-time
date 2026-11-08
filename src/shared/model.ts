@@ -1,5 +1,6 @@
 import { prepareImportedKeep, validateFeedState, type FeedState, type SourceRef } from "./feed";
 import { isProduct, type Product } from "./kiwi";
+import { meetingEvidence, meetingsValid, type MeetingRef, type MeetingsState } from "./meetings";
 import type { MatterContext, Profile, RuleSet } from "./rules";
 /* The workspace and the rules that change it. Pure: no Electron, no filesystem, no
    clock of its own — every function takes `now` in milliseconds — so the whole thing
@@ -292,6 +293,8 @@ export type Evidence = {
     meeting?: string; lines?: { t: string; who: string; text: string }[];
     file?: string; title?: string; path?: string;
     facts?: string[];
+    /** A calendar meeting's id (src/shared/meetings.ts), so its transcript can join it when it arrives. */
+    meeting_id?: string;
     /** A Teams invite: the meeting it is the invite for. */
     invite_for?: string | null;
     /** An Outlook web link, filled in after the Graph seed. */
@@ -374,6 +377,8 @@ export type Activity = {
     mergeKey?: string;
     /** Kept entries the person said this is not more of: never offered again. */
     separateFrom?: string[];
+    /** The calendar meeting this was (src/shared/meetings.ts): a call capture counted, or a row from the calendar itself (ownerID "calendar:…"). */
+    meeting?: MeetingRef;
 };
 
 export type Preferences = {
@@ -397,6 +402,10 @@ export type Preferences = {
     narrativeDrafter?: DrafterKind;
     /** Send errors to Lawdie (src/main/errors.ts): the error and which features were on, never what was on screen. Absent is on. */
     crashReports?: boolean;
+    /** Bring in Google and Outlook calendar meetings through Kiwi (src/shared/meetings.ts). Absent is off. */
+    importMeetings?: boolean;
+    /** Fetch Teams transcripts of those meetings, kept on this computer. Absent is off. */
+    meetingTranscripts?: boolean;
     /** When the welcome was finished or skipped (src/shared/onboarding.ts). Absent on a workspace nobody has used: the welcome shows. */
     onboardedAt?: string | null;
 };
@@ -457,6 +466,8 @@ export type Workspace = {
     /** Every client whose rules can be applied to the day, and the one applied now (its key), or null for generic billing. */
     clientRulebooks?: ClientRulebook[] | null;
     billingClient?: string | null;
+    /** Calendar meetings and their transcripts (src/shared/meetings.ts). Local only; never synced. */
+    meetings?: MeetingsState | null;
 };
 
 export const DEFAULT_EXCLUSIONS = [
@@ -686,7 +697,7 @@ export function stretchSpan(sittings: Interval[], start: number, end: number): {
  * web page with its address, else the app window), and the reasons in words. Only the time
  * inside [start, end] counts, as the entry keeps it.
  */
-export function capturedWhy(picked: readonly Activity[], start: number, end: number, drafted: DraftSource | undefined, idleLeftOut = 0, keptIntervals: Interval[] = [{ startedAt: iso(start), endedAt: iso(end) }]): { work: WorkStretch[]; sources: NarrativeSource[]; evidence: Record<string, Evidence>; reasons: string[]; matterReason?: string } {
+export function capturedWhy(picked: readonly Activity[], start: number, end: number, drafted: DraftSource | undefined, idleLeftOut = 0, keptIntervals: Interval[] = [{ startedAt: iso(start), endedAt: iso(end) }], meetings: MeetingsState["list"] = []): { work: WorkStretch[]; sources: NarrativeSource[]; evidence: Record<string, Evidence>; reasons: string[]; matterReason?: string } {
     const work: WorkStretch[] = [];
     const sources: NarrativeSource[] = [];
     const evidence: Record<string, Evidence> = {};
@@ -696,11 +707,18 @@ export function capturedWhy(picked: readonly Activity[], start: number, end: num
         const minutes = kept.reduce((n, i) => n + (ms(i.endedAt) - ms(i.startedAt)), 0) / 60_000;
         if (!kept.length || !minutes) continue;
         const mail = a.sourceKind === "email" || matchesOwner(MAIL_OWNER_IDS, a.ownerID);
-        const kind = a.document && !mail ? "document" : a.url ? "page" : mail ? "email" : a.sourceKind === "chat" ? "chat" : "window";
-        const title = a.document?.name || a.title || host(a.url) || a.app;
+        const kind = a.meeting ? "meeting" : a.document && !mail ? "document" : a.url ? "page" : mail ? "email" : a.sourceKind === "chat" ? "chat" : "window";
+        const title = a.meeting?.subject || a.document?.name || a.title || host(a.url) || a.app;
         for (const i of kept) work.push({ app: a.app, title, startedAt: i.startedAt, minutes: (ms(i.endedAt) - ms(i.startedAt)) / 60_000, ...(a.url ? { url: a.url } : {}), sourceID: a.id });
         sources.push({ id: a.id, kind, label: title });
         const facts = [a.document?.excerpt, a.screenText].filter((x): x is string => !!x).map((x) => x.slice(0, 600));
+        if (a.meeting) {
+            const found = meetingEvidence(a, meetings, title, kept[0].startedAt);
+            Object.assign(evidence, found);
+            const tid = found[a.id].transcript;
+            if (tid) sources.push({ id: tid, kind: "transcript", label: `Transcript of ${title}` });
+            continue;
+        }
         evidence[a.id] = {
             id: a.id, kind, title, when: kept[0].startedAt,
             ...(kind === "document" ? { file: a.document!.name, ...(a.document!.path ? { path: a.document!.path } : {}) } : {}),
@@ -765,7 +783,7 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     const shots = (picked as Activity[]).flatMap((a) => a.screenshots ?? []).filter((n) => { const t = screenshotTime(n); return keptIntervals.some((i) => t >= ms(i.startedAt) && t <= ms(i.endedAt)); }).sort((a, b) => screenshotTime(a) - screenshotTime(b));
     const sourceRefs: SourceRef[] = (picked as Activity[]).filter((a) => a.origin).map((a) => ({ kind: a.sourceKind!, id: a.originRef!, account: a.originAccount!, intervals: intersectIntervals(intervals(a), keptIntervals) })).filter((r) => r.intervals.length);
     // Why this entry: the stretches kept, as work, sources and evidence the drafter can cite, and the reasons.
-    const why = capturedWhy(picked as Activity[], ms(span.startedAt), ms(span.endedAt), input.drafted, idleLeftOut, keptIntervals);
+    const why = capturedWhy(picked as Activity[], ms(span.startedAt), ms(span.endedAt), input.drafted, idleLeftOut, keptIntervals, w.meetings?.list);
     const description = input.description.trim();
     const entry: TimeEntry = {
         id: uuid(), description, projectID, ...span,
@@ -1181,7 +1199,7 @@ export function deleteEntry(w: Workspace, id: string): void {
     const from = new Set([entry.activityID, ...(entry.activityIDs ?? [])]);
     for (const a of w.activities) if (from.has(a.id)) a.disposition = "pending";
     // The evidence capture made for it goes with it; keeping the activity again makes it anew.
-    if (w.evidence) for (const a of from) if (a && w.evidence[a] && (entry.sources ?? []).some((s) => s.id === a)) delete w.evidence[a];
+    if (w.evidence) for (const a of from) if (a && w.evidence[a] && (entry.sources ?? []).some((s) => s.id === a)) { delete w.evidence[a]; delete w.evidence[`${a}:transcript`]; }
     for (const t of w.sync?.targets ?? []) if (!t.deletedEntryIDs.includes(id)) t.deletedEntryIDs.push(id);
 }
 
@@ -1386,7 +1404,7 @@ export function referencedScreenshots(w: Workspace): Set<string> {
 /** How a sitting ended, in words. */
 const ENDED_BY: Record<string, string> = {
     switched: "switched apps", idle: "went idle", suspended: "the computer slept", gap: "lost track", paused: "paused capture",
-    quit: "quit the app", excluded: "opened a private app", browser: "went to the browser", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down",
+    quit: "quit the app", excluded: "opened a private app", browser: "went to the browser", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down", calendar: "on your calendar, not on this computer",
 };
 
 /** The site of the browser time (brought in from Kiwi) that began as this ended, if any. */
@@ -1469,7 +1487,7 @@ export type Stretch = {
     draft: Draft | null;
 };
 
-const stretchKey = (a: Activity): string => `${a.ownerID}\n${isMail(a.ownerID) ? "" : a.document?.name ?? a.title ?? ""}`;
+const stretchKey = (a: Activity): string => a.meeting ? `meeting:${a.meeting.id}` : `${a.ownerID}\n${isMail(a.ownerID) ? "" : a.document?.name ?? a.title ?? ""}`;
 const localDayOf = (isoText: string): string => { const d = new Date(isoText); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
 
 /**
@@ -1496,7 +1514,7 @@ export function stretchesOf(activities: readonly Activity[], gapMs = STRETCH_GAP
             continue;
         }
         const mail = isMail(a.ownerID);
-        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: mail ? a.app : a.document?.name ?? a.title ?? a.app, document: mail ? null : a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: seconds(a), sittings: 1, endedBy: a.endedBy, ...(a.endedTo ? { endedTo: a.endedTo } : {}), draft: a.draft ?? null };
+        const fresh: Stretch = { id: a.id, app: a.app, ownerID: a.ownerID, name: a.meeting?.subject ?? (mail ? a.app : a.document?.name ?? a.title ?? a.app), document: mail ? null : a.document ?? null, activityIDs: [a.id], startedAt: a.startedAt, endedAt: a.endedAt, seconds: seconds(a), sittings: 1, endedBy: a.endedBy, ...(a.endedTo ? { endedTo: a.endedTo } : {}), draft: a.draft ?? null };
         open.set(key, fresh);
         all.push(fresh);
     }
@@ -1620,7 +1638,7 @@ export function validate(w: Workspace): Workspace {
             && (r.origin == null || r.origin === "import" || r.origin === "manual") && (r.prior == null || typeof r.prior === "object")))) &&
         (w.privateStretches == null || (Array.isArray(w.privateStretches) && w.privateStretches.every((x) => !!x && validIso(x.startedAt) && validIso(x.endedAt)))) &&
         Array.isArray(w.projects) && Array.isArray(w.entries) && Array.isArray(w.activities) &&
-        p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) && (p.textSize == null || (TEXT_SIZES as readonly number[]).includes(p.textSize)) && (p.crashReports == null || typeof p.crashReports === "boolean") && (p.onboardedAt == null || validIso(p.onboardedAt)) &&
+        p && p.idleMinutes >= 1 && p.idleMinutes <= 60 && p.retentionDays >= 1 && p.retentionDays <= 365 && Array.isArray(p.excludedOwnerIDs) && (p.textSize == null || (TEXT_SIZES as readonly number[]).includes(p.textSize)) && (p.crashReports == null || typeof p.crashReports === "boolean") && (p.importMeetings == null || typeof p.importMeetings === "boolean") && (p.meetingTranscripts == null || typeof p.meetingTranscripts === "boolean") && meetingsValid(w) && (p.onboardedAt == null || validIso(p.onboardedAt)) &&
         new Set(w.entries.map((e) => e.id)).size === w.entries.length &&
         new Set(w.projects.map((x) => x.id)).size === w.projects.length &&
         new Set(w.activities.map((a) => a.id)).size === w.activities.length &&

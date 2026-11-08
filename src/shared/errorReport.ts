@@ -128,10 +128,10 @@ export function cleanNotice(notice: NoticeLike): void {
 }
 
 /** The switches that are on, named: which features were running says a lot about where a bug lives. */
-export function featuresOn(p: { captureEnabled?: boolean; captureTitles?: boolean; captureDocuments?: boolean; captureScreenText?: boolean; captureScreenshots?: boolean; suggestMatters?: boolean; importKiwiTime?: boolean }, targets: readonly string[] = []): string {
+export function featuresOn(p: { captureEnabled?: boolean; captureTitles?: boolean; captureDocuments?: boolean; captureScreenText?: boolean; captureScreenshots?: boolean; suggestMatters?: boolean; importKiwiTime?: boolean; importMeetings?: boolean; meetingTranscripts?: boolean }, targets: readonly string[] = []): string {
     const on = [
         p.captureEnabled && "capture", p.captureTitles && "titles", p.captureDocuments && "documents", p.captureScreenText && "screenText",
-        p.captureScreenshots && "screenshots", p.suggestMatters && "ai", p.importKiwiTime && "kiwiTime", ...targets.map((t) => `sync:${t}`),
+        p.captureScreenshots && "screenshots", p.suggestMatters && "ai", p.importKiwiTime && "kiwiTime", p.importMeetings && "meetings", p.meetingTranscripts && "transcripts", ...targets.map((t) => `sync:${t}`),
     ].filter((x): x is string => !!x);
     return on.join(",") || "none";
 }

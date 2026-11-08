@@ -509,7 +509,7 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
                                         {st.draft && own?.by !== "person" && <DraftLine draft={st.draft} />}
                                         <Shots names={st.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} />
                                         <div className="muted tiny meta">
-                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{own?.by === "person" && st.name !== own.text ? ` · ${st.name}` : ""}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
+                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{meetingWith(byID.get(st.activityIDs[0]))}{own?.by === "person" && st.name !== own.text ? ` · ${st.name}` : ""}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
                                             {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
                                         </div>
                                         <MergeLine match={matches.get(st.activityIDs[0]) ?? null} merged={st.activityIDs.some((id) => byID.get(id)?.mergeKey)} />
@@ -1317,6 +1317,14 @@ function Settings({ state, now, onRules, onTour, onWelcome }: { state: AppState;
                 </Setting>
                 {p.importKiwiTime && <div className="row between wrap gap"><p className="muted tiny">{w.feed?.lastImportedAt ? `Last imported ${ago(w.feed.lastImportedAt, now)}` : "No imports yet"}. {w.sync?.targets.some((t) => t.product === "kiwi") ? "Browser uploads arrive while Kiwi is open." : "Connect to Kiwi below to import."}</p><button className="quiet" type="button" disabled={state.feed.running} onClick={() => void window.lawdie.importNow()}>{state.feed.running ? "Importing…" : "Import now"}</button></div>}
                 {state.feed.error && <p className="danger tiny">{state.feed.error}</p>}
+                <Setting title="Calendar meetings" detail="Kiwi reads your Google or Outlook calendar, whichever you connected on Kiwi's Integrations page, and this app uses the meetings that end from now on. A Teams or Zoom call this computer counted takes the meeting's name and invitees. A meeting it did not count, such as one in a conference room, comes into review as its own row for the time this computer was not counting something else. Only the meeting's subject and the other invitees' email addresses go to Kiwi's AI, to name the matter. Meetings stay on this computer and are never synced.">
+                    <Toggle on={p.importMeetings === true} onChange={(v) => set("importMeetings", v)} label="Calendar meetings" tip={{ on: "Stop bringing in calendar meetings.", off: "Bring Google and Outlook calendar meetings into review." }} />
+                </Setting>
+                {p.importMeetings && <Setting title="Teams transcripts" detail="After a Teams meeting with time on it, ask Teams for its transcript for up to six hours. It is kept on this computer with the meeting, shown under Why this entry, and quoted when Kiwi's AI drafts the entry's narrative. Teams makes one only when someone started transcription in the meeting, and your firm's Microsoft admin must approve transcript access for Kiwi once.">
+                    <Toggle on={p.meetingTranscripts === true} onChange={(v) => set("meetingTranscripts", v)} label="Teams transcripts" tip={{ on: "Stop fetching Teams transcripts.", off: "Fetch Teams transcripts for meetings with time on them." }} />
+                </Setting>}
+                {p.importMeetings && <div className="row between wrap gap"><p className="muted tiny">{meetingsLine(w, now)}</p><button className="quiet" type="button" disabled={state.meetings.running} onClick={() => void window.lawdie.meetingsNow()}>{state.meetings.running ? "Checking…" : "Check now"}</button></div>}
+                {p.importMeetings && state.meetings.error && <p className="danger tiny">{state.meetings.error}</p>}
                 {p.suggestMatters && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Connect this {label} to Kiwi below to get AI suggestions.</p>}
                 {w.demo && <Setting title="Narrative drafter" detail="Who writes each entry's narrative in this demo: the narratives its seed drafted ahead of time, or Kiwi's model from the same sources (each part must name the source it rests on). Entries kept from capture always go to the model.">
                     <div className="segmented" role="radiogroup" aria-label="Narrative drafter">
@@ -1456,4 +1464,21 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
 }
 function Banner({ children, tone, onClose }: { children: ReactNode; tone?: "danger"; onClose: () => void }): ReactNode {
     return <div className={"banner" + (tone ? " " + tone : "")} role={tone ? "alert" : "status"}><span className="grow">{children}</span><button type="button" className="icon" aria-label="Dismiss" title="Close this message." onClick={onClose}>×</button></div>;
+}
+
+/** What the calendar switch has done: each calendar's state, in words, and when it last looked. */
+function meetingsLine(w: Workspace, now: number): string {
+    if (!w.sync?.targets.some((t) => t.product === "kiwi")) return "Connect this computer to Kiwi below to bring in meetings.";
+    const m = w.meetings;
+    if (!m?.lastFetchedAt) return "No meetings checked yet.";
+    const name = { google: "Google Calendar", microsoft: "Outlook calendar" } as const;
+    const says = m.calendars.filter((c) => c.status !== "not_connected").map((c) => c.status === "ok" ? `${name[c.provider]}${c.email ? ` (${c.email})` : ""} connected` : c.status === "reconnect" || c.status === "no_calendar" ? `${name[c.provider]}: reconnect ${c.provider === "google" ? "Google" : "Microsoft"} on Kiwi's Integrations page to allow calendar access` : `${name[c.provider]} could not be read`);
+    const list = says.length ? says.join(". ") : "No calendar is connected in Kiwi. Connect Google or Microsoft on Kiwi's Integrations page";
+    return `${list}. Last checked ${ago(m.lastFetchedAt, now)}.`;
+}
+
+/** " · with jane@acme.com and 2 more" for a row that was a calendar meeting, else nothing. */
+function meetingWith(a: { meeting?: { with: string[] } } | undefined): string {
+    const who = a?.meeting?.with ?? [];
+    return who.length ? ` · with ${who[0]}${who.length > 1 ? ` and ${who.length - 1} more` : ""}` : "";
 }

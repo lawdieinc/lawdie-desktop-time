@@ -5,6 +5,8 @@ export type AppState = {
     workspace: Workspace;
     syncing: boolean;
     feed: { running: boolean; error: string | null };
+    /** Calendar meetings through Kiwi (src/main/meetings.ts): asking now, and the last failure. */
+    meetings: { running: boolean; error: string | null };
     loadFailed: boolean;
     error: string | null;
     notice: string | null;

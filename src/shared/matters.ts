@@ -22,7 +22,7 @@ export const MATTER_EXAMPLES = 40;
 const ms = (iso: string) => Date.parse(iso);
 const spanSeconds = entrySeconds;
 const localDayOf = (isoText: string): string => { const d = new Date(isoText); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
-const readable = (a: Activity) => !!(a.title || a.document || a.screenText);
+const readable = (a: Activity) => !!(a.meeting || a.title || a.document || a.screenText);
 
 /** Pending activities never asked about, with something to read (title, document or on-screen text), oldest first. */
 export function unnamed(w: Workspace): Activity[] {
@@ -39,7 +39,9 @@ export function knownMatters(w: Workspace): string[] {
 
 const describe = (a: Activity) => ({
     app: a.app,
-    title: a.title,
+    // A meeting's subject says more than a call window's title; its other invitees often name the client.
+    title: a.meeting?.subject ?? a.title,
+    ...(a.meeting?.with.length ? { meeting_with: a.meeting.with } : {}),
     document: a.document?.name ?? null,
     path: a.document?.path ?? null,
     excerpt: a.document?.excerpt ?? null,
@@ -144,7 +146,11 @@ export function describeItem(items: readonly Activity[], all: readonly Activity[
     const mail = first.sourceKind === "email" || isMail(first.ownerID);
     const call = callApp(first.ownerID);
     const host = (url: string | undefined): string | null => { try { return url ? new URL(url).hostname.replace(/^www\./, "") || null : null; } catch { return null; } };
-    if (call) parts.push("a call");
+    const who = first.meeting?.with ?? [];
+    const withText = who.length ? ` with ${who.slice(0, 2).join(", ")}${who.length > 2 ? ` and ${who.length - 2} more` : ""}` : "";
+    // A calendar row's ending already says it was on the calendar, not this computer.
+    if (first.meeting) parts.push(`${call ? "a call" : "a meeting"}${withText}`);
+    else if (call) parts.push("a call");
     else if (mail) parts.push("email");
     else if (first.document?.path) { const folder = first.document.path.replace(/[\\/][^\\/]*$/, "").split(/[\\/]/).filter(Boolean).pop(); if (folder) parts.push(`in ${folder}`); }
     else if (first.document) parts.push("unsaved");

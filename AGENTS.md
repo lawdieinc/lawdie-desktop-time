@@ -257,6 +257,26 @@ and `LAWDIE_TEST_ERROR=1` (one test error 3 s after launch); `HONEYBADGER_ENDPOI
 points at a local server (the SDK's transport drops the port, so that case goes through fetch).
 A dev build, `npm test`, the screenshot harness and demo runs have no key and send nothing.
 
+## Calendar meetings and Teams transcripts
+
+Opt-in (`importMeetings` "Calendar meetings", `meetingTranscripts` "Teams transcripts"; 2026-11-08), Kiwi
+only. Kiwi reads the person's Google and Outlook calendars with the grants it already holds from its
+Integrations page (`GET /desktop-time/meetings?from&to`, `GET /desktop-time/meetings/transcript?join_url`,
+`kiwi/backend/src/lib/desktopMeetings.ts`), so this app never holds a calendar token. Kiwi's Microsoft
+sign-in asks for Calendars.Read and OnlineMeetings.Read; transcripts also need
+OnlineMeetingTranscript.Read.All, which a firm's Microsoft admin grants once. `src/shared/meetings.ts`
+is pure and tested (`meetings.test.ts`); `src/main/meetings.ts` asks every 15 minutes (and "Check now").
+Only meetings ending after the switch went on count (`MeetingsState.since`). A meeting that ended is
+decided once (`placed`): a call capture counted at the same time gains it (`Activity.meeting`: the
+row reads as the subject and the matter request carries `meeting_with`, the other invitees); else, when
+anyone else was invited, it becomes a review row (`ownerID` `calendar:google|microsoft`, `endedBy`
+"calendar") for the part this computer did not count (computer time and kept time win the overlap); a
+solo block does nothing. A Teams meeting with time on it is asked for its transcript every 20 minutes
+for six hours after it ends; the transcript stays on the meeting and becomes `transcript` evidence (and a
+source) beside the entry's `meeting` evidence, at keep or when it arrives (`attachTranscript`).
+Meetings and transcripts are never synced; Kiwi's matter model sees the subject and invitees, and the
+narrative drafter quotes the transcript. Zoom transcripts are not built.
+
 ## Kiwi and Lawdie CRM
 
 Kiwi, the CRM, or both (`SyncState.targets`, one per product, 2026-09-27; before that
@@ -405,3 +425,6 @@ both workflows moved to `macos-15`. Version 0.15.1 is the first Mac build since 
 for the bill) and a tutorial that walks the real screens with a sample stretch that is never saved, billing
 included: client rules, imports, time sheets and invoices, the Billing tab (section above). Both verified through the harness
 on an empty workspace and on one with history. Tests 216.
+2026-11-08: calendar meetings (Google and Outlook) and Teams transcripts through Kiwi's own grants (section
+above), verified end to end against a stand-in Kiwi: a Teams call named by its meeting, a conference-room
+meeting as a row less the Word time, the transcript under Why this entry. Tests 224.
