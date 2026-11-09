@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyWorkspace, validate } from "./model";
-import { LATEST_RELEASE, RELEASES, RELEASE_ICONS, compareVersions, needsWhatsNew, releaseDateLabel } from "./releases";
+import { LATEST_RELEASE, RELEASES, RELEASE_HEROES, RELEASE_ICONS, compareVersions, needsWhatsNew, releaseDateLabel } from "./releases";
 
 const used = (): ReturnType<typeof emptyWorkspace> => {
     const w = emptyWorkspace();
@@ -20,6 +20,7 @@ describe("the release notes", () => {
             expect(r.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
             expect(r.items.length).toBeGreaterThanOrEqual(1);
             expect(r.items.length).toBeLessThanOrEqual(5);
+            if (r.hero) expect(RELEASE_HEROES).toContain(r.hero);
             for (const item of r.items) {
                 expect(RELEASE_ICONS).toContain(item.icon);
                 expect(item.description.length).toBeLessThanOrEqual(100);

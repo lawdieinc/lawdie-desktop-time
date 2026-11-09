@@ -8,6 +8,7 @@
      - `date` is the day it ships, YYYY-MM-DD.
      - Two to five items, each a short title and one plain sentence a lawyer would understand: what they can now
        do, not what moved in the code. `icon` is one of RELEASE_ICONS; `route` opens that screen.
+     - `hero` (optional): a scene in WhatsNewHeroes.tsx that plays the release, built like the real screen.
    A release that only fixes bugs adds no entry, and the card stays closed. */
 
 import { needsWelcome } from "./onboarding";
@@ -15,6 +16,10 @@ import type { Workspace } from "./model";
 
 export const RELEASE_ICONS = ["calendar", "transcript", "compass", "invoice", "sparkle", "matter", "shield", "rules", "clock"] as const;
 export type ReleaseIcon = (typeof RELEASE_ICONS)[number];
+
+/** A scene at the top of the card (WhatsNewHeroes.tsx); without one the band shows the mark. */
+export const RELEASE_HEROES = ["meetings"] as const;
+export type ReleaseHero = (typeof RELEASE_HEROES)[number];
 
 export type ReleaseItem = {
     icon: ReleaseIcon;
@@ -31,6 +36,8 @@ export type Release = {
     /** YYYY-MM-DD. */
     date: string;
     title: string;
+    /** The scene at the top of the card: a small demo of the release that plays by itself. */
+    hero?: ReleaseHero;
     items: readonly ReleaseItem[];
 };
 
@@ -39,6 +46,7 @@ export const RELEASES: readonly Release[] = [
         id: "0.16.0",
         date: "2026-11-09",
         title: "Your meetings, counted",
+        hero: "meetings",
         items: [
             { icon: "calendar", title: "Calendar meetings become time", description: "Connected to Kiwi, Google and Outlook meetings name a call or wait for review.", route: "settings" },
             { icon: "transcript", title: "Teams transcripts as evidence", description: "A Teams meeting's transcript sits under Why this entry and shapes the description." },

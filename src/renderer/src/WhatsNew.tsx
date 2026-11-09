@@ -5,7 +5,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { LATEST_RELEASE, RELEASES, releaseDateLabel, type Release, type ReleaseIcon, type ReleaseItem } from "@shared/releases";
-import mark from "../../../resources/brand/lawdie-icon.png";
+import { HEROES, HeroFrame } from "./WhatsNewHeroes";
 
 const PATHS: Record<ReleaseIcon, ReactNode> = {
     calendar: <><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></>,
@@ -73,7 +73,7 @@ export function WhatsNew({ onDismiss, onOpen, release = LATEST_RELEASE }: { onDi
                     </div>
                 ) : (
                     <>
-                        <div className="whats-new-hero" aria-hidden="true"><img src={mark} alt="" /></div>
+                        {release.hero ? (() => { const Hero = HEROES[release.hero]; return <Hero />; })() : <HeroFrame />}
                         <div className="whats-new-body">
                             <p className="eyebrow">What's new <span className="whats-new-date">· {releaseDateLabel(release.date)} · version {release.id}</span></p>
                             <h2 className="display" id="whats-new-title">{release.title}</h2>
