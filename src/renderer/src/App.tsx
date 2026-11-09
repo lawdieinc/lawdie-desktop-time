@@ -20,6 +20,8 @@ import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 import kiwiMark from "../../../resources/brand/kiwi.png";
 import { Empty, Heading, Panel, Setting, Toggle } from "./ui";
 import { Tour, Welcome } from "./Onboarding";
+import { WhatsNew } from "./WhatsNew";
+import { LATEST_RELEASE, needsWhatsNew } from "@shared/releases";
 import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
 
 /* The window. Four screens (Time, Activity, Matters, Settings) and the Kiwi
@@ -63,6 +65,9 @@ export function App(): ReactNode {
     // The welcome, once, on a workspace nobody has used (decided when the state first arrives, so finishing it never
     // brings it back); and the tutorial, a step index into TOUR_STEPS, which opens each step's screen itself.
     const [welcome, setWelcome] = useState(false);
+    // What's new: once after an update (src/shared/releases.ts), or from Settings and the tray; dismissing marks it seen.
+    const [whatsNew, setWhatsNew] = useState(false);
+    const dismissWhatsNew = (): void => { setWhatsNew(false); void window.lawdie.setPreference("seenRelease", LATEST_RELEASE.id); };
     const decided = useRef(false);
     const [tour, setTour] = useState<number | null>(null);
     const [keepOpen, setKeepOpen] = useState(false);
@@ -82,6 +87,7 @@ export function App(): ReactNode {
         const offState = window.lawdie.onState(setState);
         const offRoute = window.lawdie.onRoute((r) => {
             if (r === "welcome") setWelcome(true);
+            else if (r === "whatsnew") setWhatsNew(true);
             else if (r === "tutorial") startTour();
             else if (r === "rules" || ROUTES.some((x) => x.key === r)) setRoute(r as Route);
         });
@@ -92,12 +98,14 @@ export function App(): ReactNode {
         if (!state || decided.current) return;
         decided.current = true;
         if (!state.loadFailed && tour === null && needsWelcome(state.workspace)) setWelcome(true);
+        else if (!state.loadFailed && tour === null && needsWhatsNew(state.workspace)) setWhatsNew(true);
     }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!state) return <div className="loading">Opening your workspace…</div>;
     const w = state.workspace;
     const finishWelcome = (takeTour: boolean): void => {
         void window.lawdie.setPreference("onboardedAt", new Date().toISOString());
+        void window.lawdie.setPreference("seenRelease", LATEST_RELEASE.id); // a new person has nothing to catch up on
         setWelcome(false);
         if (takeTour) startTour();
     };
@@ -167,7 +175,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} tutorial={tour !== null} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} tutorial={tour !== null} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} onWhatsNew={() => setWhatsNew(true)} />}
                 </div>
             </main>
             {toasts.length > 0 && (
@@ -177,6 +185,7 @@ export function App(): ReactNode {
             )}
             {welcome && <Welcome state={state} onDone={finishWelcome} />}
             {!welcome && tour !== null && <Tour step={tour} onStep={setTour} onEnd={endTour} />}
+            {whatsNew && !welcome && tour === null && <WhatsNew onDismiss={dismissWhatsNew} onOpen={setRoute} />}
         </div>
         </TourStepContext.Provider>
         </NoticeContext.Provider>
@@ -1242,7 +1251,7 @@ const SETTINGS_TABS: { key: SettingsTab; label: string; tip: string }[] = [
     { key: "sync", label: "Sync", tip: "Kiwi and Lawdie CRM." },
     { key: "data", label: "Display & data", tip: "Text size, and where your data lives." },
 ];
-function Settings({ state, now, onRules, onTour, onWelcome }: { state: AppState; now: number; onRules: (book: string | null, rule?: string | null) => void; onTour: () => void; onWelcome: () => void }): ReactNode {
+function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { state: AppState; now: number; onRules: (book: string | null, rule?: string | null) => void; onTour: () => void; onWelcome: () => void; onWhatsNew: () => void }): ReactNode {
     const w = state.workspace, p = w.preferences;
     const [excluded, setExcluded] = useState("");
     const [tab, setTab] = useState<SettingsTab>("capture");
@@ -1368,6 +1377,9 @@ function Settings({ state, now, onRules, onTour, onWelcome }: { state: AppState;
                 </Setting>
                 <Setting title="Welcome" detail="The welcome shown the first time the app opened: what it does, what to capture, connecting to Kiwi or Lawdie CRM, and the firm's details for the bill.">
                     <button type="button" className="quiet" title="Show the welcome again." onClick={onWelcome}>Show the welcome</button>
+                </Setting>
+                <Setting title="What's new" detail={`What changed in the latest update (version ${LATEST_RELEASE.id}: ${LATEST_RELEASE.title.toLowerCase()}), and every update before it.`}>
+                    <button type="button" className="quiet" title="Show what changed in recent updates." onClick={onWhatsNew}>See what's new</button>
                 </Setting>
             </Panel>}
             {tab === "data" && <Panel>

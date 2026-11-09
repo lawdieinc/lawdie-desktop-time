@@ -227,7 +227,19 @@ has rules yet; a rulebook made there is real). The sample row (`SampleRow` in Ap
 `isTutorialID` ids never enter the workspace, its Keep time opens the real `KeepSheet` with a `keep`
 override that saves nothing and says so in a toast, and `keepStretch` refuses its ids (tested). The
 small blocks shared by both files live in `ui.tsx`. Entry points: the welcome itself, Settings → Display
-& data → "Learn the app", and `--route welcome|tutorial` for the harness.
+& data → "Learn the app", and `--route welcome|tutorial|whatsnew` for the harness.
+
+## What's new
+
+After Kiwi's card (2026-11-09). `src/shared/releases.ts` is what the What's new card (`WhatsNew.tsx`) shows:
+`RELEASES`, newest first, id = the version it ships in, a date, a title and one to five items (an icon from
+`RELEASE_ICONS`, a title, one plain line, optionally a `route` to open). **When a change is something a person
+would notice, add an entry at the top in the same change**, written for a lawyer (what they can now do, not what
+moved in the code); a bug fix with nothing visible adds none. `needsWhatsNew()` (tested in `releases.test.ts`)
+opens it once per release, on this computer (`preferences.seenRelease`, set by Got it, Escape, the backdrop or an
+item's link): never over the welcome (finishing the welcome marks the release seen, so a new person never gets
+both), the tutorial, or a demo. "See all updates" lists every release in the same sheet. Also from Settings →
+Display & data → "See what's new", the tray's "What's new", and `--route whatsnew`.
 
 ## Error reports
 
@@ -428,3 +440,5 @@ on an empty workspace and on one with history. Tests 216.
 2026-11-08: calendar meetings (Google and Outlook) and Teams transcripts through Kiwi's own grants (section
 above), verified end to end against a stand-in Kiwi: a Teams call named by its meeting, a conference-room
 meeting as a row less the Word time, the transcript under Why this entry. Tests 224.
+2026-11-09: a What's new card, after Kiwi's (section above): once per release after an update, every release
+under "See all updates", notes written for a lawyer and kept in `src/shared/releases.ts`. Tests 229.

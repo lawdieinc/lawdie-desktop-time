@@ -439,3 +439,25 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 .welcome-billing { padding: 0; } .welcome-billing .row { align-items: flex-end; } .welcome-billing textarea { min-height: 40px; }
 /* A menu the tutorial holds open sits above the tutorial's dim layer, with the control it belongs to. */
 .menu-list.tour-held { z-index: 32; }
+/* What's new (WhatsNew.tsx): one release's notes over the window, once after an update. */
+.whats-new-scrim { z-index: 45; background: rgba(61, 55, 49, 0.32); animation: fade-in 0.15s ease-out both; }
+.sheet.whats-new { width: 560px; padding: 0; gap: 0; overflow: hidden; max-height: calc(100vh - 48px); animation: card-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+.sheet.whats-new.all .whats-new-body { overflow: auto; min-height: 0; flex: 1; padding-bottom: 14px; } .sheet.whats-new.all .whats-new-foot { border-top: 1px solid var(--line); padding-top: 14px; }
+.whats-new-hero { height: 150px; display: grid; place-items: center; background: radial-gradient(circle at 50% 60%, #fff 0%, var(--sidebar) 70%); border-bottom: 1px solid var(--line); }
+.whats-new-hero img { width: 56px; height: 56px; border-radius: 12px; opacity: 0.9; animation: card-in 0.4s 0.08s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.whats-new-body { padding: 26px 30px 6px; display: flex; flex-direction: column; gap: 10px; }
+.whats-new-body h2 { font-size: 28px; margin: 0 0 8px; }
+.whats-new-date { text-transform: none; letter-spacing: 0.02em; }
+.whats-new-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.whats-new-link, .whats-new-row { display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 7px 8px; margin: 0 -8px; border: 0; border-radius: 9px; background: none; text-align: left; font: inherit; color: inherit; }
+.whats-new-link:hover { background: var(--raised); } .whats-new-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.whats-new-icon { flex: 0 0 auto; width: 28px; height: 28px; margin-top: 1px; border-radius: 8px; display: grid; place-items: center; background: var(--raised); color: var(--accent); }
+.whats-new-item-title { display: block; font-weight: 600; font-size: 14px; } .whats-new-go { color: var(--muted); font-weight: 400; }
+.whats-new-item-text { display: block; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.whats-new-release { display: flex; flex-direction: column; gap: 6px; padding: 14px 0 6px; border-top: 1px solid var(--line); } .whats-new-release h3 { margin: 0 0 4px; font-size: 19px; }
+.whats-new-foot { padding: 16px 30px 26px; }
+.rise { animation: rise 0.36s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes card-in { from { opacity: 0; transform: translateY(22px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .whats-new-scrim, .sheet.whats-new, .whats-new-hero img, .rise { animation: fade-in 0.15s ease-out both; animation-delay: 0s !important; } }

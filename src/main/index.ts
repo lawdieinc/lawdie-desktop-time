@@ -119,6 +119,14 @@ function missingPermissions(store: Store, capture: Capture): AppState["missing"]
     };
 }
 
+/** Shows the window and sends it a route ("whatsnew"), once the page has loaded if the window is new. */
+function showRoute(store: Store, route: string): void {
+    showWindow(store);
+    const contents = mainWindow!.webContents;
+    if (contents.isLoading()) contents.once("did-finish-load", () => contents.send("route", route));
+    else contents.send("route", route);
+}
+
 function showWindow(store: Store): void {
     if (!mainWindow || mainWindow.isDestroyed()) mainWindow = createWindow(store);
     mainWindow.show();
@@ -142,6 +150,7 @@ function buildTray(store: Store, capture: Capture, updater: Updater): void {
             { label: on ? "Pause capture" : "Enable capture", click: () => { store.change((w) => { w.preferences.captureEnabled = !on; if (on) closeActivity(w, Date.now(), "paused"); }); void capture.sample(); } },
             { type: "separator" },
             { label: "Open Time Capture", click: () => showWindow(store) },
+            { label: "What's new", click: () => showRoute(store, "whatsnew") },
             { label: "Quit", click: () => { quitting = true; app.quit(); } },
         ]);
         tray?.setContextMenu(menu);
