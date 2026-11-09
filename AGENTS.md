@@ -441,4 +441,5 @@ on an empty workspace and on one with history. Tests 216.
 above), verified end to end against a stand-in Kiwi: a Teams call named by its meeting, a conference-room
 meeting as a row less the Word time, the transcript under Why this entry. Tests 224.
 2026-11-09: a What's new card, after Kiwi's (section above): once per release after an update, every release
-under "See all updates", notes written for a lawyer and kept in `src/shared/releases.ts`. Tests 229.
+under "See all updates", notes written for a lawyer and kept in `src/shared/releases.ts`. Version 0.16.0
+(calendar meetings and Teams transcripts ship here too). Tests 229.
