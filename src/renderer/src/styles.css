@@ -444,27 +444,7 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 .sheet.whats-new { width: 560px; padding: 0; gap: 0; overflow: hidden; max-height: calc(100vh - 48px); animation: card-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
 .sheet.whats-new.all .whats-new-body { overflow: auto; min-height: 0; flex: 1; padding-bottom: 14px; } .sheet.whats-new.all .whats-new-foot { border-top: 1px solid var(--line); padding-top: 14px; }
 .whats-new-hero { height: 150px; display: grid; place-items: center; background: radial-gradient(circle at 50% 60%, #fff 0%, var(--sidebar) 70%); border-bottom: 1px solid var(--line); }
-.whats-new-hero { height: 190px; overflow: hidden; pointer-events: none; user-select: none; }
-.hero-mark { width: 56px; height: 56px; border-radius: 12px; opacity: 0.9; animation: card-in 0.4s 0.08s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
-.hero-scene { position: relative; width: 380px; height: 150px; display: flex; flex-direction: column; justify-content: flex-end; animation: card-in 0.4s 0.08s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
-.hero-event { position: absolute; top: 0; left: 40px; right: 0; display: flex; gap: 10px; padding: 9px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(61, 55, 49, 0.1); opacity: 0; transform: translateX(60px); transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15); }
-.hero-event.in { opacity: 1; transform: none; }
-.hero-event.gone { opacity: 0; transform: translateY(46px) scale(0.92); transition: opacity 0.3s ease, transform 0.35s ease-in; }
-.hero-event-bar { width: 3px; border-radius: 2px; background: #2f6fb5; flex: 0 0 auto; }
-.hero-event-when { display: block; font-family: var(--label); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.hero-event-title { display: block; font-size: 13px; font-weight: 600; }
-.hero-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: rgba(255, 255, 255, 0.85); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 2px 8px rgba(61, 55, 49, 0.06); transition: box-shadow 0.3s ease, border-color 0.3s ease; }
-.hero-row.named { border-color: rgba(139, 92, 42, 0.45); box-shadow: 0 0 0 3px rgba(139, 92, 42, 0.1), 0 2px 8px rgba(61, 55, 49, 0.06); }
-.hero-app { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: #5b5fc7; color: #fff; font-weight: 700; font-size: 15px; flex: 0 0 auto; }
-.hero-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.hero-row-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hero-row-sub { font-size: 12px; color: var(--muted); }
-.hero-row-tags { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 12px; }
-.hero-matter { color: var(--accent); font-weight: 600; } .hero-matter.none { color: var(--muted); font-weight: 400; font-style: italic; }
-.hero-chip { padding: 1px 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); color: var(--text); font-size: 10px; font-weight: 600; animation: pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.5) both; }
-.hero-time { font-family: var(--display); font-size: 18px; font-weight: 600; }
-.hero-swap { display: inline-block; animation: rise 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
-@keyframes pop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+.whats-new-hero img { width: 56px; height: 56px; border-radius: 12px; opacity: 0.9; animation: card-in 0.4s 0.08s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
 .whats-new-body { padding: 26px 30px 6px; display: flex; flex-direction: column; gap: 10px; }
 .whats-new-body h2 { font-size: 28px; margin: 0 0 8px; }
 .whats-new-date { text-transform: none; letter-spacing: 0.02em; }
@@ -480,4 +460,4 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes card-in { from { opacity: 0; transform: translateY(22px) scale(0.96); } to { opacity: 1; transform: none; } }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .whats-new-scrim, .sheet.whats-new, .hero-mark, .hero-scene, .rise, .hero-swap, .hero-chip { animation: fade-in 0.15s ease-out both; animation-delay: 0s !important; } }
+@media (prefers-reduced-motion: reduce) { .whats-new-scrim, .sheet.whats-new, .whats-new-hero img, .rise { animation: fade-in 0.15s ease-out both; animation-delay: 0s !important; } }

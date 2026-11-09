@@ -238,9 +238,7 @@ would notice, add an entry at the top in the same change**, written for a lawyer
 moved in the code); a bug fix with nothing visible adds none. `needsWhatsNew()` (tested in `releases.test.ts`)
 opens it once per release, on this computer (`preferences.seenRelease`, set by Got it, Escape, the backdrop or an
 item's link): never over the welcome (finishing the welcome marks the release seen, so a new person never gets
-both), the tutorial, or a demo. "See all updates" lists every release in the same sheet. A release can name a scene (`hero`, `WhatsNewHeroes.tsx`, after Kiwi's heroes):
-a small demo of it that plays by itself and loops, built like the real screen; reduced motion shows its last frame.
-Without one the band shows the mark. 0.16.0's plays a Teams call named by its calendar meeting. Also from Settings →
+both), the tutorial, or a demo. "See all updates" lists every release in the same sheet. Also from Settings →
 Display & data → "See what's new", the tray's "What's new", and `--route whatsnew`.
 
 ## Error reports
