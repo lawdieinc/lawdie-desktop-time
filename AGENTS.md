@@ -273,7 +273,8 @@ A dev build, `npm test`, the screenshot harness and demo runs have no key and se
 
 Opt-in (`importMeetings` "Calendar meetings", `meetingTranscripts` "Teams transcripts"; 2026-11-08), Kiwi
 only. Kiwi reads the person's Google and Outlook calendars with the grants it already holds from its
-Integrations page (`GET /desktop-time/meetings?from&to`, `GET /desktop-time/meetings/transcript?join_url`,
+Integrations page (`GET /desktop-time/meetings?from&to`, `GET /desktop-time/meetings/transcript?join_url&start&end`, the occurrence's own session: a recurring
+meeting shares one join link,
 `kiwi/backend/src/lib/desktopMeetings.ts`), so this app never holds a calendar token. Kiwi's Microsoft
 sign-in asks for Calendars.Read and OnlineMeetings.Read; transcripts also need
 OnlineMeetingTranscript.Read.All, which a firm's Microsoft admin grants once. `src/shared/meetings.ts`
@@ -326,7 +327,7 @@ round also asks `POST /desktop-time/joins` which local matters are Kiwi's: high 
 joins by itself (the model's name gives way to Kiwi's and stays as an alias; a person's
 name, on the project or on a row, is kept) with Undo; any other confidence waits on the
 Matters screen ("Kiwi matter links"). A workspace belongs to one Kiwi account
-(`feed.account`). Kiwi side: `backend/migrations/20261027_01_desktop_feed.sql`,
+(`feed.account`). Kiwi side: `backend/migrations/20261110_01_desktop_feed.sql`,
 `backend/src/modules/desktopFeed/`. Checked 2026-10-29: Kiwi's `email` time is reading
 mail inside Kiwi, not an add-in in desktop Outlook, so it never doubles this app's Outlook
 time.

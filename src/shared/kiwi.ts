@@ -116,9 +116,12 @@ export class KiwiClient {
     meetings(from: string, to: string): Promise<unknown> {
         return this.send("GET", `desktop-time/meetings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
     }
-    /** A Teams meeting's transcript, when Teams made one and the person may read it. */
-    meetingTranscript(joinUrl: string): Promise<unknown> {
-        return this.send("GET", `desktop-time/meetings/transcript?join_url=${encodeURIComponent(joinUrl)}`);
+    /**
+     * A Teams meeting's transcript, when Teams made one and the person may read it. `start`/`end` name the
+     * occurrence: a recurring meeting shares one join link, and Kiwi keeps only that session's transcripts.
+     */
+    meetingTranscript(joinUrl: string, start: string, end: string): Promise<unknown> {
+        return this.send("GET", `desktop-time/meetings/transcript?join_url=${encodeURIComponent(joinUrl)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
     }
 
     feed(since: string, workspaceID: string, cursor: string | null): Promise<FeedPage> {

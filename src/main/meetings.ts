@@ -46,7 +46,7 @@ export class Meetings {
             for (const m of transcriptsDue(this.store.workspace, Date.now()).slice(0, TRANSCRIPTS_PER_PASS)) {
                 if (!active() || !m.join_url) break;
                 // A failed ask is asked again next pass; like sync, a network failure is not reported.
-                const raw = await client.meetingTranscript(m.join_url).catch(() => null);
+                const raw = await client.meetingTranscript(m.join_url, m.start, m.end).catch(() => null);
                 if (raw && active()) this.store.change((w) => { applyTranscript(w, m.id, raw, Date.now()); });
             }
         } catch (err) {
