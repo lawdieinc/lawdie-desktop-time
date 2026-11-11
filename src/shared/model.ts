@@ -538,6 +538,10 @@ const matchesOwner = (list: readonly string[], ownerID: string): boolean => {
 
 export const isBrowser = (ownerID: string): boolean => matchesOwner(BROWSER_OWNER_IDS, ownerID);
 
+/** The lock and login screens (macOS loginwindow, Windows LockApp and LogonUI): time in front of them is never counted. */
+export const LOCK_SCREEN_OWNER_IDS = ["com.apple.loginwindow", "loginwindow", "/system/library/coreservices/loginwindow.app", "lockapp.exe", "logonui.exe"];
+export const isLockScreen = (ownerID: string): boolean => matchesOwner(LOCK_SCREEN_OWNER_IDS, ownerID) || /loginwindow\.app/i.test(ownerID);
+
 /**
  * Mail apps: every message is its own window title (and document), so an hour of email is
  * dozens of half-minute sittings. Without a matter they are reviewed as one stretch per app,
@@ -778,7 +782,7 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
         if (chosen.kiwiProjectID && chosen.kiwiProjectID !== identities[0]) throw new WorkspaceError("These are different Kiwi matters. Choose the correct matter before keeping.");
         chosen.kiwiProjectID = identities[0]; chosen.kiwiAccount = w.feed?.account;
         const remote = w.feed?.matters.find((m) => m.id === identities[0]);
-        if (remote?.cm_number) chosen.matterNumber = remote.cm_number;
+        if (remote?.cm_number && !chosen.matterNumber) chosen.matterNumber = remote.cm_number;
     }
     // The screenshots inside the kept time stay with the entry; the rest go when their activity does.
     const keptIntervals = intervals(span);
@@ -968,6 +972,12 @@ export function updateProject(w: Workspace, id: string, change: ProjectChange): 
     if (change.client !== undefined) p.client = change.client.trim().slice(0, 200);
     if (change.hourlyRate !== undefined) {
         if (!Number.isFinite(change.hourlyRate) || change.hourlyRate < 0) throw new WorkspaceError("Enter a valid hourly rate.");
+        // A rate frozen at save is a rate the person chose. $0 on a billable entry kept before the matter had any
+        // rate is no rate at all: the first rate set fills it in, unless the entry is already on an invoice.
+        if (p.hourlyRate === 0 && change.hourlyRate > 0) {
+            const invoiced = new Set((w.invoices ?? []).flatMap((i) => i.entryIDs));
+            for (const e of w.entries) if (e.projectID === id && e.billable && e.hourlyRate === 0 && !invoiced.has(e.id)) e.hourlyRate = change.hourlyRate;
+        }
         p.hourlyRate = change.hourlyRate;
     }
     if (change.matterNumber !== undefined) {
@@ -1286,7 +1296,8 @@ const sameDocument = (a: DocumentInfo | null | undefined, b: DocumentInfo | null
 
 /** One sample of the foreground. Bounds are wall-clock timestamps; no interval spans an unobserved gap. */
 export function observe(w: Workspace, foreground: Observation, now: number, idleSeconds: number, suspended = false): void {
-    if (suspended) {
+    // The login window in front is the lock screen (after a wake, before the password): never work.
+    if (suspended || (foreground && isLockScreen(foreground.ownerID))) {
         closeActivity(w, now, "suspended");
         stopTimer(w, now, "timer-suspended");
         return;
@@ -1396,6 +1407,17 @@ export function addScreenshot(w: Workspace, name: string): boolean {
 }
 
 /** Every screenshot something still shows; any other file in the folder is deleted. */
+/**
+ * Which screenshot files collect() may delete: not referenced, past the grace period for one just taken, and
+ * not from before `protectBefore` (set when a workspace was started fresh beside existing screenshots: a missing
+ * or replaced workspace file must never cost the screenshots of the one it replaced). With nothing referenced at
+ * all, nothing is deleted: an empty workspace beside files is a sign something is wrong, not a cleanup.
+ */
+export function screenshotsToDelete(files: readonly { name: string; mtimeMs: number }[], keep: ReadonlySet<string>, now: number, graceMs: number, protectBefore: number | null = null): string[] {
+    if (keep.size === 0) return [];
+    return files.filter((f) => isScreenshotName(f.name) && !keep.has(f.name) && now - f.mtimeMs > graceMs && (protectBefore === null || f.mtimeMs >= protectBefore)).map((f) => f.name);
+}
+
 export function referencedScreenshots(w: Workspace): Set<string> {
     const names = new Set<string>();
     for (const a of [...w.activities, ...(w.currentActivity ? [w.currentActivity] : [])]) for (const n of a.screenshots ?? []) names.add(n);
@@ -1550,18 +1572,28 @@ export type SyncRequest = {
 };
 
 /** Everything a destination should know: closed segments within retention (personal ones never), every kept entry, the deletions it has not acknowledged. */
+/** An entry the destinations hear about: no status, or a draft (what an invoice also bills). */
+export const syncableEntry = (e: Pick<TimeEntry, "status">): boolean => !e.status || e.status === "draft";
+
 export function syncRequest(w: Workspace, appVersion: string, timeZone: string | null = localTimeZone(), target: SyncTarget | null = w.sync?.targets[0] ?? null): SyncRequest {
     return {
         app_version: appVersion,
         ...(w.feed ? { import_workspace_id: w.feed.workspaceID } : {}),
         time_zone: timeZone,
         activities: w.activities.filter((a) => !a.origin && !isPersonal(a.matter)).map((a) => ({ id: a.id, app: a.app, bundle_id: a.ownerID, title: a.title, document_name: a.document?.name ?? null, document_path: a.document?.path ?? null, excerpt: a.document?.excerpt ?? null, started_at: a.startedAt, ended_at: a.endedAt, seconds: Math.round(seconds(a)), ended_by: a.endedBy, disposition: a.disposition })),
-        entries: w.entries.map((e) => {
+        // Only settled entries: a suggestion not yet confirmed, an entry a client sent back and not yet fixed, or a
+        // dismissed one is not time to bill. One sent earlier stays as it was there until it is settled again.
+        entries: w.entries.filter(syncableEntry).map((e) => {
             const p = project(w, e.projectID);
             return { ...(p?.kiwiProjectID && p.kiwiAccount === w.feed?.account && target?.product === "kiwi" ? { kiwi_project_id: p.kiwiProjectID } : {}), ...(e.sourceRefs?.length && target?.product === "kiwi" ? { source_refs: e.sourceRefs.map(({ kind, id, intervals }) => ({ kind, id, intervals })) } : {}), id: e.id, description: e.description, project_name: p?.name ?? null, client_name: p?.client || null, started_at: e.startedAt, ended_at: e.endedAt, seconds: Math.round(seconds(e)), billable: e.billable, hourly_rate: e.hourlyRate, source: e.source, activity_id: e.activityID };
         }),
         deleted_entry_ids: target?.deletedEntryIDs ?? [],
     };
+}
+
+/** Deletions a product had not acknowledged when this computer connects again (a new token, the same product): they still go. */
+export function carriedDeletions(sync: SyncState | null, product: Product): string[] {
+    return [...(sync?.targets.find((t) => t.product === product)?.deletedEntryIDs ?? [])];
 }
 
 /** Requests Kiwi will accept, in order; deletions travel with the first. */

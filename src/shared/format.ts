@@ -59,7 +59,11 @@ export function keepBounds(span: { startedAt: string; endedAt: string }, startTe
     const changed = startText !== timeValue(span.startedAt) || endText !== timeValue(span.endedAt);
     if (!changed) return { start: Date.parse(span.startedAt), end: Date.parse(span.endedAt), changed };
     const start = onDay(span.startedAt, startText);
-    return { start, end: onDay(span.endedAt, endText, start), changed };
+    // The end typed is on the end's day or the start's (the first after the start): whichever is nearer the end
+    // captured, so pulling back the end of a stretch past midnight never makes it a day long.
+    const captured = Date.parse(span.endedAt);
+    const end = [onDay(span.endedAt, endText, start), onDay(span.startedAt, endText, start)].sort((a, b) => Math.abs(a - captured) - Math.abs(b - captured))[0];
+    return { start, end, changed };
 }
 
 export function ago(iso: string | null, now = Date.now()): string {

@@ -188,6 +188,7 @@ app.whenReady().then(() => {
     ipcMain.on("reportError", (_e, payload: unknown) => reportFromWindow(payload));
     const shots = new Screenshots(join(workspacePath, "..", "screenshots"));
     shots.serve();
+    if (store.file.startedFresh) shots.protectExisting();
     const capture = new Capture(store, shots);
     // Files nothing refers to any more (dismissed, pruned, cleared, an entry deleted): at launch, then hourly.
     const collectShots = (): void => { if (!store.loadFailed) shots.collect(referencedScreenshots(store.workspace)); };

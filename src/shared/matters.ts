@@ -98,8 +98,9 @@ export function applyMatters(w: Workspace, askedIDs: string[], answer: unknown):
         a.matterBy = "ai";
         // The name of a Kiwi matter carries its id, so the row joins imported time on that
         // matter and a keep links the project (the prompt offers Kiwi's matters first).
-        const remote = a.matter && !isPersonal(a.matter) ? w.feed?.matters.find((m) => m.name.toLowerCase() === a.matter!.toLowerCase()) : undefined;
-        if (remote) a.kiwiProjectID = remote.id;
+        // Two Kiwi matters of that name: the row keeps the name and waits for a person to say which.
+        const remotes = a.matter && !isPersonal(a.matter) ? (w.feed?.matters ?? []).filter((m) => m.name.trim().toLowerCase() === a.matter!.trim().toLowerCase()) : [];
+        if (remotes.length === 1) a.kiwiProjectID = remotes[0].id;
         if (a.matter) named += 1;
     }
     return named;

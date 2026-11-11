@@ -27,6 +27,8 @@ async function loadGetWindows(): Promise<GetWindows> {
     return getWindows;
 }
 
+/** The screen is locked (Electron asks the OS: macOS's session, Windows' workstation lock). */
+const isLocked = (): boolean => { try { return powerMonitor.getSystemIdleState(1) === "locked"; } catch { return false; } };
 const ownerOf = (win: ForegroundWindow): string => (process.platform === "darwin" ? win.owner.bundleId || win.owner.path : win.owner.path);
 
 export class Capture {
@@ -51,6 +53,8 @@ export class Capture {
         this.timer = setInterval(() => void this.tick(), SAMPLE_MS);
         const monitor = powerMonitor as unknown as { on(event: string, listener: () => void): void };
         for (const event of ["suspend", "lock-screen", "shutdown"]) monitor.on(event, () => this.suspend());
+        // Waking is not unlocking: after a wake the lock screen is in front until the password, and that is never work.
+        // sample() checks the lock itself, so a wake without a lock (no password set) still resumes at once.
         for (const event of ["resume", "unlock-screen"]) monitor.on(event, () => { this.suspended = false; void this.sample(); });
         void this.sample();
     }
@@ -74,7 +78,8 @@ export class Capture {
             let foreground: Observation = null;
             /** The window in front, when it is what is observed (not a call behind it): the one a screenshot may be of. */
             let front: ForegroundWindow | undefined;
-            if (prefs.captureEnabled && !this.suspended) {
+            const locked = isLocked();
+            if (prefs.captureEnabled && !this.suspended && !locked) {
                 // A call in progress gets the time wherever the focus is (src/shared/calls.ts).
                 const call = activeCall(await this.mic.recording());
                 try {
@@ -108,7 +113,7 @@ export class Capture {
             const idle = powerMonitor.getSystemIdleTime();
             const now = Date.now();
             const hadTimer = this.store.workspace.timer !== null;
-            const ok = this.store.change((w) => observe(w, foreground, now, idle, this.suspended));
+            const ok = this.store.change((w) => observe(w, foreground, now, idle, this.suspended || locked));
             if (ok && hadTimer && this.store.workspace.timer === null) this.store.say("Timer stopped at your last active moment. Your time is saved; restart when you're ready.");
             // observe() has already refused a private app, a browser and this app (no segment
             // in progress, so nothing is due); a call behind the window in front is not pictured.

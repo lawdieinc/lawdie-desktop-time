@@ -6,13 +6,13 @@
    to is src/shared/model.ts (screenshotDue, addScreenshot); a file nothing refers to any
    more (dismissed, pruned, cleared, its entry deleted) is deleted by collect(). */
 
-import { mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { report } from "./errors";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { desktopCapturer, net, protocol } from "electron";
-import { isScreenshotName } from "@shared/model";
+import { isScreenshotName, screenshotsToDelete } from "@shared/model";
 
 /** The window loads screenshots as lawdie-shot://shot/<name>; registered as privileged before the app is ready. */
 export const SHOT_SCHEME = "lawdie-shot";
@@ -20,6 +20,8 @@ const SIZE = { width: 1440, height: 900 };
 const QUALITY = 65;
 /** A file this new may be one just taken and not attached yet: collect() leaves it. */
 const COLLECT_GRACE_MS = 10 * 60_000;
+/** Holds the time a fresh workspace started beside older screenshots (`protectExisting`). */
+const PROTECT_FILE = ".kept-before";
 
 export class Screenshots {
     /** The last failure, logged once per kind rather than every five minutes. */
@@ -48,15 +50,31 @@ export class Screenshots {
         }
     }
 
-    /** Delete every screenshot file not in `keep` (and older than a few minutes). */
+    /** Delete every screenshot file not in `keep` (and older than a few minutes), never one from before a fresh start (`protectExisting`). */
     collect(keep: Set<string>, now = Date.now()): void {
         let names: string[];
         try { names = readdirSync(this.dir); } catch { return; }
-        for (const name of names) {
-            if (!isScreenshotName(name) || keep.has(name)) continue;
-            const file = join(this.dir, name);
-            try { if (now - statSync(file).mtimeMs > COLLECT_GRACE_MS) unlinkSync(file); } catch { /* gone already */ }
+        const files = names.filter(isScreenshotName).flatMap((name) => { try { return [{ name, mtimeMs: statSync(join(this.dir, name)).mtimeMs }]; } catch { return []; } });
+        for (const name of screenshotsToDelete(files, keep, now, COLLECT_GRACE_MS, this.protectedBefore())) {
+            try { unlinkSync(join(this.dir, name)); } catch { /* gone already */ }
         }
+    }
+
+    /**
+     * The workspace was started fresh (its file was missing) beside screenshots already on disk: they belong to a
+     * workspace this one replaced, so collect() never deletes them. Remembered in the folder, since the new file
+     * is saved at once and the next launch would not know.
+     */
+    protectExisting(now = Date.now()): void {
+        try {
+            if (!readdirSync(this.dir).some(isScreenshotName) || this.protectedBefore() !== null) return;
+            writeFileSync(join(this.dir, PROTECT_FILE), String(now), { mode: 0o600 });
+            report("screenshots", new Error("Workspace started fresh beside existing screenshots; they are kept"), { reason: "fresh workspace" });
+        } catch { /* no folder: nothing to protect */ }
+    }
+
+    private protectedBefore(): number | null {
+        try { const t = Number(readFileSync(join(this.dir, PROTECT_FILE), "utf8").trim()); return Number.isFinite(t) ? t : null; } catch { return null; }
     }
 
     /** Serve lawdie-shot://shot/<name> from the folder; anything else is not found. */

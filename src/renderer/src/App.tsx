@@ -1195,7 +1195,7 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
                         <button type="submit" className="primary" disabled={!changed || !name.trim() || !(Number(rate) >= 0)} title={changed ? "Save the matter's details." : "Change something first."}>Save</button>
                         </div>
                     </form>
-                    <p className="muted tiny">A new rate applies to time you keep from now on; entries already kept keep the rate they were saved with. Renaming carries activity named after this matter along with it. The number, bill-to and code set go on this matter's invoices{w.billing ? "" : " once billing is set up in Settings"}.</p>
+                    <p className="muted tiny">A new rate applies to time you keep from now on; entries already kept keep the rate they were saved with, except billable ones kept at $0 before the matter had a rate and not yet invoiced, which take the first rate you set. Renaming carries activity named after this matter along with it. The number, bill-to and code set go on this matter's invoices{w.billing ? "" : " once billing is set up in Settings"}.</p>
                     <div className="row gap wrap">
                         {others.length > 0 && (
                             <>

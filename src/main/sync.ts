@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { dirname } from "node:path";
 import { safeStorage } from "electron";
 import { KiwiClient, KiwiFailure, PRODUCTS, destinationLabel, productsFor, type Destination, type Product } from "@shared/kiwi";
-import { markSynced, syncBatches, syncRequest, type SyncTarget } from "@shared/model";
+import { carriedDeletions, markSynced, syncBatches, syncRequest, type SyncTarget } from "@shared/model";
 import type { Store } from "./store";
 
 export const SYNC_EVERY_MS = 60_000;
@@ -66,7 +66,7 @@ export class Sync {
                 const hello = await c.hello();
                 if (product === "kiwi" && this.store.workspace.feed && (!hello.user.id || this.store.workspace.feed.account !== accountOf(c.baseURL, hello.user.id))) throw new Error("This workspace has imports from another Kiwi account. Use a separate workspace for that account.");
                 if (!hello.ok) throw new KiwiFailure("bad_response", `${PRODUCTS[product].label} answered in a way this app does not understand.`);
-                targets.push({ product, serverURL: c.baseURL, deviceID: hello.device.id, deviceName: hello.device.name, accountEmail: hello.user.email ?? null, lastSyncedAt: null, lastError: null, deletedEntryIDs: [] });
+                targets.push({ product, serverURL: c.baseURL, deviceID: hello.device.id, deviceName: hello.device.name, accountEmail: hello.user.email ?? null, lastSyncedAt: null, lastError: null, deletedEntryIDs: carriedDeletions(this.store.workspace.sync, product) });
             }
             this.tokens.save(trimmed);
             const ok = this.store.change((w) => { w.sync = { targets, autoSync: true }; });

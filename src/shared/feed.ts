@@ -50,7 +50,8 @@ export function subtractIntervals(source: Interval[], occupied: Interval[]): Int
     return result.filter((i) => date(i.endedAt) - date(i.startedAt) >= 1000);
 }
 export function clipImported(w: Workspace, now: number): void {
-    const occupied = [...w.activities.filter((a) => !a.origin).flatMap(intervals), ...w.entries.flatMap(intervals), ...(w.currentActivity ? intervals(w.currentActivity) : []), ...(w.timer ? [{ startedAt: w.timer.startedAt, endedAt: new Date(now).toISOString() }] : [])];
+    // A calendar row is what was planned, not what this computer saw: it never clips imported time; the two sit side by side for review.
+    const occupied = [...w.activities.filter((a) => !a.origin && !a.ownerID.startsWith("calendar:")).flatMap(intervals), ...w.entries.flatMap(intervals), ...(w.currentActivity ? intervals(w.currentActivity) : []), ...(w.timer ? [{ startedAt: w.timer.startedAt, endedAt: new Date(now).toISOString() }] : [])];
     // Existing reviewed evidence takes precedence; new imports are deterministic by time and source.
     const imported = w.activities.filter((a) => a.origin && a.disposition === "pending").sort((a, b) => date(a.startedAt) - date(b.startedAt) || (a.originRef ?? "").localeCompare(b.originRef ?? ""));
     for (const a of imported) {
@@ -96,7 +97,7 @@ export function importFeed(w: Workspace, page: FeedPage, now: number): number {
         if (date(r.ended_at) < now - w.preferences.retentionDays * 86400_000) { f.receipts[key].disposition = "expired"; continue; }
         const remote = f.matters.find((m) => m.id === r.kiwi_project_id);
         const local = remote ? matchingProject(w, remote) : undefined;
-        if (local && remote) { local.kiwiProjectID = remote.id; local.kiwiAccount = f.account; local.matterNumber = remote.cm_number ?? undefined; }
+        if (local && remote) { local.kiwiProjectID = remote.id; local.kiwiAccount = f.account; if (!local.matterNumber && remote.cm_number) local.matterNumber = remote.cm_number; }
         const a: Activity = { id, origin: r.kind === "browser" ? "browser" : "kiwi", sourceKind: r.kind, originRef: r.id, originAccount: f.account, app: r.app.slice(0, 200), ownerID: `import:${r.kind}`, title: r.title?.slice(0, 500) ?? null, startedAt: r.started_at, endedAt: r.ended_at, endedBy: "imported", disposition: "pending", ...(r.url ? { url: r.url.split(/[?#]/)[0].slice(0, 1000) } : {}), ...(remote ? { matter: local?.name ?? remote.name.slice(0, 120), kiwiProjectID: remote.id, ...(local ? { projectID: local.id } : {}) } : {}) };
         w.activities.push(a); count++;
     }
@@ -155,7 +156,9 @@ export function joinMatter(w: Workspace, localID: string, remoteID: string): voi
     j.activityBefore = [];
     const person = p.nameBy === "person" || (!p.nameBy && w.activities.some((a) => a.matter === name && a.matterBy === "person"));
     if (!person && !w.projects.some((other) => other.id !== p.id && clean(other.name) === clean(remote.name))) { p.aliases = [...new Set([...(p.aliases ?? []), p.name])]; p.name = remote.name.slice(0, 120); p.nameBy = "kiwi"; }
-    p.kiwiProjectID = remote.id; p.kiwiAccount = f.account; p.matterNumber = remote.cm_number ?? undefined;
+    p.kiwiProjectID = remote.id; p.kiwiAccount = f.account;
+    // Kiwi's number fills an empty field; a number the person typed stays.
+    if (!p.matterNumber && remote.cm_number) p.matterNumber = remote.cm_number;
     for (const a of w.activities) if ((a.projectID === p.id || (!a.kiwiProjectID && clean(a.matter ?? "") === clean(name)) || a.kiwiProjectID === remote.id) && !isPersonal(a.matter)) {
         j.activityBefore.push({ id: a.id, matter: a.matter, projectID: a.projectID, kiwiProjectID: a.kiwiProjectID });
         if (a.matterBy !== "person") a.matter = p.name;

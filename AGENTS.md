@@ -32,12 +32,14 @@ the wire contract land in all three repos together.
 Capture is opt-in; titles are a separate opt-in; exclusions are checked before a title is
 read; a segment is bounded by wall-clock observations and never spans an unobserved gap
 (`GAP_SECONDS`); only the window in front counts, for as long as it is in front, input or
-not (sleep and the lock screen end it), and the one exception is a call — a call app
+not (sleep and the lock screen end it; a locked screen and the login window in front, `isLockScreen()`, are
+never work, so a wake does not count the password prompt), and the one exception is a call — a call app
 recording from the microphone (`src/shared/calls.ts`) gets the time wherever the focus is;
 idle stops only a running timer, at the last input; ten minutes without input
 (`IDLE_FLAG_SECONDS`) is flagged on the segment (`idle`), never on a call, and is counted
 unless the person leaves it out at keep (`leaveOutIdle`); raw activity is evidence until a person
-keeps it; kept time never overlaps; rates freeze at save; the token never enters the
+keeps it; kept time never overlaps; rates freeze at save (one exception: a billable entry kept at $0 before its
+matter had any rate takes the first rate set, unless it is on an invoice); the token never enters the
 workspace; Kiwi never receives the in-progress
 segment or a running timer; a suggestion never overwrites a person's matter; browsers are
 not captured (`BROWSER_OWNER_IDS`, checked like an exclusion; the Lawdie browser extension
@@ -316,7 +318,8 @@ one workspace owns a source until it is reviewed; Kiwi's `/billing/rollup` and w
 refuse a claimed row, and a draft already rolled up from one is trimmed), then
 `importFeed()` in `src/shared/feed.ts` (pure, `feed.test.ts`). An imported row is closed,
 pending activity with `origin`, `originRef`, `sourceKind`, `url` and `kiwiProjectID`; this
-computer's time wins an overlap (`clipImported()`, re-checked at keep); a receipt per source
+computer's time wins an overlap (`clipImported()`, re-checked at keep; a calendar row is not this computer's
+time and never clips it); a receipt per source
 outlives the raw row and is reported back (`POST /desktop-time/feed/review`). Keeping
 records `sourceRefs` with the kept intervals; `syncRequest()` sends them and
 `kiwi_project_id` to Kiwi only (the CRM drops both), and Kiwi's sync reserves the sources
@@ -444,3 +447,10 @@ meeting as a row less the Word time, the transcript under Why this entry. Tests 
 2026-11-09: a What's new card, after Kiwi's (section above): once per release after an update, every release
 under "See all updates", notes written for a lawyer and kept in `src/shared/releases.ts`. Version 0.16.0
 (calendar meetings and Teams transcripts ship here too). Tests 229.
+2026-11-10: version 0.16.1 asks Kiwi for a Teams transcript by occurrence. Then the audit's top gaps
+(`edge-cases.test.ts`): a workspace started fresh beside screenshots never deletes them (`screenshotsToDelete`,
+`.kept-before` in the folder); a reconnect keeps unacknowledged deletions (`carriedDeletions`); Kiwi's matter
+number fills an empty field only; suggested, flagged and dismissed entries do not sync (`syncableEntry`); the
+lock screen is never work; editing a Keep end across midnight picks the day nearest the captured end; calendar
+rows no longer clip imported time; a matter name two Kiwi matters share links neither; the first rate on a
+matter fills its unbilled $0 entries. Tests 240.

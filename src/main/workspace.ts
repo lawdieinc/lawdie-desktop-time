@@ -5,11 +5,14 @@ import { dirname, join } from "node:path";
 import { emptyWorkspace, parseWorkspace, WorkspaceError, type Workspace } from "@shared/model";
 
 export class WorkspaceFile {
+    /** True once load() found no file and started an empty workspace. */
+    startedFresh = false;
+
     constructor(readonly path: string) {}
 
     /** The file as written by this app or the Swift one; a missing file is an empty workspace. An unreadable one throws and is left untouched. */
     load(): Workspace {
-        if (!existsSync(this.path)) return emptyWorkspace();
+        if (!existsSync(this.path)) { this.startedFresh = true; return emptyWorkspace(); }
         return parseWorkspace(readFileSync(this.path, "utf8"));
     }
 

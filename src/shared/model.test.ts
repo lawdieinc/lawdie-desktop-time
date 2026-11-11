@@ -154,6 +154,10 @@ describe("the Keep sheet's span", () => {
         expect(keepBounds(span(local(4, 9, 0), local(4, 10, 0)), "09:00", "10:15")).toEqual({ start: local(4, 9, 0), end: local(4, 10, 15), changed: true });
         expect(keepBounds(span(local(4, 23, 0), local(4, 23, 50)), "23:00", "00:30")).toEqual({ start: local(4, 23, 0), end: local(5, 0, 30), changed: true });
     });
+    it("pulling back the end of a stretch past midnight to before midnight keeps minutes, not a day", () => {
+        expect(keepBounds(span(local(4, 23, 40), local(5, 0, 20)), "23:40", "23:55")).toEqual({ start: local(4, 23, 40), end: local(4, 23, 55), changed: true });
+        expect(keepBounds(span(local(4, 23, 40), local(5, 0, 20)), "23:30", "00:10")).toEqual({ start: local(4, 23, 30), end: local(5, 0, 10), changed: true });
+    });
 });
 
 describe("describing a row before keeping it", () => {
@@ -632,8 +636,10 @@ describe("matters", () => {
         applyMatters(w, matterRequest(w)!.ids, { assignments: [{ activity_id: "o2", matter: "Princess Pillow" }, { activity_id: "x1", matter: "Princess Pillow Licence" }] });
         const kept = keepStretch(w, ["o1", "w1"], { description: "Licence", projectID: null, matter: "Princess Pillow", billable: true }, at(2000));
         const pp = w.projects[0];
+        updateProject(w, pp.id, { hourlyRate: 300 });
+        expect(w.entries[0].hourlyRate).toBe(300); // kept at $0 before the matter had a rate: the first rate fills it
         updateProject(w, pp.id, { hourlyRate: 450, client: " Princess Pillow LLC " });
-        expect([w.entries[0].hourlyRate, pp.client]).toEqual([0, "Princess Pillow LLC"]); // rates freeze at save
+        expect([w.entries[0].hourlyRate, pp.client]).toEqual([300, "Princess Pillow LLC"]); // after that, rates freeze at save
         expect(keepStretch(w, ["p1"], { description: "Exhibit", projectID: null, matter: "princess pillow", billable: true }, at(2000)).hourlyRate).toBe(450);
         updateProject(w, pp.id, { name: "Princess Pillow – Licensing" });
         expect(w.activities.find((a) => a.id === "o2")).toMatchObject({ matter: "Princess Pillow – Licensing", matterBy: "person" }); // pending follows the rename
@@ -643,7 +649,7 @@ describe("matters", () => {
         mergeProjects(w, dup.projectID!, pp.id);
         expect(w.projects.map((p) => p.name)).toEqual(["Princess Pillow – Licensing"]);
         expect(w.entries.every((e) => e.projectID === pp.id)).toBe(true);
-        expect(w.entries.find((e) => e.id === kept.id)).toMatchObject({ startedAt: kept.startedAt, endedAt: kept.endedAt, hourlyRate: 0 });
+        expect(w.entries.find((e) => e.id === kept.id)).toMatchObject({ startedAt: kept.startedAt, endedAt: kept.endedAt, hourlyRate: 300 });
         expect(w.activities.find((a) => a.id === "x1")!.matter).toBe("Princess Pillow – Licensing");
         archiveProject(w, pp.id, true);
         expect(keepStretch(w, ["f1"], { description: "New", projectID: null, matter: "Princess Pillow – Licensing", billable: false }, at(2000)).projectID).not.toBe(pp.id); // an archived matter is not reused
