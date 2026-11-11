@@ -1,7 +1,8 @@
 /* workspace.json on disk: atomic writes, a private mode, and one writer at a time. */
 
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { uptime } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { emptyWorkspace, parseWorkspace, WorkspaceError, type Workspace } from "@shared/model";
 
 export class WorkspaceFile {
@@ -33,19 +34,68 @@ export function acquireLock(directory: string): () => void {
     for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
             const fd = openSync(lockPath, "wx", 0o600);
-            writeFileSync(fd, String(process.pid));
+            writeFileSync(fd, `${process.pid} ${bootTime()}`);
             closeSync(fd);
             return () => { try { unlinkSync(lockPath); } catch { /* already gone */ } };
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-            const pid = Number(readFileSync(lockPath, "utf8").trim());
-            if (Number.isFinite(pid) && pid !== process.pid && isAlive(pid)) {
+            if (!lockIsStale(readFileSync(lockPath, "utf8"), bootTime(), process.pid, isAlive)) {
                 throw new WorkspaceError("This workspace is already open in another Time Capture process. Quit that instance before continuing.");
             }
             unlinkSync(lockPath); // stale: the holder is gone
         }
     }
     throw new WorkspaceError("Could not open the workspace lock.");
+}
+
+/** When this computer started, to the minute: a lock written before a restart is stale whatever its process number now names. */
+function bootTime(): number {
+    return Math.round((Date.now() - uptime() * 1000) / 60_000) * 60_000;
+}
+
+/**
+ * Whether a lock file's holder is gone. "<pid> <boot ms>" (0.16.3 on): stale when written before this computer
+ * last started, or when that process has ended. A bare "<pid>" (earlier versions) has only the process to go by.
+ */
+export function lockIsStale(content: string, boot: number, self: number, alive: (pid: number) => boolean): boolean {
+    const [pidText, bootText] = content.trim().split(/\s+/);
+    const pid = Number(pidText);
+    if (!Number.isInteger(pid) || pid <= 0 || pid === self) return true;
+    if (bootText !== undefined && Math.abs(Number(bootText) - boot) > 2 * 60_000) return true;
+    return !alive(pid);
+}
+
+/** Leftovers of a save cut short (a crash between the write and the rename) in the workspace's folder. */
+export function removeStaleTemps(directory: string, now = Date.now()): void {
+    let names: string[];
+    try { names = readdirSync(directory); } catch { return; }
+    for (const name of names) {
+        if (!/^\.workspace-\d+-\d+\.tmp$/.test(name)) continue;
+        const file = join(directory, name);
+        try { if (now - statSync(file).mtimeMs > 60_000) unlinkSync(file); } catch { /* gone already */ }
+    }
+}
+
+/** How many daily copies of the workspace are kept beside it, in backups/. */
+export const BACKUP_DAYS = 7;
+
+/**
+ * Once a day, a copy of the workspace as it was: backups/workspace-YYYY-MM-DD.json beside it, the newest
+ * BACKUP_DAYS kept. Never of a file that is missing or empty.
+ */
+export function backupDaily(path: string, now = new Date()): void {
+    try {
+        if (!existsSync(path) || statSync(path).size === 0) return;
+        const dir = join(dirname(path), "backups");
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const stem = basename(path, ".json");
+        const target = join(dir, `${stem}-${day}.json`);
+        if (!existsSync(target)) { copyFileSync(path, target); try { chmodSync(target, 0o600); } catch { /* Windows */ } }
+        const pattern = new RegExp(`^${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d{4}-\\d{2}-\\d{2}\\.json$`);
+        const old = readdirSync(dir).filter((n) => pattern.test(n)).sort().reverse().slice(BACKUP_DAYS);
+        for (const n of old) try { unlinkSync(join(dir, n)); } catch { /* gone */ }
+    } catch { /* a backup that fails never stops the app */ }
 }
 
 function isAlive(pid: number): boolean {

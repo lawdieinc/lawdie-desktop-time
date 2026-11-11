@@ -11,7 +11,7 @@ import { report } from "./errors";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { desktopCapturer, net, protocol } from "electron";
+import { desktopCapturer, net, protocol, systemPreferences } from "electron";
 import { isScreenshotName, screenshotsToDelete } from "@shared/model";
 
 /** The window loads screenshots as lawdie-shot://shot/<name>; registered as privileged before the app is ready. */
@@ -20,6 +20,8 @@ const SIZE = { width: 1440, height: 900 };
 const QUALITY = 65;
 /** A file this new may be one just taken and not attached yet: collect() leaves it. */
 const COLLECT_GRACE_MS = 10 * 60_000;
+/** A capture still going after this long is abandoned; the next one is due in five minutes. */
+const CAPTURE_TIMEOUT_MS = 10_000;
 /** Holds the time a fresh workspace started beside older screenshots (`protectExisting`). */
 const PROTECT_FILE = ".kept-before";
 
@@ -34,14 +36,24 @@ export class Screenshots {
         return isScreenshotName(name) ? join(this.dir, name) : null;
     }
 
-    /** Capture one window (get-windows' id: the CGWindowID on macOS, the HWND on Windows) to `name`. False when it could not be. */
-    async take(windowID: number, name: string): Promise<boolean> {
+    /**
+     * Capture one window (get-windows' id: the CGWindowID on macOS, the HWND on Windows) to `name`. False when it
+     * could not be. Without Screen Recording macOS still answers, with the wallpaper: no permission, no screenshot.
+     * The capture is given CAPTURE_TIMEOUT_MS, and is saved only if `stillInFront` says the window was still the
+     * one in front once it was taken (a private app brought forward meanwhile is never pictured).
+     */
+    async take(windowID: number, name: string, stillInFront: () => Promise<boolean> = async () => true): Promise<boolean> {
         const file = this.file(name);
         if (!file) return false;
+        if (process.platform === "darwin" && systemPreferences.getMediaAccessStatus("screen") !== "granted") return false;
         try {
-            const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: SIZE, fetchWindowIcons: false });
+            let timer: NodeJS.Timeout | undefined;
+            const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), CAPTURE_TIMEOUT_MS); });
+            const sources = await Promise.race([desktopCapturer.getSources({ types: ["window"], thumbnailSize: SIZE, fetchWindowIcons: false }), timeout]).finally(() => clearTimeout(timer));
+            if (!sources) return this.fail("timeout", `window capture took over ${CAPTURE_TIMEOUT_MS / 1000} s`);
             const source = sources.find((s) => s.id.split(":")[1] === String(windowID));
             if (!source || source.thumbnail.isEmpty()) return this.fail(source ? "empty" : "not-found", `window ${windowID} ${source ? "came back empty" : "was not offered"}`);
+            if (!(await stillInFront())) return false;
             mkdirSync(this.dir, { recursive: true, mode: 0o700 });
             await writeFile(file, source.thumbnail.toJPEG(QUALITY), { mode: 0o600 });
             return true;

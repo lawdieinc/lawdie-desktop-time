@@ -170,7 +170,8 @@ describe("describing a row before keeping it", () => {
         w.projects.push({ id: "p1", name: "Whitfield v. Acme", client: "", color: "gold", hourlyRate: 0, archived: false });
         renameMatterNamed(w, "whitfield v. acme", "Whitfield v. Acme Corp");
         expect([w.projects[0].name, a.matter]).toEqual(["Whitfield v. Acme Corp", "Whitfield v. Acme Corp"]);
-        expect(() => renameMatterNamed(w, "Whitfield v. Acme Corp", "personal")).toThrow(WorkspaceError);
+        expect(renameMatterNamed(w, "Whitfield v. Acme Corp", "personal")).toBe(PERSONAL); // the Personal button, typed
+        expect([w.projects[0].name, a.matter]).toEqual(["Whitfield v. Acme Corp", PERSONAL]);
     });
     it("renaming to a name that is already a matter merges into it, in review or kept", () => {
         const w = emptyWorkspace();

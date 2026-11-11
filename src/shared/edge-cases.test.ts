@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { accountOf, ensureFeed, importFeed, joinMatter, type FeedPage, type FeedRow } from "./feed";
 import { applyMatters } from "./matters";
-import { carriedDeletions, emptyWorkspace, isLockScreen, observe, projectNamed, screenshotsToDelete, syncRequest, updateProject, validate, type Activity, type SyncTarget, type TimeEntry, type Workspace } from "./model";
+import { carriedDeletions, emptyWorkspace, isBrowser, isExcluded, isLockScreen, KEPT_SCREENSHOT_DAYS, observe, PERSONAL, projectNamed, prune, renameMatterNamed, screenshotsToDelete, syncRequest, updateProject, validate, WorkspaceError, type Activity, type SyncTarget, type TimeEntry, type Workspace } from "./model";
+import { activeCall } from "./calls";
 
 // The edge cases found in the 2026-11-10 audit, each pinned so it stays fixed.
 
@@ -121,5 +122,49 @@ describe("the first rate on a matter", () => {
         expect(Object.fromEntries(w.entries.map((e) => [e.id, e.hourlyRate]))).toEqual({ zero: 400, free: 0, billed: 0, chosen: 150 });
         updateProject(w, p.id, { hourlyRate: 500 });
         expect(w.entries.find((e) => e.id === "zero")!.hourlyRate).toBe(400);
+    });
+});
+
+// Batch 2 (2026-11-11).
+
+describe("an excluded call app", () => {
+    it("is no call, by any of its ids, so the window in front keeps the time", () => {
+        expect(activeCall(["com.microsoft.teams2.helper"], ["com.microsoft.teams2"])).toBeNull();
+        expect(activeCall(["us.zoom.xos"], ["com.microsoft.teams2"])).toMatchObject({ app: { key: "zoom" } });
+        expect(activeCall(["C:\\Program Files\\Zoom\\bin\\CptHost.exe"], ["C:\\Program Files\\Zoom\\bin\\Zoom.exe"])).toBeNull();
+    });
+    it("excludes its helpers too, when one is in front", () => {
+        const w = emptyWorkspace(); w.preferences.excludedOwnerIDs = ["com.microsoft.teams2"];
+        expect(isExcluded(w.preferences, "com.microsoft.teams2.helper.renderer")).toBe(true);
+        expect(isExcluded(w.preferences, "com.microsoft.Word")).toBe(false);
+    });
+});
+
+describe("newer browsers", () => {
+    it("are left to the extension", () => {
+        for (const id of ["company.thebrowser.dia", "ai.perplexity.comet", "com.kagi.kagimacos", "com.duckduckgo.macos.browser", "C:\\Users\\a\\AppData\\Local\\Zen\\zen.exe", "librewolf"]) expect(isBrowser(id)).toBe(true);
+    });
+});
+
+describe("screenshots kept with an entry", () => {
+    it("go after 90 days, with the entry staying", () => {
+        const w = emptyWorkspace();
+        const shot = "11111111-1111-4111-8111-111111111111-1780000000000.jpg";
+        w.entries.push(entry({ id: "old", screenshots: [shot] }), entry({ id: "new", startedAt: iso(KEPT_SCREENSHOT_DAYS * 86400 - 600), endedAt: iso(KEPT_SCREENSHOT_DAYS * 86400), screenshots: [shot] }));
+        prune(w, at(KEPT_SCREENSHOT_DAYS * 86400 + 3600));
+        expect(w.entries.map((e) => [e.id, e.screenshots?.length ?? 0])).toEqual([["old", 0], ["new", 1]]);
+    });
+});
+
+describe("renaming a matter", () => {
+    const row = (id: string, matterBy: "ai" | "person"): Activity => ({ id, app: "Word", ownerID: "com.microsoft.Word", title: null, startedAt: iso(0), endedAt: iso(600), endedBy: "switched", disposition: "pending", matter: "Acme", matterBy });
+    it("to Personal marks its waiting time personal, as the button does, and leaves the matter and kept time", () => {
+        const w = emptyWorkspace(); const p = projectNamed(w, "Acme");
+        w.activities.push(row("a", "ai"), { ...row("k", "person"), disposition: "kept" });
+        expect(renameMatterNamed(w, "Acme", "personal")).toBe(PERSONAL);
+        expect(w.activities.map((a) => [a.id, a.matter, a.matterBy])).toEqual([["a", PERSONAL, "person"], ["k", "Acme", "person"]]);
+        expect(p.name).toBe("Acme");
+        expect(() => updateProject(w, p.id, { name: "Personal" })).toThrow(WorkspaceError);
+        validate(w);
     });
 });

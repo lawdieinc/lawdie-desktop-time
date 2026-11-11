@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
-import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeBlock, timeValue } from "@shared/format";
@@ -797,6 +797,7 @@ function MatterRow({ w, onMoved, group: g, match, merged, described, idle, shots
                 <div className="grow">
                     <Editable initial={g.matter} title="Rename this matter, everywhere it appears; another matter's name merges the two" onSave={(name) => {
                         if (!name) return;
+                        if (isPersonal(name)) { void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok) notify(`The time on “${g.matter}” waiting for review is now personal. “Not personal” on an item brings it back.`); }); return; }
                         const into = name.toLowerCase() === g.matter.toLowerCase() ? null : existingMatter(w, name);
                         void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok && into) notify(`“${g.matter}” merged into “${into}”: its time is on that matter now.`); });
                     }}>
@@ -939,6 +940,8 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     const [problem, setProblem] = useState<string | null>(null);
     const [leaveOutIdle, setLeaveOutIdle] = useState(false);
     const { start, end, changed } = keepBounds(stretch, startText, endText);
+    // A cleared time box is "" (the browser's time input): say so, rather than show 0s.
+    const missingTime = !startText || !endText;
     const spans: Interval[] = sittings.flatMap(intervals);
     const imported = sittings.some((a) => a.origin);
     const span = imported ? (() => { const kept = clipSittings(spans, start, end); return kept.length ? { startedAt: kept[0].startedAt, endedAt: kept[kept.length - 1].endedAt, sittings: kept } : null; })() : stretchSpan(spans, start, end);
@@ -961,6 +964,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     };
     const drafted = (text: string, from: string | undefined): { drafted?: DraftSource } => (from && text.trim() === from ? { drafted: "capture" } : {});
     const save = async (): Promise<void> => {
+        if (missingTime && !lines) return;
         if (lines) {
             if (lines.some((l) => !l.draft.description.trim())) { setProblem("Add a narrative to every line."); return; }
             const ok = await window.lawdie.keepLines(lines.map((l, n) => ({ activityIDs: l.activityIDs, input: { description: l.draft.description, projectID: null, matter: matter.trim() || null, sittings: l.sittings, leaveOutIdle, billable: l.draft.billable, hours: l.draft.hours, taskCode: l.draft.taskCode, activityCode: l.draft.activityCode, hourlyRate: l.draft.hourlyRate, ...drafted(l.draft.description, plan[n]?.draft.description) }, foldInto: l.foldInto ?? null })));
@@ -1006,9 +1010,10 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
                         {(stretch.sittings > 1 || (left?.length ?? 0) > 1) && !rc.book && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
                         {!rc.book && <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : imported ? "Imported time stays within the captured intervals. Any portion you leave out is treated as reviewed." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>}
                         {problem && <p className="danger small">{problem}</p>}
+                        {missingTime && <p className="danger small">Enter a {!startText ? "start" : "end"} time.</p>}
                         <div className="row between">
-                            <span className="mono accent big">{rc.book ? `${hours.toFixed(1)} h` : duration(previewSeconds)}</span>
-                            <span className="row gap"><button type="button" className="quiet" title="Close without keeping any time." onClick={onClose}>Cancel</button><button type="submit" className="primary" title="Save this as one time entry.">Keep time</button></span>
+                            <span className="mono accent big">{missingTime ? "—" : rc.book ? `${hours.toFixed(1)} h` : duration(previewSeconds)}</span>
+                            <span className="row gap"><button type="button" className="quiet" title="Close without keeping any time." onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={missingTime} title={missingTime ? "Enter both times first." : "Save this as one time entry."}>Keep time</button></span>
                         </div>
                     </>
                 )}
@@ -1147,7 +1152,7 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
     const notify = useNotify();
     const save = (): void => {
         if (!p) return;
-        const into = name.trim().toLowerCase() === p.name.toLowerCase() ? null : existingMatter(w, name);
+        const into = name.trim().toLowerCase() === p.name.toLowerCase() || isPersonal(name) ? null : existingMatter(w, name);
         if (into) {
             // Another matter's name: the two merge (entries and review rows move there) rather than clash.
             void window.lawdie.renameMatter(p.name, name).then((ok) => { if (ok) { notify(`“${p.name}” merged into “${into}”: its entries and review rows are on that matter now.`); onBack(); } });

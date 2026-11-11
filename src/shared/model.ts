@@ -1,4 +1,5 @@
 import { prepareImportedKeep, validateFeedState, type FeedState, type SourceRef } from "./feed";
+import { excludedCallApp } from "./calls";
 import { isProduct, type Product } from "./kiwi";
 import { meetingEvidence, meetingsValid, type MeetingRef, type MeetingsState } from "./meetings";
 import type { MatterContext, Profile, RuleSet } from "./rules";
@@ -525,9 +526,15 @@ export const BROWSER_OWNER_IDS = [
     "com.apple.safari", "com.apple.safaritechnologypreview", "com.microsoft.edgemac", "com.microsoft.edgemac.beta", "com.microsoft.edgemac.dev",
     "com.brave.browser", "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "company.thebrowser.browser", "com.operasoftware.opera",
     "com.vivaldi.vivaldi", "app.zen-browser.zen",
+    // 2026-11-11: newer and less common browsers, which would otherwise be counted here and by the extension.
+    "company.thebrowser.dia", "ai.perplexity.comet", "com.kagi.kagimacos", "com.sigmaos.sigmaos.macos", "com.operasoftware.operagx",
+    "com.duckduckgo.macos.browser", "org.mozilla.nightly", "com.microsoft.edgemac.canary", "com.google.chrome.for.testing",
+    "io.gitlab.librewolf-community", "net.waterfox.waterfox", "one.ablaze.floorp", "ru.yandex.desktop.yandex-browser", "com.naver.whale",
     // Windows and Linux
     "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe",
+    "duckduckgo.exe", "zen.exe", "librewolf.exe", "waterfox.exe", "floorp.exe", "comet.exe", "whale.exe", "chromium.exe",
     "chrome", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "firefox", "brave", "brave-browser", "microsoft-edge", "opera", "vivaldi",
+    "google-chrome-beta", "google-chrome-unstable", "microsoft-edge-stable", "microsoft-edge-beta", "firefox-esr", "librewolf", "zen", "zen-bin", "waterfox", "floorp", "vivaldi-stable", "opera-beta",
 ];
 
 const matchesOwner = (list: readonly string[], ownerID: string): boolean => {
@@ -552,7 +559,7 @@ export const isMail = (ownerID: string): boolean => matchesOwner(MAIL_OWNER_IDS,
 
 /** Excluded apps are matched by exact id, or by executable basename on Windows/Linux. */
 export function isExcluded(prefs: Preferences, ownerID: string): boolean {
-    return matchesOwner(prefs.excludedOwnerIDs, ownerID);
+    return matchesOwner(prefs.excludedOwnerIDs, ownerID) || excludedCallApp(prefs.excludedOwnerIDs, ownerID);
 }
 
 export function overlaps(w: Workspace, start: number, end: number, excluding: string | null = null): boolean {
@@ -941,7 +948,11 @@ export function projectNamed(w: Workspace, name: string): Project {
     return made;
 }
 
-/** Activity named after a matter follows it when the matter is renamed or merged. */
+/**
+ * Activity named after a matter follows it when the matter is renamed or merged, and the name is the person's
+ * from then on: a Kiwi join or the AI never renames what a person named (kept 2026-11-11, after weighing leaving
+ * the AI's rows as "ai": a join would then overwrite the name the person typed).
+ */
 function renameMatter(w: Workspace, from: string, to: string): void {
     const key = from.trim().toLowerCase();
     for (const a of w.activities) if (a.matter && a.matter.toLowerCase() === key) { a.matter = to; a.matterBy = "person"; }
@@ -964,6 +975,7 @@ export function updateProject(w: Workspace, id: string, change: ProjectChange): 
     if (change.name !== undefined) {
         const name = change.name.trim().slice(0, MATTER_MAX);
         if (!name) throw new WorkspaceError("Give the matter a name.");
+        if (isPersonal(name)) throw new WorkspaceError("Personal is not a matter. Mark time personal with a row's Personal button.");
         if (w.projects.some((x) => x.id !== id && !x.archived && x.name.trim().toLowerCase() === name.toLowerCase())) throw new WorkspaceError(`There is already a matter called “${name}”. Merge them instead.`);
         if (name !== p.name) renameMatter(w, p.name, name);
         p.name = name;
@@ -1063,8 +1075,11 @@ export function existingMatter(w: Workspace, name: string): string | null {
 export function renameMatterNamed(w: Workspace, from: string, to: string): string | null {
     const name = to.trim().slice(0, MATTER_MAX);
     if (!name) throw new WorkspaceError("Give the matter a name.");
-    if (isPersonal(from) || isPersonal(name)) throw new WorkspaceError("Personal is not renamed. Use the Personal button instead.");
+    if (isPersonal(from)) throw new WorkspaceError("Personal is not renamed. Use “Not personal” on an item instead.");
     const key = from.trim().toLowerCase();
+    // Typing "Personal" as a row's matter is the Personal button: its time waiting for review becomes personal.
+    // The matter itself, and anything kept on it, stays.
+    if (isPersonal(name)) { setMatter(w, w.activities.filter((a) => a.disposition === "pending" && a.matter?.trim().toLowerCase() === key).map((a) => a.id), PERSONAL); return PERSONAL; }
     const p = w.projects.find((x) => !x.archived && x.name.trim().toLowerCase() === key);
     const into = key === name.toLowerCase() ? null : existingMatter(w, name);
     if (into) {
@@ -1471,9 +1486,14 @@ export function recover(w: Workspace, now: number): void {
     prune(w, now);
 }
 
+/** Screenshots kept with an entry go this long after the entry's work (2026-11-11): about as long as a bill is in question. */
+export const KEPT_SCREENSHOT_DAYS = 90;
+
 export function prune(w: Workspace, now: number): void {
     const cutoff = now - w.preferences.retentionDays * 86_400_000;
     w.activities = w.activities.filter((a) => ms(a.endedAt) >= cutoff);
+    const shotCutoff = now - KEPT_SCREENSHOT_DAYS * 86_400_000;
+    for (const e of w.entries) if (e.screenshots?.length && ms(e.endedAt) < shotCutoff) delete e.screenshots;
 }
 
 /** Seconds of kept time inside [start, end), clipped. */

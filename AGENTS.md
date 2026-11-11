@@ -15,7 +15,8 @@ the wire contract land in all three repos together.
   Billing): `rules.ts`, `clientRules.ts`, `applyRules.ts`, `invoice.ts`, `invoiceHtml.ts`, `narrative.ts`,
   `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`. Everything here is under
   `model.test.ts`, `feed.test.ts` and the billing tests beside their files.
-- `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock),
+- `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock that names the boot it was taken in, daily copies in `backups/` (7),
+  leftovers of a cut-short save removed at launch),
   `store.ts` (the only place the workspace changes; copy → validate → save → publish),
   `capture.ts` (get-windows + powerMonitor → `observe()`), `sync.ts` (token via
   `safeStorage`, the minute tick), `feed.ts` (the import pass, every three minutes),
@@ -34,7 +35,9 @@ read; a segment is bounded by wall-clock observations and never spans an unobser
 (`GAP_SECONDS`); only the window in front counts, for as long as it is in front, input or
 not (sleep and the lock screen end it; a locked screen and the login window in front, `isLockScreen()`, are
 never work, so a wake does not count the password prompt), and the one exception is a call — a call app
-recording from the microphone (`src/shared/calls.ts`) gets the time wherever the focus is;
+recording from the microphone (`src/shared/calls.ts`) gets the time wherever the focus is, unless it is
+excluded (by any of its ids, helpers included: then the window in front keeps the time); another person's session
+(fast user switching) ends capture as a lock does;
 idle stops only a running timer, at the last input; ten minutes without input
 (`IDLE_FLAG_SECONDS`) is flagged on the segment (`idle`), never on a call, and is counted
 unless the person leaves it out at keep (`leaveOutIdle`); raw activity is evidence until a person
@@ -84,7 +87,9 @@ it), a 1440×900 JPEG in `screenshots/` beside the workspace, served to the wind
 `screenshotDue()` (none for a segment under 20 s, then every 5 minutes, at most 48),
 `addScreenshot()` (only to the segment in progress or a pending one), `keepStretch()`
 copies those inside the kept time to the entry, dismissing drops them, and
-`referencedScreenshots()` is what `collect()` keeps (hourly; anything else is deleted). A
+`referencedScreenshots()` is what `collect()` keeps (hourly; anything else is deleted). An entry's screenshots go
+`KEPT_SCREENSHOT_DAYS` (90) after its work (`prune`). None is taken without Screen Recording (macOS answers with the
+wallpaper), a capture is abandoned after 10 s, and one is saved only if the same window was still in front. A
 name is `<activity id>-<epoch ms>.jpg` and is validated, so it is never a path. Never of a
 browser, a private app, this app or a call behind the window in front. Never synced and
 never sent to the AI: `syncRequest()` and the matter requests list their fields.
@@ -454,3 +459,11 @@ number fills an empty field only; suggested, flagged and dismissed entries do no
 lock screen is never work; editing a Keep end across midnight picks the day nearest the captured end; calendar
 rows no longer clip imported time; a matter name two Kiwi matters share links neither; the first rate on a
 matter fills its unbilled $0 entries. Tests 240.
+2026-11-11: the audit's second batch (`edge-cases.test.ts`, `src/main/workspace.test.ts`): an excluded call app is no
+call (`activeCall(recording, excluded)`, `excludedCallApp`); fast user switching ends capture; newer browsers
+(Dia, Comet, Orion, DuckDuckGo, Zen, LibreWolf…); screenshots need the permission, time out, and are of the window
+still in front, and an entry's go after 90 days; typing "Personal" as a row's matter is the Personal button (the
+Matters page refuses it as a name); daily backups; a lock from before a restart never blocks; a save's leftovers
+go; the Keep sheet says which time is missing. Checked and left: a clock set back already ends the sitting at
+its last good moment, and renaming a matter keeps making its rows the person's (a join must not rename them).
+Version 0.16.3. Tests 251.

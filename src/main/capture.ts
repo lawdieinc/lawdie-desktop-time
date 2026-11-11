@@ -52,10 +52,11 @@ export class Capture {
     start(): void {
         this.timer = setInterval(() => void this.tick(), SAMPLE_MS);
         const monitor = powerMonitor as unknown as { on(event: string, listener: () => void): void };
-        for (const event of ["suspend", "lock-screen", "shutdown"]) monitor.on(event, () => this.suspend());
+        // "user-did-resign-active": another person's session took the screen (fast user switching, macOS); it ends like a lock.
+        for (const event of ["suspend", "lock-screen", "shutdown", "user-did-resign-active"]) monitor.on(event, () => this.suspend());
         // Waking is not unlocking: after a wake the lock screen is in front until the password, and that is never work.
         // sample() checks the lock itself, so a wake without a lock (no password set) still resumes at once.
-        for (const event of ["resume", "unlock-screen"]) monitor.on(event, () => { this.suspended = false; void this.sample(); });
+        for (const event of ["resume", "unlock-screen", "user-did-become-active"]) monitor.on(event, () => { this.suspended = false; void this.sample(); });
         void this.sample();
     }
 
@@ -81,7 +82,7 @@ export class Capture {
             const locked = isLocked();
             if (prefs.captureEnabled && !this.suspended && !locked) {
                 // A call in progress gets the time wherever the focus is (src/shared/calls.ts).
-                const call = activeCall(await this.mic.recording());
+                const call = activeCall(await this.mic.recording(), prefs.excludedOwnerIDs);
                 try {
                     // Exclusions are checked in observe() BEFORE any title is used; the title is
                     // only asked for at all when titles are on (macOS needs Screen Recording for it).
@@ -118,7 +119,8 @@ export class Capture {
             // observe() has already refused a private app, a browser and this app (no segment
             // in progress, so nothing is due); a call behind the window in front is not pictured.
             const shot = ok && front ? screenshotDue(this.store.workspace, now) : null;
-            if (front && shot && (await this.shots.take(front.id, shot))) this.store.change((w) => { addScreenshot(w, shot); });
+            const stillInFront = async (): Promise<boolean> => (await this.foreground(false).catch(() => undefined))?.id === front?.id;
+            if (front && shot && (await this.shots.take(front.id, shot, stillInFront))) this.store.change((w) => { addScreenshot(w, shot); });
         } finally {
             this.sampling = false;
         }

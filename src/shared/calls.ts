@@ -59,13 +59,24 @@ export function callApp(ownerID: string): CallApp | null {
     return WIN_CALL_APPS[base] ?? null;
 }
 
-/** The call in progress: the first call app among those recording, with the id it was seen by. */
-export function activeCall(recording: readonly string[]): { app: CallApp; ownerID: string } | null {
+/**
+ * The call in progress: the first call app among those recording, with the id it was seen by. A call app the
+ * person excluded (by any of its ids: excluding Teams covers its audio helper) is no call: the window in front
+ * keeps the time, as if no call were going on.
+ */
+export function activeCall(recording: readonly string[], excluded: readonly string[] = []): { app: CallApp; ownerID: string } | null {
+    const off = new Set(excluded.map((id) => callApp(id)?.key).filter(Boolean));
     for (const ownerID of recording) {
         const app = callApp(ownerID);
-        if (app) return { app, ownerID };
+        if (app && !off.has(app.key)) return { app, ownerID };
     }
     return null;
+}
+
+/** An excluded call app's other processes (its helpers, its other executables) are excluded with it. */
+export function excludedCallApp(excluded: readonly string[], ownerID: string): boolean {
+    const key = callApp(ownerID)?.key;
+    return !!key && excluded.some((id) => callApp(id)?.key === key);
 }
 
 /** native/mic-users: one bundle id per line; "UNSUPPORTED" (macOS before 14.2) is no one. */

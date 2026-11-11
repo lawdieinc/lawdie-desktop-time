@@ -33,7 +33,7 @@ import { Store } from "./store";
 import { Sync, TokenFile } from "./sync";
 import { Screenshots, SHOT_SCHEME } from "./screenshots";
 import { Updater } from "./updater";
-import { acquireLock, WorkspaceFile } from "./workspace";
+import { acquireLock, backupDaily, removeStaleTemps, WorkspaceFile } from "./workspace";
 
 /* Lawdie Time Capture, main process. One window, one tray item, one workspace file.
    Closing the window does not stop capture; quitting does. */
@@ -175,6 +175,10 @@ app.whenReady().then(() => {
         return;
     }
 
+    // Before anything is loaded or saved: leftovers of a save cut short go, and today's copy is taken (backups/, 7 days).
+    removeStaleTemps(join(workspacePath, ".."));
+    backupDaily(workspacePath);
+    setInterval(() => backupDaily(workspacePath), 60 * 60_000);
     const store = new Store(new WorkspaceFile(workspacePath), app.getVersion());
     // Errors go to Honeybadger from a release build, unless the person switches reports off; the harness and demo runs never send.
     // LAWDIE_REPORT_ERRORS=1 lets an unpackaged build send (to prove the key and the path); LAWDIE_TEST_ERROR=1 reports one test error at launch.
