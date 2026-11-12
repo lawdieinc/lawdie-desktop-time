@@ -1536,7 +1536,7 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 </Setting>}
                 {w.demo && p.narrativeDrafter === "model" && !w.sync?.targets.some((t) => t.product === "kiwi") && <p className="danger tiny">Model not connected. Narratives stay with the rules until this {label} is connected to Kiwi below.</p>}
                 <Setting title="Timer idle timeout" detail="Stops a running timer at your last input after this much inactivity. Capture counts the app in front for as long as it is in front, and a call even behind other windows.">
-                    <select value={p.idleMinutes} title="How long without input before a running timer stops." onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
+                    <select value={p.idleMinutes} title="How long without input before a running timer stops." onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[...new Set([1, 6, 12, 15, 30, 60, p.idleMinutes])].sort((x, y) => x - y).map((m) => <option key={m} value={m}>{m} {m === 1 ? "minute" : "minutes"}</option>)}</select>
                 </Setting>
                 <Setting title="Reviewed activity" detail={`Sittings you kept or dismissed are removed this long after you review them. Your time entries stay. Time you have not reviewed waits ${pendingDays(w.preferences)} days, and you are warned a week before any of it goes.`}>
                     <select value={p.retentionDays} title="Choose how long reviewed activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
