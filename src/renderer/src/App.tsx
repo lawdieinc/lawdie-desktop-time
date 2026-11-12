@@ -27,12 +27,16 @@ import { WhatsNew } from "./WhatsNew";
 import { ExpiringCallout, ExpiringSidebar, pendingDays, retentionLabel } from "./Retention";
 import { LATEST_RELEASE, needsWhatsNew } from "@shared/releases";
 import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
+import type { SearchTarget } from "@shared/search";
+import { SearchBar, reveal } from "./Search";
 
 /* The window. Four screens (Time, Activity, Matters, Settings) and the Kiwi
    connection. Everything it shows is the main process's AppState; everything it does
    goes back over window.lawdie. */
 
 type Route = "today" | "activity" | "matters" | "settings" | "rules";
+/** A search result to open (Search.tsx): the screen shows it, then calls `onFocused` so it is shown once. `n` tells two picks of the same result apart. */
+type Focus<R extends SearchTarget["route"]> = Extract<SearchTarget, { route: R }> & { n: number };
 const ROUTES: { key: Route; label: string; icon: string; tip: string }[] = [
     { key: "today", label: "Time", icon: "▦", tip: "Show the day's time entries and the bill." },
     { key: "activity", label: "Activity", icon: "∿", tip: "Review captured activity and keep time." },
@@ -75,6 +79,15 @@ export function App(): ReactNode {
     const decided = useRef(false);
     const [tour, setTour] = useState<number | null>(null);
     const [keepOpen, setKeepOpen] = useState(false);
+    // A search result being opened: the screen named takes it and clears it.
+    const [focus, setFocus] = useState<(SearchTarget & { n: number }) | null>(null);
+    const focused = (): void => setFocus(null);
+    const openHit = (t: SearchTarget): void => {
+        if (t.route === "rules") { setFocus(null); openRules(t.book, t.rule); return; }
+        setFocus({ ...t, n: Date.now() });
+        setRoute(t.route);
+    };
+    const focusOn = <R extends SearchTarget["route"]>(r: R): Focus<R> | null => (focus?.route === r ? focus as Focus<R> : null);
     const startTour = (): void => { setWelcome(false); setKeepOpen(false); setTour(0); };
     const endTour = (): void => { setTour(null); setKeepOpen(false); };
     // Each step opens its screen; the rules step opens the Client rules page (the New rulebook sheet when no client has rules yet).
@@ -153,7 +166,8 @@ export function App(): ReactNode {
             </aside>
             <main className="content">
                 <header className="topbar">
-                    <span className="muted">Workspace</span><span className="muted">›</span><span>{route === "rules" ? "Time › Client rules" : ROUTES.find((r) => r.key === route)?.label}</span>
+                    <span className="crumbs"><span className="muted">Workspace</span><span className="muted">›</span><span>{route === "rules" ? "Time › Client rules" : ROUTES.find((r) => r.key === route)?.label}</span></span>
+                    {!state.loadFailed && <SearchBar w={w} onOpen={openHit} />}
                     <span className="grow" />
                     <span className={"muted" + (w.sync?.targets.some((t) => t.lastError) ? " danger" : "")}>{statusLine(state, now)}</span>
                     <span className="divider" />
@@ -180,7 +194,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} tutorial={tour !== null} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} onWhatsNew={() => setWhatsNew(true)} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} tutorial={tour !== null} focus={focusOn("today")} onFocused={focused} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} focus={focusOn("activity")} onFocused={focused} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} focus={focusOn("matters")} onFocused={focused} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} onWhatsNew={() => setWhatsNew(true)} />}
                 </div>
             </main>
             {toasts.length > 0 && (
@@ -230,13 +244,21 @@ function rangeBounds(key: RangeKey, now: number, from: string, to: string): { st
     if (key === "month") { const d = new Date(today); d.setDate(1); return { start: d.getTime(), end: today + 86_400_000, label: d.toLocaleDateString([], { month: "long", year: "numeric" }) }; }
     if (key === "all") return { start: 0, end: today + 86_400_000, label: "All time" };
     const f = from ? new Date(`${from}T00:00:00`).getTime() : today, t = to ? new Date(`${to}T00:00:00`).getTime() + 86_400_000 : today + 86_400_000;
+    if (t - f <= 86_400_000) return { start: f, end: f + 86_400_000, label: new Date(f).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" }) };
     return { start: f, end: Math.max(t, f + 86_400_000), label: `${new Date(f).toLocaleDateString([], { month: "short", day: "numeric" })} – ${new Date(t - 1).toLocaleDateString([], { month: "short", day: "numeric" })}` };
 }
 
-function Today({ w, now, onRules, tutorial = false }: { w: Workspace; now: number; onRules: (book: string | null, rule?: string | null) => void; tutorial?: boolean }): ReactNode {
+function Today({ w, now, onRules, tutorial = false, focus = null, onFocused = () => undefined }: { w: Workspace; now: number; onRules: (book: string | null, rule?: string | null) => void; tutorial?: boolean; focus?: Focus<"today"> | null; onFocused?: () => void }): ReactNode {
     const [range, setRange] = useState<RangeKey>("today");
     const [from, setFrom] = useState(dayKey(now - 6 * 86_400_000));
     const [to, setTo] = useState(dayKey(now));
+    // A kept entry found by search: its day, then the entry itself.
+    useEffect(() => {
+        if (!focus) return;
+        if (focus.day === dayKey(now)) setRange("today"); else { setRange("custom"); setFrom(focus.day); setTo(focus.day); }
+        onFocused();
+        reveal(focus.entry);
+    }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
     const { start, end, label } = rangeBounds(range, now, from, to);
     const entries = w.entries.filter((e) => Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
     const tracked = entries.reduce((s, e) => s + secondsWithin(e, start, end), 0);
@@ -362,7 +384,7 @@ function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: {
     // Under a client's rules: the narrative as the rules write it, and each change with its rule chip.
     const changes = book && lines ? <EntryChanges lines={lines} book={book} w={w} onRules={onRules} /> : null;
     return (
-        <div className={"entry" + (narrative ? " with-why" : "") + (entry.status === "flagged" ? " flagged" : entry.status === "suggested" ? " suggested" : "")}>
+        <div data-search-id={entry.id} className={"entry" + (narrative ? " with-why" : "") + (entry.status === "flagged" ? " flagged" : entry.status === "suggested" ? " suggested" : "")}>
             <span className="bar" />
             <div className="grow">
                 {narrative ? <NarrativeEntry entry={entry} w={w} draft={draft} setDraft={setDraft} onDetails={() => setEditing(true)} meta={meta} override={inlineNarrative(lines, book)} after={changes} />
@@ -427,7 +449,7 @@ function sortBy<T>(items: readonly T[], by: SortBy, key: (item: T) => { at: stri
 /** The tutorial's sample stretch (src/shared/onboarding.ts) while it runs: a row in To review that opens the real Keep sheet and saves nothing. */
 type Tutorial = { stretch: Stretch; sittings: Activity[]; onSheet: (open: boolean) => void };
 
-function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppState; tutorial?: Tutorial | null }): ReactNode {
+function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () => undefined }: { w: Workspace; state: AppState; tutorial?: Tutorial | null; focus?: Focus<"activity"> | null; onFocused?: () => void }): ReactNode {
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
     const [sort, setSort] = useState<SortBy>("newest");
     const [reviewing, setReviewing] = useState<{ stretch: Stretch; matter: string | null; description: string } | null>(null);
@@ -440,6 +462,14 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
     const keepSample = async (): Promise<boolean> => { notify("That was the tutorial's sample: nothing was saved. A real stretch becomes an entry on the Time screen."); return true; };
     const [open, setOpen] = useState<Record<string, boolean>>({});
     const toggle = (id: string): void => setOpen((o) => ({ ...o, [id]: !o[id] }));
+    // A row found by search: To review, the row unfolded, scrolled to.
+    useEffect(() => {
+        if (!focus) return;
+        setFilter("pending");
+        setOpen((o) => ({ ...o, [focus.row]: true }));
+        onFocused();
+        reveal(focus.row);
+    }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
     const { groups, stretches, short, personal } = useMemo(() => inboxOf(w.activities), [w.activities]);
     // Time moved onto a matter lands inside that matter's row: the row unfolds so the move can be seen.
     const [moved, setMoved] = useState<string | null>(null);
@@ -921,7 +951,7 @@ type RowProps = { w: Workspace; row: ReviewRow; onMoved: (ids: string[]) => void
 function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, approving, onApprove, onEdit, open, onToggle }: RowProps & { group: MatterGroup }): ReactNode {
     const notify = useNotify();
     return (
-        <div>
+        <div data-search-id={row.id}>
             <div className="activity">
                 <RowCheck verdict={row.verdict} ticked={ticked} onTick={onTick} />
                 <span className="app-icon matter-icon" aria-hidden="true">§</span>
@@ -976,7 +1006,7 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
     const st = row.stretch;
     const own = descriptionOf(row.sittings);
     return (
-        <div>
+        <div data-search-id={row.id}>
             <div className="activity">
                 <RowCheck verdict={row.verdict} ticked={ticked} onTick={onTick} />
                 <span className="app-icon">▭</span>
@@ -1214,9 +1244,16 @@ function MatterLinks({ w }: { w: Workspace }): ReactNode {
     </Panel>;
 }
 
-function MattersView({ w, now, onReview }: { w: Workspace; now: number; onReview: () => void }): ReactNode {
+function MattersView({ w, now, onReview, focus = null, onFocused = () => undefined }: { w: Workspace; now: number; onReview: () => void; focus?: Focus<"matters"> | null; onFocused?: () => void }): ReactNode {
     const [range, setRange] = useState<RangeKey>("week");
     const [selected, setSelected] = useState<string | null>(null);
+    // A matter found by search (or an invoice's matter): its page, from the top.
+    useEffect(() => {
+        if (!focus) return;
+        setSelected(focus.project);
+        onFocused();
+        document.querySelector(".page")?.scrollTo(0, 0);
+    }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
     const [showArchived, setShowArchived] = useState(false);
     const { start, end, label } = rangeBounds(range, now, "", "");
     const { groups } = useMemo(() => inboxOf(w.activities), [w.activities]);

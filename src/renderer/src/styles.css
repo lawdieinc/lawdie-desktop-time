@@ -48,6 +48,23 @@ h1, h2 { margin: 0; font-weight: 600; }
 
 .content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .topbar { height: 64px; padding: 0 32px; display: flex; align-items: center; gap: 8px; font-size: 12px; border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
+/* Search (Search.tsx): the field in the top bar and the results under it. The breadcrumb holds its width so the field stays put. */
+.crumbs { display: flex; gap: 8px; min-width: 170px; white-space: nowrap; }
+.search { position: relative; margin-left: 20px; width: min(380px, 36vw); -webkit-app-region: no-drag; }
+.search input { width: 100%; padding: 8px 52px 8px 32px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); font-size: 13px; outline: none; -webkit-appearance: none; }
+.search input:focus { border-color: rgba(139, 92, 42, 0.45); background: #fff; box-shadow: 0 0 0 3px rgba(139, 92, 42, 0.1); }
+.search input::-webkit-search-cancel-button { display: none; }
+.search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.search-key { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font: 11px var(--label); color: var(--muted); padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--raised); pointer-events: none; }
+.search-results { position: absolute; top: calc(100% + 6px); left: 0; width: max(100%, 460px); max-height: min(70vh, 560px); overflow: auto; z-index: 30; padding: 6px; border-radius: 12px; background: #fff; border: 1px solid var(--line); box-shadow: 0 16px 36px rgba(43, 38, 33, 0.16); animation: fade-in 0.12s ease-out; }
+.search-group { padding: 10px 10px 4px; }
+.search-hit { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
+.search-hit.active { background: rgba(139, 92, 42, 0.08); }
+.search-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-snippet { color: var(--text); opacity: 0.8; font-style: italic; }
+.search-none { padding: 14px 10px; }
+.search-flash { animation: search-flash 2.4s ease-out; border-radius: 8px; }
+@keyframes search-flash { 0%, 35% { background: rgba(139, 92, 42, 0.14); box-shadow: 0 0 0 2px rgba(139, 92, 42, 0.35); } 100% { background: transparent; box-shadow: 0 0 0 2px transparent; } }
 .divider { width: 1px; height: 16px; background: var(--line); margin: 0 12px; }
 .page { flex: 1; overflow: auto; padding: 32px; display: flex; flex-direction: column; gap: 26px; max-width: 1500px; }
 .heading { display: flex; flex-direction: column; gap: 9px; } .heading h2 { font-size: 32px; }

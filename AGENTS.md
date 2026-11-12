@@ -13,7 +13,7 @@ the wire contract land in all three repos together.
   overlap clipping, matter links), `export.ts` (kept entries as CSV: project, date, hours,
   description; the Time screen's Export CSV, for the range shown), `format.ts`, `state.ts`; billing (see
   Billing): `rules.ts`, `clientRules.ts`, `applyRules.ts`, `invoice.ts`, `invoiceHtml.ts`, `narrative.ts`,
-  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`. Everything here is under
+  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`; `search.ts` (the search bar's finding). Everything here is under
   `model.test.ts`, `feed.test.ts` and the billing tests beside their files.
 - `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock that names the boot it was taken in, daily copies in `backups/` (7),
   leftovers of a cut-short save removed at launch),
@@ -24,7 +24,7 @@ the wire contract land in all three repos together.
   `xlsx.ts` (the time sheet as Word; a time-system export read).
 - `src/preload/` — the whole surface the window may touch (`window.lawdie`).
 - `src/renderer/` — React. `App.tsx` (the screens), with billing beside it: `Billing.tsx`, `ClientRules.tsx`,
-  `Rules.tsx`, `Narrative.tsx`, `Imported.tsx`, `Menu.tsx`; brand in `styles.css` (see `docs/brand.md`).
+  `Rules.tsx`, `Narrative.tsx`, `Imported.tsx`, `Menu.tsx`; `Search.tsx` (the top bar's search); brand in `styles.css` (see `docs/brand.md`).
 - `resources/` fonts and brand assets; `build/` icons; `electron-builder.yml` installers.
 - `legacy/swift/` — the first, macOS-only version. Reference only; not built.
 
@@ -287,6 +287,23 @@ override that saves nothing and says so in a toast (its Approve is disabled), an
 small blocks shared by both files live in `ui.tsx`. Entry points: the welcome itself, Settings → Display
 & data → "Learn the app", and `--route welcome|tutorial|whatsnew` for the harness.
 
+## Search
+
+One search bar in the top bar (2026-11-12, "a search bar to search anywhere"; settings left out by the user's decision).
+`src/shared/search.ts` is pure and tested (`search.test.ts`): `searchWorkspace(w, query)` returns groups in order (matters,
+To review, kept time, client rules, invoices), five hits each and a count of the rest. Every word of the query must appear,
+case and accents ignored (`fold`); a title that starts with the query ranks first, then a word of the title, then every
+word in the title, then a match in the details, newest first on a tie. To review rows are `inboxOf()`'s matter groups
+and stretches, matched on everything a sitting says about itself (matter, description, draft, summary, document, title,
+app, meeting subject and invitees, address, Office excerpt, on-screen text); Personal time, the short hops, reviewed
+sittings, dismissed entries and the tutorial's sample are never found. A hit matched in its details shows a snippet
+around the match (`snippetOf`, `SNIPPET_CHARS`), never one that only repeats the line under its title. Local only:
+nothing goes to Kiwi. Picking a hit (`SearchTarget`) opens its screen through the App's `focus`: a matter its page (an
+invoice its matter's), a review row To review with the row unfolded, a kept entry the Time page on its day, a rule the
+Client rules page on it; the screen clears the focus (`onFocused`) and `reveal()` scrolls to the `data-search-id`
+element and marks it for a moment. ⌘K / Ctrl+K or `/` goes to the field. Harness: `--steps "key:.page=/||type:.search
+input=whitfield||key:.search input=Enter"` (the harness window has no focus, so typing is what opens the list).
+
 ## What's new
 
 After Kiwi's card (2026-11-09). `src/shared/releases.ts` is what the What's new card (`WhatsNew.tsx`) shows:
@@ -528,3 +545,5 @@ finished entries approved in bulk): unreviewed time waits until it is reviewed (
 retention setting, 90 days at most, a warning a week ahead) and review rows read as the entry they become, with
 Approve and bulk approve on the Keep sheet's own logic (`src/shared/keep.ts`, Matters). Planned by Opus, built by two
 Fable agents in parallel worktrees, merged here. Tests 290.
+Same day: a search bar across matters, time to review, kept entries, client rules and invoices (section above), in 0.18.0.
+Verified through the harness on a scratch workspace: each kind of result opens its screen. Tests 301.

@@ -44,6 +44,7 @@ export const RELEASES: readonly Release[] = [
             { icon: "clock", title: "Approve, or approve them all", description: "Approve keeps a row as shown; tick rows and approve them together.", route: "activity" },
             { icon: "rules", title: "Client rules still come first", description: "A row a client's rules would flag opens the Keep sheet instead." },
             { icon: "shield", title: "Unreviewed time waits for you", description: "Time you have not reviewed stays 90 days, with a warning a week before.", route: "activity" },
+            { icon: "compass", title: "Search everything", description: "Press ⌘K (Ctrl+K) to find a matter, an entry, time to review, a rule or an invoice." },
         ],
     },
     {
