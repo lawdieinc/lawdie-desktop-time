@@ -256,12 +256,12 @@ export function feeLines(w: Workspace, terms: InvoiceTerms, rules: readonly Clie
             tasks!.forEach((t, n) => {
                 const text = t.text.trim().replace(/[.;]+$/, "");
                 segs.push({ text: n === 0 ? `${text[0].toUpperCase()}${text.slice(1)}` : `; ${text}` });
-                segs.push({ text: ` (${taskHours![n]!.toFixed(1)})`, ins: block.id });
+                segs.push({ text: ` (${hrs(taskHours![n]!).slice(0, -2)})`, ins: block.id });
             });
             segs.push({ text: "." });
             const sum = round2(taskHours!.reduce<number>((n, h) => n + h!, 0));
             if (sum !== hours) lineEffects.push({ rule: block.id, what: "hours", before: hrs(hours), after: hrs(sum) });
-            lineEffects.push({ rule: block.id, what: "text", text: `Each task's time written in: ${taskHours!.map((h) => `(${h!.toFixed(1)})`).join(" and ")}` });
+            lineEffects.push({ rule: block.id, what: "text", text: `Each task's time written in: ${taskHours!.map((h) => `(${hrs(h!).slice(0, -2)})`).join(" and ")}` });
             out.push(line(withCode(codeFor(null, null), segs, lineEffects), sum, lineEffects));
         } else {
             const lineEffects = [...effects];

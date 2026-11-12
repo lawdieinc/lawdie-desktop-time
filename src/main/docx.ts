@@ -16,6 +16,7 @@ import { ruleReports } from "@shared/clientRules";
 import { citeOf, money } from "@shared/invoice";
 import { rulesBasis } from "@shared/invoiceHtml";
 import type { ClientRule, InvoiceTerms, Workspace } from "@shared/model";
+import { hoursText } from "@shared/billingMode";
 
 const AUTHOR = "Lawdie";
 const FONT = "Arial";
@@ -62,7 +63,7 @@ export async function timeSheetDocx(w: Workspace, terms: InvoiceTerms, logo: Buf
     for (const lines of linesByEntry(bill).values()) {
         const a = lines[0];
         if (!book) {
-            rows.push(new TableRow({ cantSplit: true, children: [cell([text(a.date)], 0), cell([text(a.timekeeper)], 1), cell([text(a.hours.toFixed(1))], 2, true), cell([text(money(a.rate).slice(1))], 3, true), cell([text(amountOf(a))], 4, true), cell([text(a.narrative)], 5)] }));
+            rows.push(new TableRow({ cantSplit: true, children: [cell([text(a.date)], 0), cell([text(a.timekeeper)], 1), cell([text(hoursText(a.hours))], 2, true), cell([text(money(a.rate).slice(1))], 3, true), cell([text(amountOf(a))], 4, true), cell([text(a.narrative)], 5)] }));
             continue;
         }
         const s = a.std;
@@ -70,9 +71,9 @@ export async function timeSheetDocx(w: Workspace, terms: InvoiceTerms, logo: Buf
         const split = lines.length > 1;
         // Hours: struck and replaced when a rule changed them (a call cut, a split part). No charge keeps them.
         const hourRules = rulesOf(cs, "hours", ...(split ? ["split" as const] : []));
-        const hoursCell = a.hours.toFixed(1) !== s.hours.toFixed(1)
-            ? commented(comment(hourRules, split ? `Hours ${s.hours.toFixed(1)} split into ${lines.map((l) => l.hours.toFixed(1)).join(" + ")}, each task with its own captured time.` : `Hours ${s.hours.toFixed(1)} changed to ${a.hours.toFixed(1)}.`), [del(s.hours.toFixed(1)), ins(a.hours.toFixed(1), true)])
-            : [text(s.hours.toFixed(1))];
+        const hoursCell = hoursText(a.hours) !== hoursText(s.hours)
+            ? commented(comment(hourRules, split ? `Hours ${hoursText(s.hours)} split into ${lines.map((l) => hoursText(l.hours)).join(" + ")}, each task with its own captured time.` : `Hours ${hoursText(s.hours)} changed to ${hoursText(a.hours)}.`), [del(hoursText(s.hours)), ins(hoursText(a.hours), true)])
+            : [text(hoursText(s.hours))];
         const rateCell = a.rate !== s.rate ? commented(comment(rulesOf(cs, "rate"), `Rate ${money(s.rate)} changed to ${money(a.rate)}.`), [del(money(s.rate).slice(1)), ins(money(a.rate).slice(1), true)]) : [text(money(s.rate).slice(1))];
         // Amount: a line not billed cites only the rule that took the charge off; otherwise the rules behind the figures.
         const ncRules = rulesOf(cs, "noCharge");
@@ -95,16 +96,16 @@ export async function timeSheetDocx(w: Workspace, terms: InvoiceTerms, logo: Buf
         const textRules = [...rulesOf(own, "text"), ...(split ? rulesOf(cs, "split") : [])];
         const said = [
             ...own.filter((c) => c.kind === "text" && c.text).map((c) => `${c.text}.`),
-            ...(split ? [`Split into ${lines.length} lines, one per task: ${lines.map((l) => `${l.hours.toFixed(1)} h “${l.narrative}”`).join(" and ")}`] : []),
+            ...(split ? [`Split into ${lines.length} lines, one per task: ${lines.map((l) => `${hoursText(l.hours)} h “${l.narrative}”`).join(" and ")}`] : []),
         ].join(" ");
         const descCell = textRules.length ? commented(comment(textRules, said), descRuns) : descRuns;
         rows.push(new TableRow({ cantSplit: true, children: [cell([text(a.date)], 0), cell([text(a.timekeeper)], 1), cell(hoursCell, 2, true), cell(rateCell, 3, true), cell(amountCell, 4, true), cell(descCell, 5)] }));
         for (const p of lines.slice(1)) {
             const pSaid = [...p.changes.filter((c) => c.kind === "text" && c.text).map((c) => `${c.text}.`),
-                `Task ${(p.part ?? 0) + 1} of ${lines.length} from the split entry, with its own captured time: ${p.hours.toFixed(1)} h.`].join(" ");
+                `Task ${(p.part ?? 0) + 1} of ${lines.length} from the split entry, with its own captured time: ${hoursText(p.hours)} h.`].join(" ");
             const pDesc = commented(comment([...rulesOf(p.changes, "text"), ...rulesOf(p.changes, "split")], pSaid), p.segments.map((g) => ins(g.text)));
             rows.push(new TableRow({ cantSplit: true, insertion: { id: rev++, author: AUTHOR, date },
-                children: [cell([ins(p.date)], 0), cell([ins(p.timekeeper)], 1), cell([ins(p.hours.toFixed(1))], 2, true), cell([ins(money(p.rate).slice(1))], 3, true), cell([ins(amountOf(p))], 4, true), cell(pDesc, 5)] }));
+                children: [cell([ins(p.date)], 0), cell([ins(p.timekeeper)], 1), cell([ins(hoursText(p.hours))], 2, true), cell([ins(money(p.rate).slice(1))], 3, true), cell([ins(amountOf(p))], 4, true), cell(pDesc, 5)] }));
         }
     }
     const rule = { style: BorderStyle.SINGLE, size: 4, color: GREY };
@@ -131,11 +132,11 @@ export async function timeSheetDocx(w: Workspace, terms: InvoiceTerms, logo: Buf
                 para([text(`${bill.lines[0]?.date ?? ""} · ${basis ? `${basis.name} ${basis.own ? "billing rules applied" : "rules applied to this matter for comparison,"} as tracked changes by Lawdie. Each comment cites the rule.` : "Generic: standard rates, no client rules applied."}`, { color: "595959", size: 16 })], { after: 240 }),
                 table,
                 ...(book ? [
-                    para([text("Total before rules: ", { bold: true }), text(`${bill.lines.reduce((n, l) => n + (l.part ? 0 : l.std.hours), 0).toFixed(1)} h, ${money(bill.standard)} at standard rates`)], { before: 240, after: 40 }),
-                    para([text(`Total with ${book.short} rules: `, { bold: true }), text(`${t.billedHours.toFixed(1)} h billed, ${money(t.fees)}`)], { after: 240 }),
+                    para([text("Total before rules: ", { bold: true }), text(`${hoursText(bill.lines.reduce((n, l) => n + (l.part ? 0 : l.std.hours), 0))} h, ${money(bill.standard)} at standard rates`)], { before: 240, after: 40 }),
+                    para([text(`Total with ${book.short} rules: `, { bold: true }), text(`${hoursText(t.billedHours)} h billed, ${money(t.fees)}`)], { after: 240 }),
                     para([text("Checked, no change", { bold: true, size: 18 })], { after: 60 }),
                     ...passing.map((r) => para([text(`${r.rule.id} ${citeOf(r.rule, w, book)}, ${r.rule.title}: `, { bold: true, size: 16 }), text(`${r.summary}.`, { size: 16 })], { after: 30 })),
-                ] : [para([text("Total: ", { bold: true }), text(`${t.hours.toFixed(1)} h, ${money(t.fees)}`)], { before: 240, after: 240 })]),
+                ] : [para([text("Total: ", { bold: true }), text(`${hoursText(t.hours)} h, ${money(t.fees)}`)], { before: 240, after: 240 })]),
                 ...(terms.footer ? [para([text(terms.footer, { color: "8C8C8C", size: 14 })], { before: 240 })] : []),
             ],
         }],

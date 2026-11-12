@@ -6,11 +6,12 @@
  */
 import { clipSittings, descriptionOf, intervals, isPersonal, keepStretch, keptMatch, overlaps, reviewedActivities, stretchSpan, subtractIntervals, type Activity, type DraftSource, type Interval, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "./model";
 import { contextOf } from "./invoice";
-import { checkEntry, rulebookFor, roundUpToTenth, splitPlan, type CheckContext, type EntryDraft, type Finding, type PlanLine } from "./rules";
+import { checkEntry, rulebookFor, splitPlan, type CheckContext, type EntryDraft, type Finding, type PlanLine } from "./rules";
 import { keepBounds, timeValue } from "./format";
 import { inboxOf, matterStretch } from "./matters";
 import { importedCovered } from "./feed";
 import { isTutorialID } from "./onboarding";
+import { billedHours, hoursText, incrementFor } from "./billingMode";
 
 // ---------------------------------------------------------------------------
 // What the rules see (moved from the window's Rules.tsx, which re-exports them)
@@ -38,8 +39,7 @@ export function sameDayOf(w: Workspace, projectID: string | null, day: string, e
     return w.entries.filter((e) => e.projectID === projectID && e.id !== except && localDay(e.startedAt) === day).map(draftOf);
 }
 
-/** Captured time as it is billed: rounded up to the tenth of an hour, never under a tenth. */
-export const billedHours = (seconds: number): number => Math.max(0.1, roundUpToTenth(seconds / 3600));
+export { billedHours };
 
 // ---------------------------------------------------------------------------
 // The Keep sheet's state and what it derives
@@ -142,14 +142,16 @@ export function keepPreview(w: Workspace, stretch: Stretch, sittings: readonly A
     const left = span && s.leaveOutIdle && idle > 0 ? subtractIntervals(intervals(span), idleList) : null;
     const preview: Span | null = left ? (left.length ? { startedAt: left[0].startedAt, endedAt: left[left.length - 1].endedAt, sittings: left } : null) : span;
     const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
-    const hours = s.hoursSet ?? billedHours(previewSeconds);
+    // The billing mode's increment, or the client's own when its rules name one.
+    const increment = incrementFor(w.preferences, rc.book);
+    const hours = s.hoursSet ?? billedHours(previewSeconds, increment);
     const hourlyRate = s.rate ?? project?.hourlyRate ?? 0;
-    const plan = rc.ctx && preview ? splitPlan(reviewedActivities(sittings, intervals(preview)), rc.ctx, rc.profile, { billable: s.billable, hourlyRate, day, ...(s.hoursSet !== null ? { hours: s.hoursSet } : {}) }) : [];
+    const plan = rc.ctx && preview ? splitPlan(reviewedActivities(sittings, intervals(preview)), rc.ctx, rc.profile, { billable: s.billable, hourlyRate, day, increment, ...(s.hoursSet !== null ? { hours: s.hoursSet } : {}) }) : [];
     const draft: EntryDraft = { description: s.description, hours, ...s.codes, billable: s.billable, hourlyRate, day };
     const sameDay = sameDayOf(w, project?.id ?? null, day);
     const check: CheckContext = { ...rc, sameDay, splitCount: plan.length, suggestion: single?.description ?? null };
     const drafted = asDrafted ? ((stretch.draft?.source ?? "capture") as DraftSource) : undefined;
-    const input: KeepInput = { description: s.description, projectID: null, matter: s.matter.trim() || null, billable: s.billable, ...(drafted ? { drafted } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}), ...(s.leaveOutIdle && idle > 0 ? { leaveOutIdle: true } : {}), ...(rc.book ? { hours, ...s.codes, hourlyRate } : {}) };
+    const input: KeepInput = { description: s.description, projectID: null, matter: s.matter.trim() || null, billable: s.billable, ...(drafted ? { drafted } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}), ...(s.leaveOutIdle && idle > 0 ? { leaveOutIdle: true } : {}), ...(missingTime || !preview ? {} : { hours }), ...(rc.book ? { ...s.codes, hourlyRate } : {}) };
     return { project, rc, day, start, end, changed, missingTime, imported, span, idle, left, preview, previewSeconds, hours, hourlyRate, plan, draft, sameDay, check, findings: checkEntry(draft, check), asDrafted, ...(drafted ? { drafted } : {}), input };
 }
 
@@ -303,7 +305,7 @@ const unstopped = (text: string): string => text.trim().replace(/[.;]+$/, "");
 /** The report in a toast: how much was kept, then the first three rows that were not and why, then how many more. */
 export function approveSummary(r: ApproveReport): string {
     const hours = r.kept.reduce((n, k) => n + k.hours, 0);
-    const kept = r.kept.length ? `Kept ${r.kept.length} ${r.kept.length === 1 ? "entry" : "entries"}, ${hours.toFixed(1)} hr.` : "Nothing was kept.";
+    const kept = r.kept.length ? `Kept ${r.kept.length} ${r.kept.length === 1 ? "entry" : "entries"}, ${hoursText(hours)} hr.` : "Nothing was kept.";
     if (!r.skipped.length) return kept;
     const named = r.skipped.slice(0, 3).map((x) => `“${short(x.label)}” ${SHEET_REASONS.has(x.reason) ? `needs the Keep sheet: ${unstopped(x.message)}` : SHORT_REASONS[x.reason] ?? `could not be kept: ${unstopped(x.message)}`}`);
     const more = r.skipped.length - named.length;

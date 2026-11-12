@@ -5,6 +5,7 @@ import { nextInvoiceNumber, type BillingSetup, type ClientRulebook, type Workspa
 import { rejectionProposals, resubmits } from "@shared/rejection";
 import { describeRule } from "@shared/clientRulebooks";
 import { ContextMenu, Menu } from "./Menu";
+import { hoursText } from "@shared/billingMode";
 
 /* Billing on the Time page: apply a client's rules to the day (or none), see each change
    inline under its entry with a chip naming the rule, and make the time sheet or invoice for
@@ -121,7 +122,7 @@ export function EntryChanges({ lines, book, w, onRules }: { lines: AppliedLine[]
                     {lines.map((l) => (
                         <div key={l.part ?? 0} className="split-row">
                             <span className="split-text"><Segments segments={l.segments} book={book} /></span>
-                            <span className="mono split-hours">{l.hours.toFixed(1)} h</span>
+                            <span className="mono split-hours">{hoursText(l.hours)} h</span>
                         </div>
                     ))}
                 </div>
@@ -248,7 +249,7 @@ export function InvoiceSheet({ w, kind, day, onClose }: { w: Workspace; kind: "i
                         {back && <p className="small accent" title={`${back.rejection!.by} sent invoice ${back.number} back${back.rejection ? ` on ${new Date(back.rejection.at).toLocaleDateString()}` : ""}. Entries still flagged are not on this one until fixed and confirmed.`}>Resubmits invoice {back.number}, sent back by {back.rejection!.by}.</p>}
                         <p className="muted tiny">
                             {project ? `Bill to ${(project.billTo?.[0] || project.client) || "no one yet: set the client on the matter"}` : ""}{scope.to ? ` · through ${longDate(scope.to)}` : ""}
-                            {bill.lines.length ? ` · ${bill.lines.length} ${bill.lines.length === 1 ? "line" : "lines"}, ${bill.totals.billedHours.toFixed(1)} h` : " · nothing kept on this matter in this period"}
+                            {bill.lines.length ? ` · ${bill.lines.length} ${bill.lines.length === 1 ? "line" : "lines"}, ${hoursText(bill.totals.billedHours)} h` : " · nothing kept on this matter in this period"}
                             {bill.book && bill.standard !== bill.totals.fees ? ` · generic ${money(bill.standard)} → ${shortName(bill.book)} ${money(bill.totals.fees)}` : ""}
                             {w.billing?.folder ? ` · saved in ${w.billing.folder}` : " · you will be asked where to save it"}
                         </p>

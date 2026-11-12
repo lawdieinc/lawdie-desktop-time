@@ -5,6 +5,7 @@
 import { money } from "./invoice";
 import type { AppliedBill, AppliedLine } from "./applyRules";
 import type { InvoiceTerms, Workspace } from "./model";
+import { hoursText } from "./billingMode";
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -88,12 +89,12 @@ export function timeSheetHtml(w: Workspace, terms: InvoiceTerms, logo: string | 
     const rows = invoiceRows(bill);
     const t = bill.totals;
     const who = w.profile?.name ?? terms.timekeeper.name;
-    const body = rows.map((l) => `<tr><td>${l.date}</td><td>${esc(l.timekeeper)}</td><td class="num">${l.hours.toFixed(1)}</td><td class="num">${money(l.rate)}</td><td class="num">${l.noCharge ? `<span class="nc">No charge</span>` : money(l.amount)}</td><td>${esc(l.narrative)}${l.note ? `<br /><span class="nc">${esc(l.note)}</span>` : ""}</td></tr>`).join("");
+    const body = rows.map((l) => `<tr><td>${l.date}</td><td>${esc(l.timekeeper)}</td><td class="num">${hoursText(l.hours)}</td><td class="num">${money(l.rate)}</td><td class="num">${l.noCharge ? `<span class="nc">No charge</span>` : money(l.amount)}</td><td>${esc(l.narrative)}${l.note ? `<br /><span class="nc">${esc(l.note)}</span>` : ""}</td></tr>`).join("");
     return page(`Time detail ${terms.matter}`, `${head(terms, logo)}
 <h1>Time detail: ${esc(who)}</h1>
 <p class="sub">${esc(terms.matter)} ${esc(terms.matterName)} · ${rows[0]?.date ?? ""}<br />${esc(rulesLine(w, terms, bill) ?? "Generic: standard rates, no client rules applied")}</p>
 <table><thead><tr><th>Date</th><th>Timekeeper</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th><th>Description</th></tr></thead>
-<tbody>${body}<tr class="total"><td colspan="2">Total</td><td class="num">${t.hours.toFixed(1)}${t.billedHours !== t.hours ? ` <span class="nc">(${t.billedHours.toFixed(1)} billed)</span>` : ""}</td><td></td><td class="num">${money(t.fees)}</td><td></td></tr></tbody></table>`, "sheet");
+<tbody>${body}<tr class="total"><td colspan="2">Total</td><td class="num">${hoursText(t.hours)}${t.billedHours !== t.hours ? ` <span class="nc">(${hoursText(t.billedHours)} billed)</span>` : ""}</td><td></td><td class="num">${money(t.fees)}</td><td></td></tr></tbody></table>`, "sheet");
 }
 
 /** The seed's remittance lines as written, or placeholders that ask for the invoice number. */
@@ -106,7 +107,7 @@ export function invoiceHtml(w: Workspace, terms: InvoiceTerms, logo: string | nu
     const t = bill.totals;
     const rate = rows.find((l) => !l.noCharge)?.rate ?? 0;
     const date = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-    const body = rows.map((l) => `<tr><td>${l.date}</td><td>${esc(l.timekeeper)}</td><td>${esc(l.narrative)}${l.note ? `<br /><span class="nc">${esc(l.note)}</span>` : ""}</td><td class="num">${l.hours.toFixed(1)}</td><td class="num">${l.noCharge ? `<span class="nc">No charge</span>` : money(l.amount)}</td></tr>`).join("");
+    const body = rows.map((l) => `<tr><td>${l.date}</td><td>${esc(l.timekeeper)}</td><td>${esc(l.narrative)}${l.note ? `<br /><span class="nc">${esc(l.note)}</span>` : ""}</td><td class="num">${hoursText(l.hours)}</td><td class="num">${l.noCharge ? `<span class="nc">No charge</span>` : money(l.amount)}</td></tr>`).join("");
     return page(`Invoice ${terms.number}`, `${head(terms, logo)}
 <div class="blocks">
   <div class="block"><p class="label">Bill to</p>${terms.billTo.map((x) => `<p>${esc(x)}</p>`).join("")}</div>
@@ -122,7 +123,7 @@ export function invoiceHtml(w: Workspace, terms: InvoiceTerms, logo: string | nu
 <table><thead><tr><th>Date</th><th>Timekeeper</th><th>Description</th><th class="num">Hours</th><th class="num">Amount</th></tr></thead><tbody>${body}</tbody></table>
 <div class="keep"><h2>Timekeeper summary</h2>
 <table><thead><tr><th>Timekeeper</th><th>Title</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
-<tbody><tr><td>${esc(terms.timekeeper.name)}</td><td>${esc(terms.timekeeper.title)}</td><td class="num">${t.billedHours.toFixed(1)}</td><td class="num">${money(rate)}</td><td class="num">${money(t.fees)}</td></tr></tbody></table>
+<tbody><tr><td>${esc(terms.timekeeper.name)}</td><td>${esc(terms.timekeeper.title)}</td><td class="num">${hoursText(t.billedHours)}</td><td class="num">${money(rate)}</td><td class="num">${money(t.fees)}</td></tr></tbody></table>
 <table class="due"><tbody><tr><td>Total fees</td><td class="num">${money(t.fees)}</td></tr><tr class="grand"><td>Total due</td><td class="num">${money(t.fees)}</td></tr></tbody></table>
 <p class="sub" style="text-align:right;margin-top:6pt">Payment terms: ${esc(terms.terms)}${terms.contact ? `<br />${esc(terms.contact)}` : ""}</p>
 <div class="remit"><strong>Remittance</strong><br />${remitLines(terms).map(esc).join("<br />")}</div></div>`, "invoice");

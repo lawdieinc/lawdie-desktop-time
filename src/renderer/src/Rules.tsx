@@ -148,7 +148,7 @@ export function EntryRules({ w, entry }: { w: Workspace; entry: TimeEntry }): Re
     const found = checkEntry(d, { ...c, sameDay: sameDayOf(w, entry.projectID, d.day, entry.id) });
     return (
         <span className="entry-rules tiny">
-            <span className="mono">{d.hours.toFixed(1)} h</span>
+            <span className="mono">{d.hours.toFixed(Math.round(d.hours * 100) % 10 ? 2 : 1)} h</span>
             {entry.taskCode && <span className="mono">{entry.taskCode}{entry.activityCode ? ` / ${entry.activityCode}` : ""}</span>}
             {!entry.billable && <span>no charge</span>}
             {found.length ? <span className="rule-flag" title={found.map((f) => `${f.rule.title}: ${f.cite}`).join("\n")}>{found.length} {found.length === 1 ? "rule" : "rules"} to fix{found.some((f) => f.isNew) ? " · new rule" : ""}</span>

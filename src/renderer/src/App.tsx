@@ -29,6 +29,7 @@ import { LATEST_RELEASE, needsWhatsNew } from "@shared/releases";
 import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
 import type { SearchTarget } from "@shared/search";
 import { SearchBar, reveal } from "./Search";
+import { BILLING_MODES, billedHours as billed, billingModeOf, entryHours, hoursText, hoursWithin, hr, incrementOf, sumHours, type BillingMode } from "@shared/billingMode";
 
 /* The window. Four screens (Time, Activity, Matters, Settings) and the Kiwi
    connection. Everything it shows is the main process's AppState; everything it does
@@ -261,16 +262,16 @@ function Today({ w, now, onRules, tutorial = false, focus = null, onFocused = ()
     }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
     const { start, end, label } = rangeBounds(range, now, from, to);
     const entries = w.entries.filter((e) => Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
-    const tracked = entries.reduce((s, e) => s + secondsWithin(e, start, end), 0);
+    const tracked = sumHours(entries, start, end);
     // Billable time is what goes on the bill: kept entries, not a suggestion or a flag still waiting for Rosa.
-    const billable = entries.filter((e) => e.billable && (!e.status || e.status === "draft")).reduce((s, e) => s + secondsWithin(e, start, end), 0);
+    const billable = sumHours(entries.filter((e) => e.billable && (!e.status || e.status === "draft")), start, end);
     const pending = toReview(w.activities);
     const waiting = entries.filter((e) => e.status === "suggested" || e.status === "flagged").length;
     // Grouped by day, newest first; a day's figure is only what fell inside the range.
     const days = new Map<string, TimeEntry[]>();
     for (const e of entries) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
     const byProject = new Map<string, number>();
-    for (const e of entries.filter((x) => x.billable)) { const name = w.projects.find((p) => p.id === e.projectID)?.name ?? "No project"; byProject.set(name, (byProject.get(name) ?? 0) + secondsWithin(e, start, end)); }
+    for (const e of entries.filter((x) => x.billable)) { const name = w.projects.find((p) => p.id === e.projectID)?.name ?? "No project"; byProject.set(name, (byProject.get(name) ?? 0) + hoursWithin(e, start, end)); }
     const projects = [...byProject.entries()].sort((a, b) => b[1] - a[1]);
     const privates = (w.privateStretches ?? []).filter((x) => Date.parse(x.startedAt) < end && Date.parse(x.endedAt) > start);
     const privatesOf = (k: string): PrivateStretch[] => privates.filter((x) => dayKey(Date.parse(x.startedAt)) === k);
@@ -324,7 +325,7 @@ function Today({ w, now, onRules, tutorial = false, focus = null, onFocused = ()
                 <Panel>
                     <div className="row between"><strong>Billable, by project</strong><span className="eyebrow">{label}</span></div>
                     {projects.map(([name, secs]) => (
-                        <div className="row between small" key={name} style={{ padding: "8px 0" }}><span>{name}</span><span className="mono">{duration(secs)}</span></div>
+                        <div className="row between small" key={name} style={{ padding: "8px 0" }}><span>{name}</span><span className="mono">{hr(Math.round(secs * 100) / 100)}</span></div>
                     ))}
                 </Panel>
             )}
@@ -346,14 +347,14 @@ function Today({ w, now, onRules, tutorial = false, focus = null, onFocused = ()
                         {range !== "today" && (
                             <div className="row between day-head">
                                 <span className="eyebrow">{dayLabel(list[0].startedAt, new Date(now))}</span>
-                                <span className="muted tiny mono">{duration(list.reduce((s, e) => s + secondsWithin(e, start, end), 0))} · billable {duration(list.filter((e) => e.billable).reduce((s, e) => s + secondsWithin(e, start, end), 0))}</span>
+                                <span className="muted tiny mono">{hr(sumHours(list, start, end))} · billable {hr(sumHours(list.filter((e) => e.billable), start, end))}</span>
                             </div>
                         )}
                         {matterGroups(w, list).map((g) => (
                             <section className="entry-group" key={g.key}>
                                 <GroupHead title={g.project?.name ?? "No matter yet"}
                                     tip={g.project ? (g.project.client ? `Billed to ${g.project.client.replace(/\.?$/, ".")}` : "No client is set for this matter.") : "Time Lawdie could not put on a matter. It is not billed until it has one."}
-                                    total={duration(g.entries.reduce((s, e) => s + secondsWithin(e, start, end), 0))}
+                                    total={hr(sumHours(g.entries, start, end))}
                                     totalTip={g.project ? billedTip(allBill, g.entries) : "Not billed until it has a matter."} />
                                 {g.entries.map((e) => <EntryRow key={e.id} entry={e} w={w} lines={lines?.get(e.id)} book={dayBill.book} onRules={onRules} />)}
                             </section>
@@ -393,7 +394,7 @@ function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: {
             </div>
             {entry.status === "suggested" && <button type="button" className="fix" title={SUGGESTED_TIP} onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>}
             {entry.status === "flagged" && <button type="button" className="fix" title={flaggedTip(entry)} onClick={() => setEditing(true)}>{entry.projectID ? "Fix and confirm" : "Assign and edit"}</button>}
-            <span className="mono" title={timeBlock(entry)}>{duration(entrySeconds(entry))}</span>
+            <span className="mono" title={timeBlock(entry)}>{hr(entryHours(entry))}</span>
             <button type="button" className="quiet" disabled={draft !== null} title={inline ? "Edit this narrative here, in the row." : "Change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}>Edit</button>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
             {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
@@ -418,7 +419,7 @@ function matterGroups(w: Workspace, list: readonly TimeEntry[]): { key: string; 
 function billedTip(bill: AppliedBill, entries: readonly TimeEntry[]): string {
     const ids = new Set(entries.map((e) => e.id));
     const hours = bill.lines.filter((l) => ids.has(l.entryId) && !l.noCharge).reduce((n, l) => n + l.hours, 0);
-    return `${hours.toFixed(1)} h billed ${bill.book ? `under ${shortName(bill.book)} rules` : "at standard rates"}.`;
+    return `${hoursText(hours)} h billed ${bill.book ? `under ${shortName(bill.book)} rules` : "at standard rates"}.`;
 }
 
 /** A matter's title over its entries, with the group's time on the right. */
@@ -521,7 +522,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
             const left = new Set(report.skipped.map((x) => x.activityIDs.join("\n")));
             setTicked((t) => new Set([...t].filter((id) => !list.some((r) => r.id === id) || left.has(rowByID.get(id)?.stretch.activityIDs.join("\n") ?? ""))));
             const one = list.length === 1 && report.kept.length === 1 ? report.kept[0] : null;
-            if (one) notify(`Kept “${one.label}” on ${list[0].matter}: ${one.hours.toFixed(1)} hr.`);
+            if (one) notify(`Kept “${one.label}” on ${list[0].matter}: ${hoursText(one.hours)} hr.`);
             else notify(approveSummary(report), 12000);
         } finally { setApproving(false); }
     };
@@ -586,7 +587,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                                     <div className="small strong">{short.length} brief {short.length === 1 ? "touch" : "touches"}</div>
                                     <div className="muted tiny">Under {NOISE_SECONDS} seconds each, on a matter or not: app hops and glances, not billable time. Sittings on one document within {gapMinutes} minutes are already grouped above.</div>
                                 </div>
-                                <span className="mono">{duration(shortSeconds)}</span>
+                                <span className="mono">{hr(billed(shortSeconds, incrementOf(w.preferences)))}</span>
                                 <button type="button" className="quiet" title="Take all the short switches out of review." onClick={() => void window.lawdie.dismissActivity(short.flatMap((st) => st.activityIDs))}>Dismiss all</button>
                             </div>
                         )}
@@ -609,12 +610,12 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                                             {spans.length > 1 && <SittingsToggle label={`${spans.length} sittings`} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
                                         </div>
                                     </div>
-                                    <span className="mono">{duration(entrySeconds(e))}</span>
+                                    <span className="mono">{hr(entryHours(e))}</span>
                                     <span className="muted small status kept">Kept</span>
                                     <button type="button" className="quiet" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
                                 </div>
                                 {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
-                                {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entryID={e.id} byID={byID} />}
+                                {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entryID={e.id} byID={byID} increment={incrementOf(w.preferences)} />}
                             </div>
                         );
                     })
@@ -677,7 +678,7 @@ function ApproveBar({ rows, selected, approving, onSelect, onApprove }: { rows: 
                 <span className="menu-sep" aria-hidden="true" />
                 <button type="button" role="menuitem" disabled={!selected.length} title="Untick every row." onClick={() => onSelect([])}>Clear selection</button>
             </Menu>
-            <span className="grow muted small">{selected.length ? `${selected.length} selected · ${hours.toFixed(1)} hr` : "Approve keeps a row as it reads. Tick rows to approve several at once."}</span>
+            <span className="grow muted small">{selected.length ? `${selected.length} selected · ${hoursText(hours)} hr` : "Approve keeps a row as it reads. Tick rows to approve several at once."}</span>
             <span title={goTip}><button type="button" className="primary approve-selected" disabled={!selected.length || approving} title={goTip} onClick={onApprove}>Approve selected ({selected.length})</button></span>
         </div>
     );
@@ -714,12 +715,11 @@ function MatterLine({ row, children }: { row: Pick<ReviewRow, "matter" | "sittin
     );
 }
 
-/** A row's time: what was captured, and under it the hours it bills as. */
-function RowTime({ seconds, hours, client }: { seconds: number; hours: number; client: string | null }): ReactNode {
+/** A row's time, as the hours it bills as: the billing mode's increment, or the client's own under its rules. */
+function RowTime({ hours, client, mode }: { hours: number; client: string | null; mode: BillingMode }): ReactNode {
     return (
         <span className="row-time">
-            <span className="mono">{duration(seconds)}</span>
-            <span className="mono billed" title={`Billed as ${hours.toFixed(1)} hours: captured time rounded up to the tenth${client ? `, as ${possessiveOf(client)} rules require` : ""}.`}>{hours.toFixed(1)} hr</span>
+            <span className="mono billed" title={`Billed as ${hoursText(hours)} hours: captured time rounded up${client ? `, as ${possessiveOf(client)} rules require` : ` to the ${BILLING_MODES[mode].unit}`}.`}>{hr(hours)}</span>
         </span>
     );
 }
@@ -729,7 +729,7 @@ const EDIT_TIP = "Open the Keep sheet to change the matter, description, times, 
 /** Approve: keeps the row as shown; opens the Keep sheet when the row needs it; disabled, saying why, when something on the row must change first. */
 function ApproveButton({ row, approving, onApprove, onEdit }: { row: Pick<ReviewRow, "verdict" | "hours" | "matter">; approving: boolean; onApprove: () => void; onEdit: () => void }): ReactNode {
     const v = row.verdict;
-    if (v.ok) return <button type="button" className="primary approve" disabled={approving} title={`Keep this as shown: ${row.hours.toFixed(1)} hr on ${row.matter}, billable.`} onClick={onApprove}>Approve</button>;
+    if (v.ok) return <button type="button" className="primary approve" disabled={approving} title={`Keep this as shown: ${hoursText(row.hours)} hr on ${row.matter}, billable.`} onClick={onApprove}>Approve</button>;
     if (v.opensSheet) return <button type="button" className="primary approve" title={`Opens the Keep sheet: ${v.message}`} onClick={onEdit}>Approve</button>;
     return <span title={v.message}><button type="button" className="primary approve" disabled title={v.message}>Approve</button></span>;
 }
@@ -771,7 +771,7 @@ function SampleRow({ tutorial: { stretch: st, sittings }, open, onToggle, notify
                         <SittingsToggle label="1 item" open={open} what="the documents in this matter" onClick={onToggle} />
                     </div>
                 </div>
-                <RowTime seconds={st.seconds} hours={billedHours(st.seconds)} client={null} />
+                <RowTime hours={billedHours(st.seconds)} client={null} mode="tenths" />
                 <span className="row-actions" data-tour="review-actions">
                     <button type="button" className="quiet menu-button" title="Move this time to another matter, off any matter, or to a new one." onClick={() => explain("Matter moves this time to another matter, off any matter, or to a new one you name in place")}>Matter <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
                     <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => explain(`${PERSONAL} keeps the time out of billing and sync for good`)}>Personal</button>
@@ -800,14 +800,14 @@ function SampleRow({ tutorial: { stretch: st, sittings }, open, onToggle, notify
 function MergeLine({ match, merged }: { match: TimeEntry | null; merged: boolean }): ReactNode {
     if (merged) return <div className="merge-note tiny">↺ Added to a kept entry · keep it again to put it back on your timesheet</div>;
     if (!match) return null;
-    return <div className="merge-note tiny">↔ Add this to your kept entry <strong>“{match.description}”</strong> ({clock(match.startedAt)}–{clock(match.endedAt)}, {duration(entrySeconds(match))})?</div>;
+    return <div className="merge-note tiny">↔ Add this to your kept entry <strong>“{match.description}”</strong> ({clock(match.startedAt)}–{clock(match.endedAt)}, {hr(entryHours(match))})?</div>;
 }
 
 /**
  * Under a kept entry: the new activity since, that looks like more of it, each with Add (the
  * entry comes back to review with it, to be kept again as one) and Separate.
  */
-function NewSince({ rows, entryID, byID }: { rows: string[][]; entryID: string; byID: Map<string, Activity> }): ReactNode {
+function NewSince({ rows, entryID, byID, increment }: { rows: string[][]; entryID: string; byID: Map<string, Activity>; increment: number }): ReactNode {
     return (
         <div className="new-since">
             <div className="eyebrow">New since</div>
@@ -821,7 +821,7 @@ function NewSince({ rows, entryID, byID }: { rows: string[][]; entryID: string; 
                     <div className="sitting" key={ids[0]}>
                         <span className="sitting-dot new" aria-hidden="true" />
                         <span className="grow"><span className="small">{name}</span> <span className="tiny muted">· {apps} · {dayLabel(first.startedAt)} {spanLabel(first.startedAt, last.endedAt, acts.length)}</span></span>
-                        <span className="mono small">{duration(acts.reduce((n, a) => n + entrySeconds(a), 0))}</span>
+                        <span className="mono small">{hr(billed(acts.reduce((n, a) => n + entrySeconds(a), 0), increment))}</span>
                         <button type="button" className="link sitting-dismiss" title="The new time is other work: it stays in review on its own" onClick={() => void window.lawdie.keepSeparate(ids, entryID)}>Separate</button>
                         <button type="button" className="link sitting-dismiss add" title="This entry comes back to review with the new time, to be kept again as one" onClick={() => void window.lawdie.mergeIntoEntry(ids, entryID)}>Add to entry</button>
                     </div>
@@ -974,7 +974,7 @@ function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, a
                     </div>
                     <MergeLine match={match} merged={merged} />
                 </div>
-                <RowTime seconds={g.seconds} hours={row.hours} client={row.client} />
+                <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} />
                 <RowActions w={w} row={row} match={match} what={`${g.matter}'s time`} dismissTip="Take this matter's activity out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
             </div>
             {open && (
@@ -1021,7 +1021,7 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
                     </div>
                     <MergeLine match={match} merged={merged} />
                 </div>
-                <RowTime seconds={st.seconds} hours={row.hours} client={row.client} />
+                <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} />
                 <RowActions w={w} row={row} match={match} what={own?.text ?? st.name} dismissTip="Take this stretch out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
             </div>
             {open && st.sittings > 1 && (
@@ -1168,7 +1168,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
                         <SplitLines lines={lines} setLines={setLines} c={{ ...rc, sameDay }} sameDay={sameDay} />
                         {problem && <p className="danger small">{problem}</p>}
                         <div className="row between">
-                            <span className="mono accent big">{lines.reduce((n, l) => n + l.draft.hours, 0).toFixed(1)} h</span>
+                            <span className="mono accent big">{hoursText(lines.reduce((n, l) => n + l.draft.hours, 0))} h</span>
                             <span className="row gap"><button type="button" className="quiet" title="Go back to one entry for the whole stretch." onClick={() => setLines(null)}>Back</button><button type="submit" className="primary" title="Save each line as its own time entry.">Keep {lines.length} entries</button></span>
                         </div>
                     </>
@@ -1192,7 +1192,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
                         {problem && <p className="danger small">{problem}</p>}
                         {missingTime && <p className="danger small">Enter a {!startText ? "start" : "end"} time.</p>}
                         <div className="row between">
-                            <span className="mono accent big">{missingTime ? "—" : rc.book ? `${hours.toFixed(1)} h` : duration(previewSeconds)}</span>
+                            <span className="mono accent big">{missingTime ? "—" : hr(hours)}</span>
                             <span className="row gap"><button type="button" className="quiet" title="Close without keeping any time." onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={missingTime} title={missingTime ? "Enter both times first." : "Save this as one time entry."}>Keep time</button></span>
                         </div>
                     </>
@@ -1205,6 +1205,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
 // ---------------------------------------------------------------------------
 
 const money = (n: number): string => n.toLocaleString([], { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+/** `tracked` and `billable` are billed hours: the sum of the entries' own. */
 type MatterStats = { tracked: number; billable: number; value: number; entries: TimeEntry[] };
 /** An entry that goes on the bill: kept as billable, not a suggestion, a flag or a dismissal still waiting for Rosa. */
 const onBill = (e: TimeEntry): boolean => e.billable && (!e.status || e.status === "draft");
@@ -1214,11 +1215,11 @@ function statsFor(w: Workspace, projectID: string | null, start: number, end: nu
     const entries = w.entries.filter((e) => e.projectID === projectID && Date.parse(e.startedAt) < end && Date.parse(e.endedAt) > start).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
     let tracked = 0, billable = 0, value = 0;
     for (const e of entries) {
-        const secs = secondsWithin(e, start, end);
-        tracked += secs;
-        if (onBill(e)) { billable += secs; value += amounts.get(e.id) ?? 0; }
+        const hours = hoursWithin(e, start, end);
+        tracked += hours;
+        if (onBill(e)) { billable += hours; value += amounts.get(e.id) ?? 0; }
     }
-    return { tracked, billable, value: Math.round(value * 100) / 100, entries };
+    return { tracked: Math.round(tracked * 100) / 100, billable: Math.round(billable * 100) / 100, value: Math.round(value * 100) / 100, entries };
 }
 const MATTER_RANGES = RANGES.filter((r) => r.key !== "custom");
 
@@ -1286,8 +1287,8 @@ function MattersView({ w, now, onReview, focus = null, onFocused = () => undefin
                 <span className="small strong">{p.name}</span>
                 <span className="muted tiny">{p.client || "No client"} · {p.hourlyRate ? `${money(p.hourlyRate)}/h` : "No rate set"}</span>
             </span>
-            <span className="mono small">{duration(stats.tracked)}</span>
-            <span className="mono small">{duration(stats.billable)}</span>
+            <span className="mono small">{hr(stats.tracked)}</span>
+            <span className="mono small">{hr(stats.billable)}</span>
             <span className="mono small">{dollars(stats.value)}</span>
             <span className="tiny">{list.length ? <span className="waiting">{list.length} to review</span> : null}</span>
         </button>
@@ -1298,7 +1299,7 @@ function MattersView({ w, now, onReview, focus = null, onFocused = () => undefin
             <MatterLinks w={w} />
             <div className="row between wrap">{rangeTabs}</div>
             <div className="metrics">
-                <Metric label="Billable value" value={dollars(total)} detail={((n) => `${duration(billable)} billable across ${n} ${n === 1 ? "matter" : "matters"}`)(open.filter((r) => r.stats.tracked > 0).length)} />
+                <Metric label="Billable value" value={dollars(total)} detail={((n) => `${hr(Math.round(billable * 100) / 100)} billable across ${n} ${n === 1 ? "matter" : "matters"}`)(open.filter((r) => r.stats.tracked > 0).length)} />
                 <Metric label="Open matters" value={String(open.length)} detail={archived.length ? `${archived.length} archived` : "Made when you keep time on a matter"} />
                 <Metric label="No matter" value={cardTime(none.tracked)} detail={none.entries.length ? `${none.entries.length} ${none.entries.length === 1 ? "entry" : "entries"} kept without one` : "Everything kept is on a matter"} />
             </div>
@@ -1310,8 +1311,8 @@ function MattersView({ w, now, onReview, focus = null, onFocused = () => undefin
                     <button type="button" className="matter-row" title="Open the time kept without a matter." onClick={() => setSelected("none")}>
                         <span className="app-icon muted" aria-hidden="true">·</span>
                         <span className="matter-name"><span className="small strong muted">No matter</span><span className="muted tiny">Kept without a matter</span></span>
-                        <span className="mono small">{duration(none.tracked)}</span>
-                        <span className="mono small">{duration(none.billable)}</span>
+                        <span className="mono small">{hr(none.tracked)}</span>
+                        <span className="mono small">{hr(none.billable)}</span>
                         <span className="mono small">{dollars(none.value)}</span>
                         <span />
                     </button>
@@ -1413,7 +1414,7 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
                                 <div className="small strong">{g.documents.slice(0, 3).map((d) => d.name).join("; ")}</div>
                                 <div className="muted tiny">{g.apps.join(", ")} · {dayLabel(g.startedAt, new Date(now))} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}</div>
                             </div>
-                            <span className="mono">{duration(g.seconds)}</span>
+                            <span className="mono">{hr(billed(g.seconds, incrementOf(w.preferences)))}</span>
                         </div>
                     ))}
                 </Panel>
@@ -1424,7 +1425,7 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
                     <div key={k}>
                         <div className="row between day-head">
                             <span className="eyebrow">{dayLabel(list[0].startedAt, new Date(now))}</span>
-                            <span className="muted tiny mono">{duration(list.reduce((n, e) => n + entrySeconds(e), 0))}</span>
+                            <span className="muted tiny mono">{hr(sumHours(list))}</span>
                         </div>
                         {list.map((e) => <EntryRow key={e.id} entry={e} w={w} />)}
                     </div>
@@ -1540,6 +1541,11 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 </Setting>
                 <Setting title="Reviewed activity" detail={`Sittings you kept or dismissed are removed this long after you review them. Your time entries stay. Time you have not reviewed waits ${pendingDays(w.preferences)} days, and you are warned a week before any of it goes.`}>
                     <select value={p.retentionDays} title="Choose how long reviewed activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
+                </Setting>
+            </Panel>}
+            {tab === "billing" && <Panel>
+                <Setting title="Billing mode" detail="How time is billed and shown: rounded up to the tenth of an hour (6 minutes) or to the quarter hour (15 minutes). It applies to time you keep from now on; entries already kept stay as they were billed. A client's own rule on increments wins for that client.">
+                    <select value={billingModeOf(p)} title="Bill and show time in tenths of an hour or in quarter hours." onChange={(e) => set("billingMode", e.target.value as BillingMode)}>{(Object.keys(BILLING_MODES) as BillingMode[]).map((m) => <option key={m} value={m}>{BILLING_MODES[m].label} ({BILLING_MODES[m].detail})</option>)}</select>
                 </Setting>
             </Panel>}
             {tab === "billing" && <BillingSettings w={w} onRules={onRules} />}
@@ -1662,7 +1668,8 @@ function PermissionCallout({ pane, title, what }: { pane: "screen" | "accessibil
     );
 }
 /** Time on a card: "None" when there is none, else hours and minutes ("1h 05m", "12m"), never seconds. */
-const cardTime = (secs: number): string => (secs < 30 ? "None" : duration(Math.max(60, Math.round(secs / 60) * 60)));
+/** A card's figure, in billed hours. */
+const cardTime = (hours: number): string => (hours <= 0 ? "None" : hr(hours));
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }): ReactNode {
     return <section className="panel metric"><p className="muted small">{label}</p><p className="value">{value}</p><p className="muted tiny">{detail}</p></section>;
 }

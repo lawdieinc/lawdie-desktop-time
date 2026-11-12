@@ -5,7 +5,8 @@
 
 import type { ReactNode } from "react";
 import { pendingDays, pendingExpiring, type Workspace } from "@shared/model";
-import { dayLabel, duration } from "@shared/format";
+import { dayLabel } from "@shared/format";
+import { billedHours, hr, incrementOf } from "@shared/billingMode";
 
 /** Passed on so App.tsx takes everything about retention from one line. */
 export { pendingDays };
@@ -23,7 +24,7 @@ export function ExpiringCallout({ w, now, onShowOldest }: { w: Workspace; now: n
         <section className="callout danger" role="status">
             <div className="grow">
                 <p className="callout-title">Unreviewed time from {from === to ? from : `${from} to ${to}`} will be removed</p>
-                <p className="muted">{duration(e.seconds)} you have not kept or dismissed is nearly {pendingDays(w.preferences)} days old. The first of it is removed on {longDate(e.removeAt)}. Keep it or dismiss it before then.</p>
+                <p className="muted">{hr(billedHours(e.seconds, incrementOf(w.preferences)))} you have not kept or dismissed is nearly {pendingDays(w.preferences)} days old. The first of it is removed on {longDate(e.removeAt)}. Keep it or dismiss it before then.</p>
             </div>
             <button type="button" className="quiet" title="List the oldest time first so you can review it before it is removed." onClick={onShowOldest}>Show the oldest</button>
         </section>
@@ -34,7 +35,7 @@ export function ExpiringCallout({ w, now, onShowOldest }: { w: Workspace; now: n
 export function ExpiringSidebar({ w, now, onOpen }: { w: Workspace; now: number; onOpen: () => void }): ReactNode {
     const e = expiring(w, now);
     if (!e) return null;
-    return <button type="button" className="link danger small strong" style={{ color: "var(--danger)" }} title="Open Activity to review time before it is removed." onClick={onOpen}>{duration(e.seconds)} unreviewed goes {shortDate(e.removeAt)}</button>;
+    return <button type="button" className="link danger small strong" style={{ color: "var(--danger)" }} title="Open Activity to review time before it is removed." onClick={onOpen}>{hr(billedHours(e.seconds, incrementOf(w.preferences)))} unreviewed goes {shortDate(e.removeAt)}</button>;
 }
 
 /** Beside the Activity count: how long what is listed stays. */

@@ -13,7 +13,7 @@ the wire contract land in all three repos together.
   overlap clipping, matter links), `export.ts` (kept entries as CSV: project, date, hours,
   description; the Time screen's Export CSV, for the range shown), `format.ts`, `state.ts`; billing (see
   Billing): `rules.ts`, `clientRules.ts`, `applyRules.ts`, `invoice.ts`, `invoiceHtml.ts`, `narrative.ts`,
-  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`; `search.ts` (the search bar's finding). Everything here is under
+  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`; `search.ts` (the search bar's finding), `billingMode.ts` (tenths or quarter hours). Everything here is under
   `model.test.ts`, `feed.test.ts` and the billing tests beside their files.
 - `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock that names the boot it was taken in, daily copies in `backups/` (7),
   leftovers of a cut-short save removed at launch),
@@ -287,6 +287,22 @@ override that saves nothing and says so in a toast (its Approve is disabled), an
 small blocks shared by both files live in `ui.tsx`. Entry points: the welcome itself, Settings → Display
 & data → "Learn the app", and `--route welcome|tutorial|whatsnew` for the harness.
 
+## Billing mode
+
+Tenths of an hour or quarter hours (2026-11-12: "seeing 1 minute 32 seconds is useless for a lawyer"). `src/shared/billingMode.ts`
+is pure and tested (`billingMode.test.ts`). Settings → Billing → "Billing mode" sets `preferences.billingMode` (absent =
+tenths). Time is rounded up to the increment, never under one (`billedHours(seconds, increment)`); a client's own
+`time_increment` rule wins for that client (`incrementFor`). The hours are fixed at keep: `keepPreview` puts `hours` in
+every `KeepInput` (before this only under a rulebook), so changing the mode never changes a kept entry, and an entry
+kept before this has no `hours` and stays in tenths wherever it is read (`entryHours`, the invoice's own fallback).
+The screens show work in billed hours ("1.25 hr", `hr()`/`hoursText()`: one decimal, two when the hundredths count),
+never minutes and seconds: review rows (one figure), the Kept list, brief touches, the Time page's entries, groups,
+days and cards, the Matters page, the Keep sheet, the retention warning. A total is the sum of its entries' hours
+(`sumHours`, `hoursWithin`), so a screen adds up to the bill. Left as time, by the user's decision or because it is not
+billed: sittings and items inside a row, idle, "away" gaps, Personal, the work stretches under Why this entry, and the
+live "Currently in …" clock. Invoices, time sheets and the DOCX print hours through `hoursText`. Sync is unchanged:
+the destinations still get captured `seconds`, never the rounded hours.
+
 ## Search
 
 One search bar in the top bar (2026-11-12, "a search bar to search anywhere"; settings left out by the user's decision).
@@ -547,3 +563,5 @@ Approve and bulk approve on the Keep sheet's own logic (`src/shared/keep.ts`, Ma
 Fable agents in parallel worktrees, merged here. Tests 290.
 Same day: a search bar across matters, time to review, kept entries, client rules and invoices (section above), in 0.18.0.
 Verified through the harness on a scratch workspace: each kind of result opens its screen. Tests 301.
+Same day: idle options 1, 6, 12, 15, 30, 60 minutes (a value saved before stays listed), and the billing mode (section
+above), also in 0.18.0. Tests 307.

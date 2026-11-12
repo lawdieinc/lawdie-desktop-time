@@ -425,10 +425,11 @@ export function rulesMet(d: EntryDraft, c: CheckContext): Rule[] {
 
 export type PlanLine = { activityIDs: string[]; sittings: Interval[]; seconds: number; task: Task; draft: EntryDraft; /** Fold this line into a kept entry (one email entry a day) instead of keeping it apart. */ foldInto?: string };
 
-/** One line per captured task, in time order: its narrative from capture, its own minutes rounded up to the tenth, its codes. */
-export function splitPlan(activities: readonly Activity[], ctx: MatterContext | null, profile: Profile | null, base: { billable: boolean; hourlyRate: number; day: string; hours?: number }): PlanLine[] {
+/** One line per captured task, in time order: its narrative from capture, its own minutes rounded up to the increment (tenths unless given), its codes. */
+export function splitPlan(activities: readonly Activity[], ctx: MatterContext | null, profile: Profile | null, base: { billable: boolean; hourlyRate: number; day: string; hours?: number; increment?: number }): PlanLine[] {
     const tasks = tasksOf(activities, ctx, profile?.name ?? null);
-    const hours = base.hours === undefined ? tasks.map((t) => Math.max(0.1, roundUpToTenth(t.seconds / 3600))) : allocateHours(tasks.map((t) => t.seconds), base.hours);
+    const inc = base.increment ?? 0.1;
+    const hours = base.hours === undefined ? tasks.map((t) => Math.max(inc, Math.round(Math.ceil(t.seconds / 3600 / inc - 1e-6) * inc * 100) / 100)) : allocateHours(tasks.map((t) => t.seconds), base.hours);
     return tasks.map((t, n) => ({
         activityIDs: t.activityIDs, sittings: activities.filter((a) => t.activityIDs.includes(a.id)).flatMap(intervals), seconds: t.seconds, task: t,
         draft: { description: t.text, hours: hours[n], taskCode: t.taskCode, activityCode: t.activityCode, billable: base.billable, hourlyRate: base.hourlyRate, day: base.day },

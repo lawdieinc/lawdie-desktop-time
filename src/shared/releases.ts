@@ -40,10 +40,10 @@ export const RELEASES: readonly Release[] = [
         date: "2026-11-12",
         title: "Approve your day in a click",
         items: [
-            { icon: "sparkle", title: "Rows lead with the description", description: "Each row shows its narrative, matter number and hours in tenths, as billed.", route: "activity" },
+            { icon: "sparkle", title: "Rows lead with the description", description: "Each row shows its narrative, matter number and hours, as billed.", route: "activity" },
             { icon: "clock", title: "Approve, or approve them all", description: "Approve keeps a row as shown; tick rows and approve them together.", route: "activity" },
-            { icon: "rules", title: "Client rules still come first", description: "A row a client's rules would flag opens the Keep sheet instead." },
             { icon: "shield", title: "Unreviewed time waits for you", description: "Time you have not reviewed stays 90 days, with a warning a week before.", route: "activity" },
+            { icon: "invoice", title: "Tenths or quarter hours", description: "Choose your billing mode in Settings; time shows in hours, never minutes and seconds.", route: "settings" },
             { icon: "compass", title: "Search everything", description: "Press ⌘K (Ctrl+K) to find a matter, an entry, time to review, a rule or an invoice." },
         ],
     },

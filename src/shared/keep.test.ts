@@ -48,7 +48,7 @@ describe("the Keep sheet's state", () => {
         const start = keepStart(w, r.stretch, r.sittings, r.matter, "ignored");
         expect(start).toMatchObject({ matter: "Acme lease", description: DRAFT, billable: true, leaveOutIdle: false, hoursSet: null, rate: null, codes: {} });
         const p = keepPreview(w, r.stretch, r.sittings, start, start.single);
-        expect(p.input).toEqual({ description: DRAFT, projectID: null, matter: "Acme lease", billable: true, drafted: "kiwi" });
+        expect(p.input).toEqual({ description: DRAFT, projectID: null, matter: "Acme lease", billable: true, drafted: "kiwi", hours: 0.5 });
         expect(p).toMatchObject({ changed: false, missingTime: false, imported: false, hourlyRate: 450, findings: [], asDrafted: true, drafted: "kiwi" });
         expect(p.project?.id).toBe("p-acme");
     });
@@ -70,7 +70,7 @@ describe("the Keep sheet's state", () => {
     });
 
     it("bills captured time in tenths, rounded up, and never the gaps between sittings", () => {
-        expect([30, 360, 420, 3660].map(billedHours)).toEqual([0.1, 0.1, 0.2, 1.1]);
+        expect([30, 360, 420, 3660].map((s) => billedHours(s))).toEqual([0.1, 0.1, 0.2, 1.1]);
         const w = drafted();
         const r = rowOf(w, ["a1", "a2"]);
         const start = keepStart(w, r.stretch, r.sittings, r.matter, "");
@@ -257,7 +257,8 @@ describe("approving several rows", () => {
         // The captured bounds and sittings exactly, the draft as offered, the matter's project made by name.
         expect(entry).toMatchObject({ description: DRAFT, startedAt: at(0), endedAt: at(60), sittings: [{ startedAt: at(0), endedAt: at(20) }, { startedAt: at(50), endedAt: at(60) }], billable: true, drafted: "kiwi", source: "desktop", activityID: "a1", activityIDs: ["a1", "a2"] });
         expect(seconds(entry)).toBe(30 * 60);
-        expect(entry.hours).toBeUndefined();
+        // The hours are fixed at keep, in the billing mode: a later change of mode never changes them.
+        expect(entry.hours).toBe(0.5);
         expect(viaApprove.projects.map((p) => [p.id === entry.projectID, p.name])).toEqual([[true, "Acme lease"]]);
         // Approving accepts the suggested matter: it is the person's from then on.
         expect(viaApprove.activities.map((a) => [a.disposition, a.matter, a.matterBy])).toEqual([["kept", "Acme lease", "person"], ["kept", "Acme lease", "person"]]);
