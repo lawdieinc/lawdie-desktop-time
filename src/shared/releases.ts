@@ -36,6 +36,17 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.18.0",
+        date: "2026-11-12",
+        title: "Approve your day in a click",
+        items: [
+            { icon: "sparkle", title: "Rows lead with the description", description: "Each row shows its narrative, matter number and hours in tenths, as billed.", route: "activity" },
+            { icon: "clock", title: "Approve, or approve them all", description: "Approve keeps a row as shown; tick rows and approve them together.", route: "activity" },
+            { icon: "rules", title: "Client rules still come first", description: "A row a client's rules would flag opens the Keep sheet instead." },
+            { icon: "shield", title: "Unreviewed time waits for you", description: "Time you have not reviewed stays 90 days, with a warning a week before.", route: "activity" },
+        ],
+    },
+    {
         id: "0.17.0",
         date: "2026-11-12",
         title: "Each sitting says what it was",

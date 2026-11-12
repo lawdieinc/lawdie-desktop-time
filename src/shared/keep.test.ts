@@ -261,6 +261,8 @@ describe("approving several rows", () => {
         expect(viaApprove.projects.map((p) => [p.id === entry.projectID, p.name])).toEqual([[true, "Acme lease"]]);
         // Approving accepts the suggested matter: it is the person's from then on.
         expect(viaApprove.activities.map((a) => [a.disposition, a.matter, a.matterBy])).toEqual([["kept", "Acme lease", "person"], ["kept", "Acme lease", "person"]]);
+        // Reviewed when approved, so retention counts from now (Workstream A).
+        expect(viaApprove.activities.every((a) => typeof a.reviewedAt === "string")).toBe(true);
         validate(viaApprove);
     });
 

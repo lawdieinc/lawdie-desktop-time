@@ -523,3 +523,8 @@ Kiwi's model, reading one screenshot of it when screenshots are on (Matters, Scr
 `POST /desktop-time/summaries` and images in `completeText` (Gemini only). Verified against a stand-in running Kiwi's
 own cleaners: the Word and Preview sittings went with a 960 px screenshot, the excluded app and the 30 s sitting did
 not, the untitled Preview sitting was named and drafted from its line. Tests 261.
+Same day, version 0.17.0 shipped it. Then, after reading Billables.ai's timekeeping page (their main screen is a list of
+finished entries approved in bulk): unreviewed time waits until it is reviewed (Retention: never removed by the
+retention setting, 90 days at most, a warning a week ahead) and review rows read as the entry they become, with
+Approve and bulk approve on the Keep sheet's own logic (`src/shared/keep.ts`, Matters). Planned by Opus, built by two
+Fable agents in parallel worktrees, merged here. Tests 290.
