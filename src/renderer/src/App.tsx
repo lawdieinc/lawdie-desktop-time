@@ -1544,8 +1544,8 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 </Setting>
             </Panel>}
             {tab === "billing" && <Panel>
-                <Setting title="Billing mode" detail="How time is billed and shown: rounded up to the tenth of an hour (6 minutes) or to the quarter hour (15 minutes). It applies to time you keep from now on; entries already kept stay as they were billed. A client's own rule on increments wins for that client.">
-                    <select value={billingModeOf(p)} title="Bill and show time in tenths of an hour or in quarter hours." onChange={(e) => set("billingMode", e.target.value as BillingMode)}>{(Object.keys(BILLING_MODES) as BillingMode[]).map((m) => <option key={m} value={m}>{BILLING_MODES[m].label} ({BILLING_MODES[m].detail})</option>)}</select>
+                <Setting title="Billing mode" detail="Time is rounded up to this. Entries already kept don't change.">
+                    <select value={billingModeOf(p)} title="Bill and show time in tenths of an hour or in quarter hours." onChange={(e) => set("billingMode", e.target.value as BillingMode)}>{(Object.keys(BILLING_MODES) as BillingMode[]).map((m) => <option key={m} value={m}>{BILLING_MODES[m].label}</option>)}</select>
                 </Setting>
             </Panel>}
             {tab === "billing" && <BillingSettings w={w} onRules={onRules} />}

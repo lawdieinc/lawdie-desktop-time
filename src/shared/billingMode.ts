@@ -11,9 +11,9 @@ import { seconds, secondsWithin, type Preferences, type TimeEntry } from "./mode
 import type { RuleSet } from "./rules";
 
 export type BillingMode = "tenths" | "quarters";
-export const BILLING_MODES: Record<BillingMode, { label: string; detail: string; increment: number; unit: string }> = {
-    tenths: { label: "Tenths of an hour", detail: "0.1 hour = 6 minutes", increment: 0.1, unit: "tenth of an hour" },
-    quarters: { label: "Quarter hours", detail: "0.25 hour = 15 minutes", increment: 0.25, unit: "quarter hour" },
+export const BILLING_MODES: Record<BillingMode, { label: string; increment: number; unit: string }> = {
+    tenths: { label: "Tenths of an hour (6 min)", increment: 0.1, unit: "tenth of an hour" },
+    quarters: { label: "Quarter hours (15 min)", increment: 0.25, unit: "quarter hour" },
 };
 
 export const billingModeOf = (p: Pick<Preferences, "billingMode">): BillingMode => (p.billingMode === "quarters" ? "quarters" : "tenths");
