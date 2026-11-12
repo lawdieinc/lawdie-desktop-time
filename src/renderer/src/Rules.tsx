@@ -1,32 +1,14 @@
 import { useState, type ReactNode } from "react";
-import type { Project, TimeEntry, Workspace } from "@shared/model";
+import type { TimeEntry, Workspace } from "@shared/model";
 import { narrativeFor } from "@shared/narrative";
-import { contextOf } from "@shared/invoice";
-import { applyFix, checkEntry, rulebookFor, rulesMet, type CheckContext, type EntryDraft, type Finding, type Fix, type PlanLine } from "@shared/rules";
+import { draftOf, projectByName, rulesContext, sameDayOf } from "@shared/keep";
+import { applyFix, checkEntry, rulesMet, type CheckContext, type EntryDraft, type Finding, type Fix, type PlanLine } from "@shared/rules";
 
 /* The client's billing rules in the window: what each finding says, the clause it cites,
    and the fix a person accepts with one click. src/shared/rules.ts does the checking. */
 
-/** The rules context of a matter, by name or project: its client's rule set, its people, the timekeeper. */
-export function rulesContext(w: Workspace, project: Project | null | undefined): CheckContext {
-    const ctx = contextOf(project);
-    return { book: project ? rulebookFor(w, ctx, project.client) : null, ctx, profile: w.profile ?? null };
-}
-
-export const projectByName = (w: Workspace, name: string): Project | undefined => w.projects.find((p) => !p.archived && p.name.trim().toLowerCase() === name.trim().toLowerCase());
-
-const localDay = (t: string | number): string => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-
-/** A kept entry as the rules see it. */
-export function draftOf(e: TimeEntry): EntryDraft {
-    const secs = (e.sittings?.length ? e.sittings : [e]).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0);
-    return { id: e.id, description: e.description, hours: e.hours ?? Math.round((secs / 3600) * 100) / 100, taskCode: e.taskCode, activityCode: e.activityCode, billable: e.billable, hourlyRate: e.hourlyRate, day: localDay(e.startedAt) };
-}
-
-/** Entries on the same matter and day, for the rules that look across a day (one email entry, research hours). */
-export function sameDayOf(w: Workspace, projectID: string | null, day: string, except?: string): EntryDraft[] {
-    return w.entries.filter((e) => e.projectID === projectID && e.id !== except && localDay(e.startedAt) === day).map(draftOf);
-}
+// What the rules see of a matter and its entries lives in src/shared/keep.ts, so Approve in the main process reads the same.
+export { rulesContext, projectByName, sameDayOf, draftOf };
 
 /** The narrative capture gives an entry's own sittings, offered when what was typed is vague. */
 export function suggestionFor(w: Workspace, e: TimeEntry, c: CheckContext): string | null {

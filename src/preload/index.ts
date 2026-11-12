@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { AppState } from "@shared/state";
 import type { BillingSetup, EntryChange, KeepInput, KeepLine, Preferences, ProjectChange } from "@shared/model";
 import type { BillScope } from "@shared/invoice";
+import type { ApproveReport } from "@shared/keep";
 import type { ClientRuleInput, RulebookInput } from "@shared/clientRulebooks";
 import type { RejectionInput } from "@shared/rejection";
 import type { Destination, Product } from "@shared/kiwi";
@@ -28,6 +29,8 @@ export const api = {
     setPreference: <K extends keyof Preferences>(key: K, value: Preferences[K]): Promise<boolean> => ipcRenderer.invoke("setPreference", key, value),
     /** One activity, or every sitting of a stretch, as one entry. */
     keepActivity: (ids: string | string[], input: KeepInput): Promise<boolean> => ipcRenderer.invoke("keepActivity", ids, input),
+    /** Approve: keep each row (its activity ids) as it is shown. Rows that cannot be kept that way are named in the report and left alone. */
+    approveRows: (rows: string[][]): Promise<ApproveReport | null> => ipcRenderer.invoke("approveRows", rows),
     /** A matter's day split into one entry per task, all or nothing. */
     keepLines: (lines: KeepLine[]): Promise<boolean> => ipcRenderer.invoke("keepLines", lines),
     /** A kept entry's description, hours, codes, billable flag or rate: a client rule's fix, or a person's edit. */

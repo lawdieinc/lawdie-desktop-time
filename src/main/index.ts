@@ -23,6 +23,7 @@ import { LOGO_MIN_PX, logoCandidates, siteURL } from "@shared/logo";
 import { addRulebook, removeClientRule, removeRulebook, saveClientRule, updateRulebook, type ClientRuleInput, type RulebookInput } from "@shared/clientRulebooks";
 import { recordRejection, type RejectionInput } from "@shared/rejection";
 import { demoNow } from "@shared/demo";
+import { APPROVE_MAX_ROWS, approveRows, type ApproveReport } from "@shared/keep";
 import type { AppState } from "@shared/state";
 import { entriesCsv } from "@shared/export";
 import { Capture } from "./capture";
@@ -250,6 +251,13 @@ app.whenReady().then(() => {
     });
     ipcMain.handle("keepActivity", (_e, ids: string | string[], input: KeepInput) => store.change((w) => { keepStretch(w, Array.isArray(ids) ? ids : [ids], input, clock()); }));
     ipcMain.handle("keepLines", (_e, lines: KeepLine[]) => store.change((w) => { keepLines(w, Array.isArray(lines) ? lines : [], clock()); }));
+    // Approve: the window sends only the rows' activity ids; what each becomes is worked out here, from the workspace as it is now.
+    ipcMain.handle("approveRows", (_e, rows: unknown) => {
+        const clean = (Array.isArray(rows) ? rows : []).slice(0, APPROVE_MAX_ROWS).map((r) => (Array.isArray(r) ? r : []).filter((x): x is string => typeof x === "string").slice(0, 2000)).filter((r) => r.length);
+        let report: ApproveReport | null = null;
+        const ok = store.change((w) => { report = approveRows(w, clean, clock()); });
+        return ok ? report : null;
+    });
     ipcMain.handle("editEntry", (_e, id: string, change: EntryChange) => store.change((w) => { editEntry(w, String(id), change ?? {}, clock()); }));
     ipcMain.handle("dismissActivity", (_e, ids: string | string[]) => store.change((w) => dismissActivities(w, Array.isArray(ids) ? ids : [ids])));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
