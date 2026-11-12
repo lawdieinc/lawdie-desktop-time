@@ -128,7 +128,9 @@ export function applyMeetings(w: Workspace, answer: { meetings: Meeting[]; calen
         else s.list.push(m);
     }
     const cutoff = now - w.preferences.retentionDays * 86_400_000;
-    s.list = s.list.filter((m) => ms(m.end) >= cutoff);
+    // A meeting stays while time waiting for review points at it: its transcript is evidence at keep.
+    const used = new Set(w.activities.filter((a) => a.disposition === "pending" && a.meeting).map((a) => a.meeting!.id));
+    s.list = s.list.filter((m) => ms(m.end) >= cutoff || used.has(m.id));
     return placeMeetings(w, now);
 }
 

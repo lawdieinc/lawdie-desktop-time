@@ -87,7 +87,8 @@ it), a 1440×900 JPEG in `screenshots/` beside the workspace, served to the wind
 `screenshotDue()` (none for a segment under 20 s, then every 5 minutes, at most 48),
 `addScreenshot()` (only to the segment in progress or a pending one), `keepStretch()`
 copies those inside the kept time to the entry, dismissing drops them, and
-`referencedScreenshots()` is what `collect()` keeps (hourly; anything else is deleted). An entry's screenshots go
+`referencedScreenshots()` is what `collect()` keeps (hourly; anything else is deleted). A pending activity's
+screenshots stay as long as it does (Retention, below: up to 90 days, no earlier cutoff of their own). An entry's screenshots go
 `KEPT_SCREENSHOT_DAYS` (90) after its work (`prune`). None is taken without Screen Recording (macOS answers with the
 wallpaper), a capture is abandoned after 10 s, and one is saved only if the same window was still in front. A
 name is `<activity id>-<epoch ms>.jpg` and is validated, so it is never a path. Never of a
@@ -109,6 +110,22 @@ buttons, once per window title a minute, at most `SCREEN_TEXT_MAX` characters ke
 segment (the first read; scrolling is not a switch). `parseScreenText()` is what the tests
 cover; the readers are exercised by hand. It is sent to Kiwi only as `screen_text` in a
 matter request, never on sync.
+
+## Retention
+
+Unreviewed time waits until it is reviewed (2026-11-12, after pending time went unseen at 14 days). `prune()` in
+`model.ts` (at every load through `recover()`, and hourly from capture.ts) never removes pending activity by
+`retentionDays`: it goes `pendingDays()` after its end, which is `PENDING_MAX_DAYS` (90) or `retentionDays` when that
+is longer, Personal included. `retentionDays` (Settings → "Reviewed activity", 7/14/30/90) is how long kept and
+dismissed activity stays after it was reviewed: `Activity.reviewedAt` is stamped by `keepStretch` and
+`dismissActivities`, cleared when the activity is reopened (`deleteEntry`, `mergeIntoEntry`), and an activity
+without one (reviewed before this, or dismissed by `clipImported`) falls back to its end. It is still Kiwi's import
+lookback (`src/main/feed.ts`, and the "expired" receipt in `importFeed`). `pendingExpiring()` is the warning,
+`PENDING_WARN_DAYS` (7) before the first pending time goes (Personal left out): a callout on Activity with "Show the
+oldest", a line in the sidebar's capture card (`Retention.tsx`), a tray item and tooltip, and a notification once a
+run; never in a demo or under `--screenshot` (the notification). A calendar meeting past retention stays on
+`meetings.list` while a pending row refers to it, so its transcript is there at keep. Schema stays 3 (`reviewedAt`
+is optional). Tested in `retention.test.ts`.
 
 ## Matters
 

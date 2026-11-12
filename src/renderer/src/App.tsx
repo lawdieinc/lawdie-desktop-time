@@ -23,6 +23,7 @@ import kiwiMark from "../../../resources/brand/kiwi.png";
 import { Empty, Heading, Panel, Setting, Toggle } from "./ui";
 import { Tour, Welcome } from "./Onboarding";
 import { WhatsNew } from "./WhatsNew";
+import { ExpiringCallout, ExpiringSidebar, pendingDays, retentionLabel } from "./Retention";
 import { LATEST_RELEASE, needsWhatsNew } from "@shared/releases";
 import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
 
@@ -138,6 +139,7 @@ export function App(): ReactNode {
                     <p className="muted small">{connected ? `Kept time syncs to ${destinationLabel(w.sync?.targets.map((t) => t.product) ?? [])}.` : "Your time. On your machine."}</p>
                     {state.missing.screenRecording && <p className="danger small strong">Window titles are not being captured: macOS needs Screen Recording.</p>}
                     {state.missing.accessibility && <p className="danger small strong">On-screen text is not being read: macOS needs Accessibility.</p>}
+                    {!state.loadFailed && <ExpiringSidebar w={w} now={now} onOpen={() => setRoute("activity")} />}
                     <button type="button" className="quiet" disabled={state.loadFailed} title={w.preferences.captureEnabled ? "Stop recording app activity until you start it again." : "Start recording app activity."} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>
                         {w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}
                     </button>
@@ -490,12 +492,13 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
                     <button type="button" className="quiet" disabled={state.matters.running} title={state.matters.running ? "Kiwi is working on the suggestions now." : "Ask Kiwi's AI to name matters and draft descriptions now."} onClick={() => void window.lawdie.suggestMatters(true)}>Suggest now</button>
                 </div>
             )}
+            <ExpiringCallout w={w} now={Date.now()} onShowOldest={() => { setFilter("pending"); setSort("oldest"); }} />
             <div className="row between">
                 <div className="segmented" role="tablist">
                     {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} title={{ pending: "Show the activity you have not reviewed yet.", kept: "Show the time you kept.", dismissed: "Show the activity you dismissed.", all: "Show every captured sitting." }[f]} onClick={() => setFilter(f)}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All" }[f]}</button>)}
                 </div>
                 <div className="row gap">
-                    <span className="muted small">{count} · retained {w.preferences.retentionDays} days</span>
+                    <span className="muted small" title={retentionLabel(w, filter).tip}>{count} · {retentionLabel(w, filter).text}</span>
                     <select value={sort} onChange={(e) => setSort(e.target.value as SortBy)} aria-label="Sort" title="Change the order of the list.">{(Object.keys(SORTS) as SortBy[]).map((k) => <option key={k} value={k}>{SORTS[k]}</option>)}</select>
                 </div>
             </div>
@@ -1367,8 +1370,8 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 <Setting title="Timer idle timeout" detail="Stops a running timer at your last input after this much inactivity. Capture counts the app in front for as long as it is in front, and a call even behind other windows.">
                     <select value={p.idleMinutes} title="How long without input before a running timer stops." onChange={(e) => set("idleMinutes", Number(e.target.value))}>{[1, 3, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
                 </Setting>
-                <Setting title="Activity retention" detail="Older raw activity is removed automatically. Saved time entries are kept.">
-                    <select value={p.retentionDays} title="Choose how long raw activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
+                <Setting title="Reviewed activity" detail={`Sittings you kept or dismissed are removed this long after you review them. Your time entries stay. Time you have not reviewed waits ${pendingDays(w.preferences)} days, and you are warned a week before any of it goes.`}>
+                    <select value={p.retentionDays} title="Choose how long reviewed activity is kept." onChange={(e) => set("retentionDays", Number(e.target.value))}>{[7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} days</option>)}</select>
                 </Setting>
             </Panel>}
             {tab === "billing" && <BillingSettings w={w} onRules={onRules} />}

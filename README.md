@@ -105,7 +105,9 @@ other product too (each stores only the hash), so one paste syncs to both.
    keystore (Keychain, DPAPI, or the Linux keyring via Electron's `safeStorage`). It never
    enters `workspace.json` or a backup.
 3. Every minute while auto-sync is on (and on Connect and **Sync now**) the app pushes
-   (`POST /desktop-time/sync`): every closed activity segment within retention (app, id,
+   (`POST /desktop-time/sync`): every closed activity segment still in the workspace (time you have not
+   reviewed waits 90 days and you are warned a week before any of it goes; a sitting you kept or
+   dismissed stays for the "Reviewed activity" setting after you review it) (app, id,
    title only if titles are on, start/end, how it ended, kept/dismissed); every time entry
    you kept, with its local project and client labels; and the ids of entries you deleted
    since the last sync. The server upserts on the app's own UUIDs, so a re-sync updates rather

@@ -40,11 +40,12 @@ describe("importing a feed page", () => {
         validate(w);
 
         // Dismissed, then pruned by retention: the receipt remembers, so the row never returns.
-        dismissActivities(w, [chrome.id]);
+        // The chat row was never reviewed, so it waits (retention is for reviewed activity).
+        dismissActivities(w, [chrome.id], NOW);
         refreshReceipts(w);
         expect(w.feed!.receipts["browser:seg-1"].disposition).toBe("dismissed");
-        prune(w, at(0) + 15 * 86_400_000);
-        expect(w.activities).toHaveLength(0);
+        prune(w, NOW + 15 * 86_400_000);
+        expect(w.activities.map((a) => a.originRef)).toEqual(["chat-1"]);
         expect(importFeed(w, page([row()]), at(0) + 15 * 86_400_000)).toBe(0);
         expect(w.feed!.receipts["browser:seg-1"].disposition).toBe("dismissed");
     });

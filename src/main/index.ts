@@ -18,7 +18,7 @@ import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoiceHtml"
 import { applyRules, type AppliedBill } from "@shared/applyRules";
 import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
-import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, issueInvoice, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
+import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, issueInvoice, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, pendingDays, pendingExpiring, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
 import { LOGO_MIN_PX, logoCandidates, siteURL } from "@shared/logo";
 import { addRulebook, removeClientRule, removeRulebook, saveClientRule, updateRulebook, type ClientRuleInput, type RulebookInput } from "@shared/clientRulebooks";
 import { recordRejection, type RejectionInput } from "@shared/rejection";
@@ -142,8 +142,11 @@ function buildTray(store: Store, capture: Capture, updater: Updater): void {
         const on = store.workspace.preferences.captureEnabled;
         const { screenRecording, accessibility } = store.missing;
         const attention = screenRecording || accessibility;
-        tray?.setToolTip(attention ? "Lawdie Time Capture: needs a permission in System Settings" : "Lawdie Time Capture");
+        // Unreviewed time within a week of its cap (pendingExpiring): said here, in the sidebar and on Activity. Never in a demo.
+        const expiring = store.workspace.demo ? null : pendingExpiring(store.workspace, Date.now());
+        tray?.setToolTip(attention ? "Lawdie Time Capture: needs a permission in System Settings" : expiring ? "Lawdie Time Capture: unreviewed time is about to be removed" : "Lawdie Time Capture");
         const menu = Menu.buildFromTemplate([
+            ...(expiring ? [{ label: "⚠ Review time before it is removed…", click: () => showRoute(store, "activity") }, { type: "separator" as const }] : []),
             ...(attention ? [{ label: screenRecording ? "⚠ Allow Screen Recording…" : "⚠ Allow Accessibility…", click: () => showWindow(store) }, { type: "separator" as const }] : []),
             ...(store.updateReady ? [{ label: `Install update ${store.updateReady} and restart`, click: () => updater.install() }, { type: "separator" as const }] : []),
             { label: on ? "Capture is on" : "Capture is paused", enabled: false },
@@ -596,6 +599,17 @@ app.whenReady().then(() => {
         notify(store, "Lawdie Time Capture needs a permission", now.screenRecording ? "macOS is not allowing Screen Recording, so window titles are not being captured. Open the app to fix it." : "macOS is not allowing Accessibility, so on-screen text is not being read. Open the app to fix it.");
         showWindow(store);
     };
+    // Unreviewed time newly within a week of being removed: a notification, once a run. The window, sidebar and tray say it all along.
+    let warned = false;
+    const checkExpiring = (): void => {
+        if (warned || argValue("--screenshot") || store.workspace.demo) return;
+        const expiring = pendingExpiring(store.workspace, Date.now());
+        if (!expiring) return;
+        warned = true;
+        notify(store, "Unreviewed time is about to be removed", `Some time you have not kept or dismissed is nearly ${pendingDays(store.workspace.preferences)} days old. The first of it is removed on ${new Date(expiring.removeAt).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}. Open Activity to review it.`);
+    };
+    setTimeout(checkExpiring, 30_000);
+    setInterval(checkExpiring, 60 * 60_000);
     // After capture's first lookups, which are what raise macOS's own prompt.
     setTimeout(checkPermissions, 20_000);
     setInterval(checkPermissions, 15_000);

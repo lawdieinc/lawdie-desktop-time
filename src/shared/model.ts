@@ -370,6 +370,8 @@ export type Activity = {
     /** Stretches of no mouse or keyboard input of IDLE_FLAG_SECONDS or more, inside it. Never on a call. */
     idle?: Interval[];
     disposition: "pending" | "kept" | "dismissed";
+    /** When a person kept or dismissed it; reviewed activity goes retentionDays after this. */
+    reviewedAt?: string;
     /** The matter this was work on: suggested by the model (src/shared/matters.ts) or set by
      *  the person. Absent until asked; null when it is not work on any matter. */
     matter?: string | null;
@@ -820,6 +822,7 @@ export function keepStretch(w: Workspace, activityIDs: string[], input: KeepInpu
     saveEntry(w, entry, now);
     for (const a of picked as Activity[]) {
         a.disposition = "kept";
+        a.reviewedAt = iso(now);
         if (matter) { a.matter = matter; a.matterBy = "person"; }
     }
     return entry;
@@ -1194,6 +1197,7 @@ export function mergeIntoEntry(w: Workspace, activityIDs: readonly string[], ent
     }
     for (const a of w.activities) {
         if (!(from.has(a.id) || activityIDs.includes(a.id)) || a.disposition !== "pending") continue;
+        delete a.reviewedAt;
         a.mergeKey = entryID;
         a.description = entry.description.slice(0, DRAFT_MAX);
         if (matter) { a.matter = matter; a.matterBy = "person"; }
@@ -1216,13 +1220,13 @@ export function keepActivity(w: Workspace, id: string, input: KeepInput, now: nu
     return keepStretch(w, [id], input, now);
 }
 
-export function dismissActivity(w: Workspace, id: string): void {
-    dismissActivities(w, [id]);
+export function dismissActivity(w: Workspace, id: string, now = Date.now()): void {
+    dismissActivities(w, [id], now);
 }
 
-export function dismissActivities(w: Workspace, ids: string[]): void {
+export function dismissActivities(w: Workspace, ids: string[], now = Date.now()): void {
     // A dismissed activity's screenshots go with it: nothing refers to them any more, so the files are deleted.
-    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { a.disposition = "dismissed"; delete a.screenshots; }
+    for (const a of w.activities) if (ids.includes(a.id) && a.disposition === "pending") { a.disposition = "dismissed"; a.reviewedAt = iso(now); delete a.screenshots; }
 }
 
 /** Removes an entry, reopens the activity it came from, and remembers the deletion for Kiwi. */
@@ -1231,7 +1235,7 @@ export function deleteEntry(w: Workspace, id: string): void {
     if (!entry) return;
     w.entries = w.entries.filter((e) => e.id !== id);
     const from = new Set([entry.activityID, ...(entry.activityIDs ?? [])]);
-    for (const a of w.activities) if (from.has(a.id)) a.disposition = "pending";
+    for (const a of w.activities) if (from.has(a.id)) { a.disposition = "pending"; delete a.reviewedAt; }
     // The evidence capture made for it goes with it; keeping the activity again makes it anew.
     if (w.evidence) for (const a of from) if (a && w.evidence[a] && (entry.sources ?? []).some((s) => s.id === a)) { delete w.evidence[a]; delete w.evidence[`${a}:transcript`]; }
     for (const t of w.sync?.targets ?? []) if (!t.deletedEntryIDs.includes(id)) t.deletedEntryIDs.push(id);
@@ -1496,11 +1500,42 @@ export function recover(w: Workspace, now: number): void {
 /** Screenshots kept with an entry go this long after the entry's work (2026-11-11): about as long as a bill is in question. */
 export const KEPT_SCREENSHOT_DAYS = 90;
 
+/** Unreviewed time waits this long for review (2026-11-12): never pruned by retentionDays. */
+export const PENDING_MAX_DAYS = 90;
+/** The window, Activity page and tray warn this long before pending time goes. */
+export const PENDING_WARN_DAYS = 7;
+/** How long unreviewed time waits: PENDING_MAX_DAYS, or the retention setting when that is longer. */
+export const pendingDays = (p: Preferences): number => Math.max(PENDING_MAX_DAYS, p.retentionDays);
+
+/**
+ * Unreviewed (pending) activity waits pendingDays for review, whatever retentionDays says; reviewed activity
+ * (kept or dismissed) goes retentionDays after it was reviewed, or after its end when nothing says when that was.
+ */
 export function prune(w: Workspace, now: number): void {
-    const cutoff = now - w.preferences.retentionDays * 86_400_000;
-    w.activities = w.activities.filter((a) => ms(a.endedAt) >= cutoff);
+    const day = 86_400_000;
+    const reviewedCutoff = now - w.preferences.retentionDays * day;
+    const pendingCutoff = now - pendingDays(w.preferences) * day;
+    w.activities = w.activities.filter((a) => a.disposition === "pending"
+        ? ms(a.endedAt) >= pendingCutoff
+        : Math.max(ms(a.endedAt), a.reviewedAt ? ms(a.reviewedAt) : 0) >= reviewedCutoff);
     const shotCutoff = now - KEPT_SCREENSHOT_DAYS * 86_400_000;
     for (const e of w.entries) if (e.screenshots?.length && ms(e.endedAt) < shotCutoff) delete e.screenshots;
+}
+
+/** Pending time that will be removed within PENDING_WARN_DAYS, or null. Personal is left out: nobody is asked to review it. */
+export function pendingExpiring(w: Workspace, now: number): { count: number; seconds: number; from: string; to: string; removeAt: string } | null {
+    const day = 86_400_000;
+    const wait = pendingDays(w.preferences);
+    const warnBefore = now - (wait - PENDING_WARN_DAYS) * day;
+    const due = w.activities.filter((a) => a.disposition === "pending" && !isPersonal(a.matter) && ms(a.endedAt) < warnBefore);
+    if (!due.length) return null;
+    return {
+        count: due.length,
+        seconds: due.reduce((sum, a) => sum + seconds(a), 0),
+        from: iso(Math.min(...due.map((a) => ms(a.startedAt)))),
+        to: iso(Math.max(...due.map((a) => ms(a.endedAt)))),
+        removeAt: iso(Math.min(...due.map((a) => ms(a.endedAt))) + wait * day),
+    };
 }
 
 /** Seconds of kept time inside [start, end), clipped. */
@@ -1707,7 +1742,7 @@ export function validate(w: Workspace): Workspace {
         billingValid(w.billing) && invoicesValid(w.invoices) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || DRAFT_SOURCES.has(e.drafted)) && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20) && (e.hours == null || (Number.isFinite(e.hours) && e.hours >= 0 && e.hours <= 24))) &&
         (w.rulebooks == null || (Array.isArray(w.rulebooks) && w.rulebooks.every((r) => r && typeof r.clientId === "string" && Array.isArray(r.rules)))) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && summaryValid(a.summary) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.reviewedAt == null || validIso(a.reviewedAt)) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && summaryValid(a.summary) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));

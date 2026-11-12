@@ -426,13 +426,13 @@ describe("timer and entries", () => {
         expect(w.entries).toHaveLength(1);
     });
 
-    it("retention removes activity, never entries", () => {
+    it("retention removes reviewed activity, never entries or time still waiting for review", () => {
         const w = emptyWorkspace();
         w.preferences.retentionDays = 7;
-        w.activities = [activity({ endedAt: iso(60) })];
+        w.activities = [activity({ id: "dismissed", endedAt: iso(60), disposition: "dismissed" }), activity({ id: "waiting", endedAt: iso(60) })];
         w.entries = [entry({ endedAt: iso(60) })];
         prune(w, at(8 * 86400));
-        expect(w.activities).toEqual([]);
+        expect(w.activities.map((a) => a.id)).toEqual(["waiting"]);
         expect(w.entries).toHaveLength(1);
     });
 });
