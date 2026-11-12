@@ -18,6 +18,9 @@ import type { TokenFile } from "./sync";
 /** In the background, every half hour; opening Activity asks sooner, at most every ten minutes. */
 export const SUGGEST_EVERY_MS = 30 * 60_000;
 export const SUGGEST_ON_OPEN_MS = 10 * 60_000;
+/** Summary requests a round (40 sittings each): a few normally, many on the first round of a run to clear a backlog. */
+const SUMMARY_ROUNDS = 5;
+const SUMMARY_BACKLOG_ROUNDS = 40;
 
 export class Matters {
     private timer: NodeJS.Timeout | null = null;
@@ -28,6 +31,8 @@ export class Matters {
     private unansweredMatters = new Set<string>();
     private unansweredSittings = new Set<string>();
     private noSummaryRoute = false;
+    /** The first round of a run clears the backlog (sittings from before an update, or a week away); later rounds are small. */
+    private summaryBacklogCleared = false;
 
     constructor(private readonly store: Store, private readonly tokens: TokenFile, private readonly shots: Screenshots) {}
 
@@ -104,9 +109,10 @@ export class Matters {
 
     /** A line for each finished sitting, a batch at a time, with its screenshot made small when it has one. */
     private async summarise(client: KiwiClient): Promise<void> {
-        for (let round = 0; round < 5; round++) {
+        const rounds = this.summaryBacklogCleared ? SUMMARY_ROUNDS : SUMMARY_BACKLOG_ROUNDS;
+        for (let round = 0; round < rounds; round++) {
             const request = summaryRequest(this.store.workspace, this.unansweredSittings);
-            if (!request) break;
+            if (!request) { this.summaryBacklogCleared = true; break; }
             for (const s of request.body.sittings) {
                 const shot = request.shots[s.id];
                 const image = shot ? this.shots.forSummary(shot) : null;

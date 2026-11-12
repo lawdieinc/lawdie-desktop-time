@@ -20,7 +20,7 @@ function workspace(activities: Activity[], screenshots = true): Workspace {
 }
 
 describe("which sittings are summarised", () => {
-    it("asks about finished, pending work of a minute or more, oldest first, never Personal, reviewed or already summarised", () => {
+    it("asks about finished, pending work of a minute or more, newest first, never Personal, reviewed or already summarised", () => {
         const later = activity({ startedAt: iso(1000), endedAt: iso(1600) });
         const first = activity();
         const w = workspace([
@@ -33,8 +33,8 @@ describe("which sittings are summarised", () => {
             activity({ title: null }),
         ], false);
         const r = summaryRequest(w)!;
-        expect(r.ids).toEqual([first.id, later.id]);
-        expect(r.body.sittings[0]).toMatchObject({ id: first.id, app: "Word", title: "Lease v3.docx", seconds: 600, matter: null });
+        expect(r.ids).toEqual([later.id, first.id]);
+        expect(r.body.sittings[1]).toMatchObject({ id: first.id, app: "Word", title: "Lease v3.docx", seconds: 600, matter: null });
         expect(r.shots).toEqual({});
         expect(summaryRequest(w, new Set(r.ids))).toBeNull();
     });

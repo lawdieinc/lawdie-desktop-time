@@ -153,7 +153,9 @@ One switch, "AI suggestions" (`suggestMatters`), covers all of them.
 Sitting summaries (2026-11-12): before naming, the same round asks `POST /desktop-time/summaries` for one line per
 sitting (`src/shared/summaries.ts`, tested in `summaries.test.ts`; prompt in `kiwi/backend/src/lib/desktopSummaries.ts`).
 A sitting is an activity: pending, not Personal, a minute or more (`SUMMARY_MIN_SECONDS`), with text to read or a
-screenshot; 40 a request, 20 screenshots among them, each once (closed sittings never change). The main process reads
+screenshot; newest first, 40 a request, 20 screenshots among them, each once (closed sittings never change). Sittings
+from before the update are summarised too: the first round of a run takes up to 40 requests to clear the backlog, later
+rounds 5. The main process reads
 and shrinks the screenshot (`Screenshots.forSummary`). The line (`Activity.summary`, redacted here too, `screenshot`
 when one was read) leads each item in a row (`SummaryLines` in App.tsx) and each sitting of a stretch, makes a sitting
 readable for the matter and draft requests (`describe()` carries it; a titles-off sitting with only a screenshot can
