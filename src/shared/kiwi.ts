@@ -49,12 +49,12 @@ export const DEFAULT_SERVER_URL = PRODUCTS.kiwi.defaultServerURL;
 export type HelloResponse = { ok: boolean; device: { id: string; name: string }; user: { email: string | null; id?: string } };
 export type SyncResponse = { ok: boolean; activities: number; entries: number; deleted: number };
 
-export type KiwiFailureCode = "invalid_server_url" | "invalid_token" | "device_revoked" | "migration_pending" | "too_large" | "http" | "transport" | "bad_response";
+export type KiwiFailureCode = "invalid_server_url" | "invalid_token" | "device_revoked" | "migration_pending" | "too_large" | "http" | "transport" | "timeout" | "bad_response";
 
 export class KiwiFailure extends Error {
     /** The HTTP status, for an "http" failure. */
-    constructor(public code: KiwiFailureCode, message: string, public status?: number) {
-        super(message);
+    constructor(public code: KiwiFailureCode, message: string, public status?: number, options?: ErrorOptions) {
+        super(message, options);
         this.name = "KiwiFailure";
     }
 }
@@ -65,6 +65,7 @@ const messages = (product: string): Record<Exclude<KiwiFailureCode, "http" | "tr
     device_revoked: `This computer was disconnected in ${product}. Connect it again from the Time page there to resume syncing.`,
     migration_pending: `${product} is not ready for desktop sync yet (its database migration is pending).`,
     too_large: `${product} refused the sync as too large. Try again; the app sends it in smaller pieces.`,
+    timeout: `The request to ${product} timed out.`,
     bad_response: `${product} answered in a way this app does not understand.`,
 });
 
@@ -145,26 +146,48 @@ export class KiwiClient {
     }
 
     private async send<T>(method: string, path: string, body?: unknown): Promise<T> {
+        const signal = AbortSignal.timeout(this.timeoutMs);
+        const transportFailure = (cause: unknown): KiwiFailure => new KiwiFailure(
+            signal.aborted ? "timeout" : "transport",
+            signal.aborted ? this.messages.timeout : `Could not reach ${this.product}: ${cause instanceof Error ? cause.message : String(cause)}`,
+            undefined,
+            { cause },
+        );
         let response: Response;
         try {
             response = await this.fetchImpl(`${this.baseURL}/${path}`, {
                 method,
                 headers: { Authorization: `Bearer ${this.token}`, Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
                 body: body ? JSON.stringify(body) : undefined,
-                signal: AbortSignal.timeout(this.timeoutMs),
+                signal,
             });
         } catch (err) {
-            throw new KiwiFailure("transport", `Could not reach ${this.product}: ${err instanceof Error ? err.message : String(err)}`);
+            throw transportFailure(err);
         }
-        if (response.ok) {
+        // Reading the body can hit the same deadline as fetch. Only parsing a fully
+        // received body can establish that the server sent malformed JSON.
+        const readJSON = async (): Promise<unknown> => {
+            let text: string;
             try {
-                return (await response.json()) as T;
+                text = await response.text();
+            } catch (err) {
+                throw transportFailure(err);
+            }
+            try {
+                return JSON.parse(text) as unknown;
             } catch {
+                // SyntaxError messages can quote response content; keep it out of reports.
                 throw new KiwiFailure("bad_response", this.messages.bad_response);
             }
-        }
+        };
+        if (response.ok) return (await readJSON()) as T;
         if (response.status === 401) {
-            const code = await response.json().then((j) => (j as { code?: string }).code).catch(() => undefined);
+            const code = await readJSON().then((j) => (j as { code?: string } | null)?.code).catch((err: unknown) => {
+                // A malformed refusal still means the token was rejected; an unread
+                // response does not establish whether the device was revoked.
+                if (err instanceof KiwiFailure && err.code === "bad_response") return undefined;
+                throw err;
+            });
             if (code === "device_revoked") throw new KiwiFailure("device_revoked", this.messages.device_revoked);
             throw new KiwiFailure("invalid_token", this.messages.invalid_token);
         }
