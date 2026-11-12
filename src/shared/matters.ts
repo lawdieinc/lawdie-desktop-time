@@ -22,7 +22,7 @@ export const MATTER_EXAMPLES = 40;
 const ms = (iso: string) => Date.parse(iso);
 const spanSeconds = entrySeconds;
 const localDayOf = (isoText: string): string => { const d = new Date(isoText); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
-const readable = (a: Activity) => !!(a.meeting || a.title || a.document || a.screenText);
+export const readable = (a: Activity) => !!(a.meeting || a.title || a.document || a.screenText || a.summary);
 
 /** Pending activities never asked about, with something to read (title, document or on-screen text), oldest first. */
 export function unnamed(w: Workspace): Activity[] {
@@ -37,7 +37,7 @@ export function knownMatters(w: Workspace): string[] {
     return [...names.values()].sort((a, b) => a.localeCompare(b));
 }
 
-const describe = (a: Activity) => ({
+export const describe = (a: Activity) => ({
     app: a.app,
     // A meeting's subject says more than a call window's title; its other invitees often name the client.
     title: a.meeting?.subject ?? a.title,
@@ -46,6 +46,8 @@ const describe = (a: Activity) => ({
     path: a.document?.path ?? null,
     excerpt: a.document?.excerpt ?? null,
     screen_text: a.screenText ?? null,
+    // The sitting's one-line summary (src/shared/summaries.ts), when Kiwi has written one.
+    ...(a.summary ? { summary: a.summary.text } : {}),
 });
 
 /** The wire body of POST /desktop-time/matters; cleanMattersBody() in Kiwi is the other half. */

@@ -210,7 +210,7 @@ app.whenReady().then(() => {
     const deviceLabel = process.platform === "darwin" ? "Mac" : "PC";
     const tokens = new TokenFile(join(userData, "kiwi-token.bin"));
     const sync = new Sync(store, tokens, deviceLabel);
-    const matters = new Matters(store, tokens);
+    const matters = new Matters(store, tokens, shots);
     const feed = new Feed(store, tokens);
     const meetings = new Meetings(store, tokens);
     const updater = new Updater(store);

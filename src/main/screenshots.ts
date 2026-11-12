@@ -2,7 +2,8 @@
    their time can see what it was. Taken through Electron's desktopCapturer (macOS: the
    Screen Recording permission window titles already need; Windows: nothing to grant), of
    that one window only, as a JPEG in a folder beside the workspace. They never leave this
-   computer: not synced, not sent to the AI. When to take one and which segment it belongs
+   computer, are never synced, and reach only Kiwi's model, one per sitting made small, to write
+   that sitting's summary when AI suggestions are on (src/shared/summaries.ts). When to take one and which segment it belongs
    to is src/shared/model.ts (screenshotDue, addScreenshot); a file nothing refers to any
    more (dismissed, pruned, cleared, its entry deleted) is deleted by collect(). */
 
@@ -11,13 +12,15 @@ import { report } from "./errors";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { desktopCapturer, net, protocol, systemPreferences } from "electron";
+import { desktopCapturer, nativeImage, net, protocol, systemPreferences } from "electron";
 import { isScreenshotName, screenshotsToDelete } from "@shared/model";
 
 /** The window loads screenshots as lawdie-shot://shot/<name>; registered as privileged before the app is ready. */
 export const SHOT_SCHEME = "lawdie-shot";
 const SIZE = { width: 1440, height: 900 };
 const QUALITY = 65;
+/** The width a screenshot is shrunk to before it goes to the model for a sitting's summary. */
+const SUMMARY_IMAGE_WIDTH = 960;
 /** A file this new may be one just taken and not attached yet: collect() leaves it. */
 const COLLECT_GRACE_MS = 10 * 60_000;
 /** A capture still going after this long is abandoned; the next one is due in five minutes. */
@@ -30,6 +33,24 @@ export class Screenshots {
     private warned = new Set<string>();
 
     constructor(readonly dir: string) {}
+
+    /**
+     * A screenshot made small for the model (sitting summaries, src/shared/summaries.ts): at
+     * most SUMMARY_IMAGE_WIDTH wide, JPEG, base64. Null when the file is gone or unreadable.
+     */
+    forSummary(name: string): string | null {
+        const file = this.file(name);
+        if (!file) return null;
+        try {
+            const image = nativeImage.createFromPath(file);
+            if (image.isEmpty()) return null;
+            const { width } = image.getSize();
+            const small = width > SUMMARY_IMAGE_WIDTH ? image.resize({ width: SUMMARY_IMAGE_WIDTH, quality: "good" }) : image;
+            return small.toJPEG(70).toString("base64");
+        } catch {
+            return null;
+        }
+    }
 
     /** The file for a name, or null for anything that is not a screenshot name (never a path). */
     file(name: string): string | null {

@@ -189,7 +189,7 @@ function WhyBody({ entry, w, focus, setFocus, parts, asParts }: { entry: TimeEnt
                             <div key={n} className={"work-row" + (x.sourceID ? " is-source" : "") + (hot ? " hot" : "")} title={x.url ? `${x.app}: ${x.url}` : `What Time Capture saw in ${x.app}.`}
                                 onMouseEnter={() => x.sourceID && setFocus({ source: x.sourceID })} onMouseLeave={() => x.sourceID && setFocus(null)}>
                                 <AppMark app={x.app} />
-                                <span className="work-what"><span className="strong">{x.app}</span> · {workTitle(x.title)}</span>
+                                <span className="work-what" title={x.summary ? `${x.app} · ${x.title}: ${x.summary}` : undefined}><span className="strong">{x.app}</span> · {workTitle(x.title)}{x.summary && <span className="muted"> · {x.summary}</span>}</span>
                                 <span className="work-when">{timeRange(x.startedAt, end)}</span>
                                 <span className="work-min mono">{duration(Math.round(x.minutes * 60))}</span>
                                 {ev && (ev.path || ev.link) && (

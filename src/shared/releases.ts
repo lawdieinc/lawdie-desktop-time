@@ -36,6 +36,16 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.17.0",
+        date: "2026-11-12",
+        title: "Each sitting says what it was",
+        items: [
+            { icon: "sparkle", title: "A line for every sitting", description: "Open a row to see what each stretch of work was, written by Kiwi's AI.", route: "activity" },
+            { icon: "compass", title: "Screenshots help, if they are on", description: "With screenshots on, the AI reads one of each sitting to describe it better.", route: "settings" },
+            { icon: "matter", title: "Better matters and drafts", description: "Those lines help name the matter and draft the description you keep." },
+        ],
+    },
+    {
         id: "0.16.0",
         date: "2026-11-09",
         title: "Your meetings, counted",

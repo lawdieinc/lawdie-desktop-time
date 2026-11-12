@@ -87,7 +87,7 @@ export function Welcome({ state, onDone }: { state: AppState; onDone: (startTour
                             </>
                         )}
                         {w.sync?.targets.some((t) => t.product === "kiwi") && (
-                            <Setting title="AI suggestions" detail="Kiwi's AI names the matter of each finished stretch and drafts its billing description. The activity in progress is never sent. Your own names and descriptions are never overwritten.">
+                            <Setting title="AI suggestions" detail="Kiwi's AI names the matter of each finished stretch, says in a line what each sitting was, and drafts its billing description. The activity in progress is never sent. Your own names and descriptions are never overwritten.">
                                 <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" tip={{ on: "Stop asking Kiwi's AI for matters and descriptions.", off: "Let Kiwi's AI name matters and draft descriptions." }} />
                             </Setting>
                         )}

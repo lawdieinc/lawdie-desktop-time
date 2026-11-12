@@ -202,7 +202,7 @@ export function issueInvoice(w: Workspace, record: Omit<IssuedInvoice, "rejectio
 export type EntryTask = { stretch?: number | null; text: string; task?: string | null; activity?: string | null; hours?: number | null };
 
 /** `sourceID`: the source (and evidence) this stretch is, when capture made it, so the Why panel shows the two as one row. */
-export type WorkStretch = { app: string; title: string; startedAt: string; minutes: number; url?: string | null; sourceID?: string };
+export type WorkStretch = { app: string; title: string; startedAt: string; minutes: number; url?: string | null; sourceID?: string; summary?: string };
 
 /** A row typed into the firm's time system (an iTimeKeep export), matched back to the captured entry it describes. */
 export type ImportedRow = {
@@ -315,6 +315,11 @@ export type Draft = { text: string; source: DraftSource };
 export const DRAFT_MAX = 500;
 const draftValid = (d: Draft | null | undefined): boolean => d == null || (typeof d.text === "string" && d.text.length > 0 && d.text.length <= DRAFT_MAX && DRAFT_SOURCES.has(d.source));
 
+/** What one sitting was, in a line, written by Kiwi's model from what capture saw (src/shared/summaries.ts); `screenshot` when a screenshot was read too. */
+export type SittingSummary = { text: string; source: "kiwi" | "sample"; screenshot?: true };
+export const SUMMARY_MAX = 200;
+const summaryValid = (x: SittingSummary | null | undefined): boolean => x == null || (typeof x.text === "string" && x.text.length > 0 && x.text.length <= SUMMARY_MAX && (x.source === "kiwi" || x.source === "sample") && (x.screenshot == null || x.screenshot === true));
+
 export type RunningTimer = {
     description: string;
     projectID: string | null;
@@ -372,6 +377,8 @@ export type Activity = {
     matterBy?: "ai" | "person";
     /** A billing description drafted by a model for the work this is part of; a person keeps or edits it. */
     draft?: Draft | null;
+    /** What this sitting was, in a line (Kiwi's model, from its text and, when screenshots are on, one screenshot). Never synced. */
+    summary?: SittingSummary;
     /** The description the person gave it in review, before keeping: wins over the draft, and is never drafted over. */
     description?: string;
     /** Merged with a kept entry (that entry's id, now deleted): reviewed as one row with its sittings, and kept again. */
@@ -722,9 +729,9 @@ export function capturedWhy(picked: readonly Activity[], start: number, end: num
         const mail = a.sourceKind === "email" || matchesOwner(MAIL_OWNER_IDS, a.ownerID);
         const kind = a.meeting ? "meeting" : a.document && !mail ? "document" : a.url ? "page" : mail ? "email" : a.sourceKind === "chat" ? "chat" : "window";
         const title = a.meeting?.subject || a.document?.name || a.title || host(a.url) || a.app;
-        for (const i of kept) work.push({ app: a.app, title, startedAt: i.startedAt, minutes: (ms(i.endedAt) - ms(i.startedAt)) / 60_000, ...(a.url ? { url: a.url } : {}), sourceID: a.id });
+        for (const i of kept) work.push({ app: a.app, title, startedAt: i.startedAt, minutes: (ms(i.endedAt) - ms(i.startedAt)) / 60_000, ...(a.url ? { url: a.url } : {}), sourceID: a.id, ...(a.summary ? { summary: a.summary.text } : {}) });
         sources.push({ id: a.id, kind, label: title });
-        const facts = [a.document?.excerpt, a.screenText].filter((x): x is string => !!x).map((x) => x.slice(0, 600));
+        const facts = [a.summary?.text, a.document?.excerpt, a.screenText].filter((x): x is string => !!x).map((x) => x.slice(0, 600));
         if (a.meeting) {
             const found = meetingEvidence(a, meetings, title, kept[0].startedAt);
             Object.assign(evidence, found);
@@ -1700,7 +1707,7 @@ export function validate(w: Workspace): Workspace {
         billingValid(w.billing) && invoicesValid(w.invoices) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || DRAFT_SOURCES.has(e.drafted)) && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20) && (e.hours == null || (Number.isFinite(e.hours) && e.hours >= 0 && e.hours <= 24))) &&
         (w.rulebooks == null || (Array.isArray(w.rulebooks) && w.rulebooks.every((r) => r && typeof r.clientId === "string" && Array.isArray(r.rules)))) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && summaryValid(a.summary) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));

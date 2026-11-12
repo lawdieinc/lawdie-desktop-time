@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
+import type { SittingSummary } from "@shared/model";
 import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
+import { itemSummaries } from "@shared/summaries";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeBlock, timeValue } from "@shared/format";
 import { viewNow } from "@shared/demo";
@@ -516,6 +518,7 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
                                             <div className="small strong">{own?.by === "person" ? own.text : st.name}</div>
                                         </Editable>
                                         {st.draft && own?.by !== "person" && <DraftLine draft={st.draft} />}
+                                        {st.sittings === 1 && <SummaryLines items={st.activityIDs.map((id) => byID.get(id))} />}
                                         <Shots names={st.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} />
                                         <div className="muted tiny meta">
                                             <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{meetingWith(byID.get(st.activityIDs[0]))}{own?.by === "person" && st.name !== own.text ? ` · ${st.name}` : ""}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
@@ -828,6 +831,7 @@ function MatterRow({ w, onMoved, group: g, match, merged, described, idle, shots
                             <span className="sitting-dot" aria-hidden="true" />
                             <div className="grow item-body">
                                 <div><span className="small">{d.name}</span> <span className="tiny muted">{d.app}{d.activityIDs.length > 1 ? ` · ${d.activityIDs.length} sittings` : ""}</span></div>
+                                <SummaryLines items={w.activities.filter((a) => d.activityIDs.includes(a.id))} />
                                 {((item) => <>
                                     <div className="tiny muted">{item.facts}</div>
                                     {item.text && <div className="tiny muted item-text">{item.text}</div>}
@@ -880,6 +884,17 @@ function PersonalRow({ groups, open, onToggle }: { groups: MatterGroup[]; open: 
     );
 }
 
+const summaryTitle = (x: SittingSummary): string => `What this sitting was: Kiwi's AI read ${x.screenshot ? "what was captured and a screenshot of it" : "what was captured"}.`;
+
+/** Kiwi's one-line summaries of the sittings under an item or row (src/shared/summaries.ts), each distinct one once. */
+function SummaryLines({ items }: { items: readonly (Activity | undefined)[] }): ReactNode {
+    const list = items.filter((a): a is Activity => !!a);
+    const lines = itemSummaries(list);
+    if (!lines.length) return null;
+    const shot = list.some((a) => a.summary?.screenshot);
+    return <>{lines.map((t) => <div key={t} className="tiny sitting-summary" title={summaryTitle({ text: t, source: "kiwi", ...(shot ? { screenshot: true as const } : {}) })}>{t}</div>)}</>;
+}
+
 /** "6 sittings ▾": the count is the control that opens them. */
 function SittingsToggle({ label, open, onClick, what = "the sittings" }: { label: string; open: boolean; onClick: () => void; what?: string }): ReactNode {
     return (
@@ -906,6 +921,7 @@ function Sittings({ items, all, onDismiss }: { items: (Interval & { id?: string;
                             <span className="sitting-dot" aria-hidden="true" />
                             <span className="small">{clock(i.startedAt)}–{clock(i.endedAt)}</span>
                             {i.endedBy && <span className="tiny muted">{endedText(i, all)}</span>}
+                            {((summary) => summary && <span className="tiny sitting-summary" title={summaryTitle(summary)}>{summary.text}</span>)(i.id ? all?.find((a) => a.id === i.id)?.summary : undefined)}
                             <span className="grow" />
                             <span className="mono small">{duration((Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000)}</span>
                             {onDismiss && i.id && <button type="button" className="link sitting-dismiss" title="Drop this sitting from the stretch." onClick={() => onDismiss(i.id as string)}>Dismiss</button>}
@@ -1305,7 +1321,7 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 <Setting title="Include window titles" detail={isMac ? "Optional context such as document names. Titles may contain sensitive information. macOS asks for Screen Recording permission the first time." : "Optional context such as document names. Titles may contain sensitive information."}>
                     <Toggle on={p.captureTitles} onChange={(v) => set("captureTitles", v)} label="Include window titles" tip={{ on: "Stop reading window titles.", off: "Read window titles for more context." }} />
                 </Setting>
-                <Setting title="Take screenshots" detail={`A picture of the window you are working in, once you have been in it 20 seconds and then every 5 minutes, so you can see what the time was when you review it. Screenshots show whatever is on that window, client documents included. They stay on this ${label}: never synced to Kiwi or Lawdie CRM and never sent to the AI. Those of time you dismiss are deleted; those of time you keep stay with the entry until you delete it. Never of browsers, private apps or this app.${isMac ? " macOS asks for Screen Recording permission." : ""}`}>
+                <Setting title="Take screenshots" detail={`A picture of the window you are working in, once you have been in it 20 seconds and then every 5 minutes, so you can see what the time was when you review it. Screenshots show whatever is on that window, client documents included. They stay on this ${label} and are never synced to Kiwi or Lawdie CRM. With AI suggestions on, Kiwi's AI reads one of each sitting, made smaller, to say in a line what the sitting was; it keeps nothing, and screenshots cannot have personal details removed the way text does. Those of time you dismiss are deleted; those of time you keep stay with the entry until you delete it. Never of browsers, private apps or this app.${isMac ? " macOS asks for Screen Recording permission." : ""}`}>
                     <Toggle on={p.captureScreenshots === true} onChange={(v) => set("captureScreenshots", v)} label="Take screenshots" tip={{ on: "Stop taking screenshots.", off: "Take a screenshot of the window in front now and then, kept on this computer." }} />
                 </Setting>
                 <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and its first few lines (Outlook: the sender and subject). Kiwi or Lawdie CRM uses these to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
@@ -1323,7 +1339,7 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 {p.captureDocuments && office && Object.entries(office.errors).map(([app, message]) => (
                     <p key={app} className="danger tiny">{{ word: "Word", excel: "Excel", powerpoint: "PowerPoint", outlook: "Outlook" }[app] ?? app} did not answer: {message}</p>
                 ))}
-                <Setting title="AI suggestions" detail="Kiwi's AI names the matter of your finished, unreviewed activity (so the inbox shows a matter's day across every app as one row), drafts a billing description for each row, and writes an insight on each matter's page. It sees titles, Office document details and on-screen text with personal details already removed, and your kept entries' descriptions and times. The activity in progress is never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
+                <Setting title="AI suggestions" detail="Kiwi's AI names the matter of your finished, unreviewed activity (so the inbox shows a matter's day across every app as one row), says in a line what each sitting was, drafts a billing description for each row, and writes an insight on each matter's page. It sees titles, Office document details and on-screen text with personal details already removed, one screenshot of each sitting when screenshots are on, and your kept entries' descriptions and times. The activity in progress is never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
                     <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" tip={{ on: "Stop asking Kiwi's AI for matters and descriptions.", off: "Let Kiwi's AI name matters and draft descriptions." }} />
                 </Setting>
                 <Setting title="Bring in browser and Kiwi time" detail="Import captured titles and page addresses from Kiwi for review here. AI suggestions also use imported titles. Pausing stops new imports; time already brought in stays assigned to this workspace.">
@@ -1395,7 +1411,7 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
             </Panel>}
             {tab === "data" && <Panel>
                 <strong>Your data belongs here</strong>
-                <p className="muted small">No usage tracking, keystroke recording, or local network service, and no screenshots unless you switch them on above; they never leave this {label}. A crash report, if you leave them on above, carries the error alone. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on matter suggestions above, and then only what Kiwi needs to name the matter. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
+                <p className="muted small">No usage tracking, keystroke recording, or local network service, and no screenshots unless you switch them on above; they leave this {label} only for Kiwi's AI to describe a sitting, when AI suggestions are on too. A crash report, if you leave them on above, carries the error alone. Nothing leaves this {label} unless you connect Kiwi or Lawdie CRM below, and then only captured activity and your time entries, or switch on AI suggestions above, and then only what Kiwi's AI needs to name the matter, describe each sitting and draft descriptions. Data is a local file protected by your account permissions; it is not separately encrypted.</p>
                 <p className="mono tiny muted">{state.workspacePath}</p>
                 <div className="row gap">
                     <button type="button" className="quiet" title="Open the folder that holds the workspace file." onClick={() => void window.lawdie.showDataFolder()}>Show data folder</button>

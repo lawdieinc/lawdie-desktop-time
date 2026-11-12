@@ -1,7 +1,8 @@
 import { applyJoins, joinRequest } from "@shared/feed";
 import { report } from "./errors";
 /* AI suggestions, main-process side: requests to Kiwi, which asks its own server-side
-   model. In order: name the matter of new activity, draft a billing description for each
+   model. In order: summarise each finished sitting in a line (with one screenshot of it when
+   screenshots are on), name the matter of new activity, draft a billing description for each
    row waiting in review, and refresh the insight of each matter whose time changed. Off
    until the person switches on "AI suggestions", and only while this computer is
    connected to Kiwi: the device token it already syncs with is the only credential, so
@@ -9,6 +10,8 @@ import { report } from "./errors";
 
 import { KiwiClient, KiwiFailure, PRODUCTS } from "@shared/kiwi";
 import { applyDrafts, applyInsights, applyMatters, draftRequest, insightRequest, matterRequest } from "@shared/matters";
+import { applySummaries, summaryRequest } from "@shared/summaries";
+import type { Screenshots } from "./screenshots";
 import type { Store } from "./store";
 import type { TokenFile } from "./sync";
 
@@ -23,8 +26,10 @@ export class Matters {
     /** Rows and matters asked this session and not answered, so they are not asked every round. */
     private unansweredRows = new Set<string>();
     private unansweredMatters = new Set<string>();
+    private unansweredSittings = new Set<string>();
+    private noSummaryRoute = false;
 
-    constructor(private readonly store: Store, private readonly tokens: TokenFile) {}
+    constructor(private readonly store: Store, private readonly tokens: TokenFile, private readonly shots: Screenshots) {}
 
     start(): void {
         this.timer = setInterval(() => void this.suggest(), SUGGEST_EVERY_MS);
@@ -52,6 +57,14 @@ export class Matters {
                 const account = this.store.workspace.feed?.account;
                 const answer = await client.joins(joins);
                 if (this.store.workspace.preferences.suggestMatters && this.store.workspace.feed?.account === account && this.store.workspace.sync?.targets.some((t) => t === kiwi || (t.product === "kiwi" && t.deviceID === kiwi.deviceID))) this.store.change((w) => applyJoins(w, joins, answer));
+            }
+            // Summaries first: a sitting's line helps name its matter and draft its row. A failure
+            // here (a Kiwi without the route yet, a slow model) leaves naming and drafting to go on.
+            if (!this.noSummaryRoute) try { await this.summarise(client); } catch (err) {
+                if (err instanceof KiwiFailure && (err.code === "device_revoked" || err.code === "invalid_token")) throw err;
+                // A Kiwi from before summaries (404): not a bug, and not asked again this run.
+                if (err instanceof KiwiFailure && err.status === 404) this.noSummaryRoute = true;
+                else report("summaries", err);
             }
             for (let round = 0; round < 10; round++) {
                 const request = matterRequest(this.store.workspace);
@@ -86,6 +99,25 @@ export class Matters {
             this.store.setMatterStatus(false, theirs ? err.message : null);
         } finally {
             this.running = false;
+        }
+    }
+
+    /** A line for each finished sitting, a batch at a time, with its screenshot made small when it has one. */
+    private async summarise(client: KiwiClient): Promise<void> {
+        for (let round = 0; round < 5; round++) {
+            const request = summaryRequest(this.store.workspace, this.unansweredSittings);
+            if (!request) break;
+            for (const s of request.body.sittings) {
+                const shot = request.shots[s.id];
+                const image = shot ? this.shots.forSummary(shot) : null;
+                if (image) s.image = image; else delete request.shots[s.id];
+            }
+            const answer = await client.summaries(request.body);
+            if (!this.store.workspace.preferences.suggestMatters) break;
+            let done: string[] = [];
+            if (!this.store.change((w) => { done = applySummaries(w, request, answer); })) break;
+            const got = new Set(done);
+            for (const id of request.ids) if (!got.has(id)) this.unansweredSittings.add(id);
         }
     }
 }

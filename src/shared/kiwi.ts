@@ -7,6 +7,7 @@
 import type { FeedPage, FeedRow, JoinProposal, joinRequest } from "./feed";
 import type { DraftsBody, InsightsBody, MattersBody } from "./matters";
 import type { SyncRequest } from "./model";
+import type { SummariesBody } from "./summaries";
 
 /** The two products kept time can go to. */
 export type Product = "kiwi" | "crm";
@@ -51,7 +52,8 @@ export type SyncResponse = { ok: boolean; activities: number; entries: number; d
 export type KiwiFailureCode = "invalid_server_url" | "invalid_token" | "device_revoked" | "migration_pending" | "too_large" | "http" | "transport" | "bad_response";
 
 export class KiwiFailure extends Error {
-    constructor(public code: KiwiFailureCode, message: string) {
+    /** The HTTP status, for an "http" failure. */
+    constructor(public code: KiwiFailureCode, message: string, public status?: number) {
         super(message);
         this.name = "KiwiFailure";
     }
@@ -100,6 +102,11 @@ export class KiwiClient {
     /** The matter of each activity, named by Kiwi's model (src/shared/matters.ts). */
     matters(body: MattersBody): Promise<{ assignments: { activity_id: string; matter: string | null }[] }> {
         return this.send("POST", "desktop-time/matters", body);
+    }
+
+    /** A line saying what each sitting was, written by Kiwi's model from its text and screenshot (src/shared/summaries.ts). */
+    summaries(body: SummariesBody): Promise<{ summaries: { id: string; text: string }[] }> {
+        return this.send("POST", "desktop-time/summaries", body);
     }
 
     /** A billing description for each row waiting in review, drafted by Kiwi's model. */
@@ -163,6 +170,6 @@ export class KiwiClient {
         }
         if (response.status === 413) throw new KiwiFailure("too_large", this.messages.too_large);
         if (response.status === 503) throw new KiwiFailure("migration_pending", this.messages.migration_pending);
-        throw new KiwiFailure("http", `${this.product} answered with an unexpected status (${response.status}).`);
+        throw new KiwiFailure("http", `${this.product} answered with an unexpected status (${response.status}).`, response.status);
     }
 }

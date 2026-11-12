@@ -91,8 +91,11 @@ copies those inside the kept time to the entry, dismissing drops them, and
 `KEPT_SCREENSHOT_DAYS` (90) after its work (`prune`). None is taken without Screen Recording (macOS answers with the
 wallpaper), a capture is abandoned after 10 s, and one is saved only if the same window was still in front. A
 name is `<activity id>-<epoch ms>.jpg` and is validated, so it is never a path. Never of a
-browser, a private app, this app or a call behind the window in front. Never synced and
-never sent to the AI: `syncRequest()` and the matter requests list their fields.
+browser, a private app, this app or a call behind the window in front. Never synced:
+`syncRequest()` lists its fields. The one way out (2026-11-12): with AI suggestions on, a sitting's screenshot nearest
+its middle, shrunk to 960 px, goes to Kiwi's model to write that sitting's summary (Sitting summaries, below);
+never of a browser, an excluded app, a call or imported time (`pictureAllowed()`). No separate switch, by the
+user's decision: turning screenshots on is the consent, and the Screenshots setting says so.
 
 ## On-screen text
 
@@ -145,7 +148,17 @@ old (`insightRequest()`/`applyInsights()`, `POST /desktop-time/insights`; the ap
 the totals, so the model quotes figures rather than computing them). Prompts live in
 `kiwi/backend/src/lib/desktopDrafts.ts` and `desktopInsights.ts`. Drafts and insights
 record their source; "sample" ones come only from demo data and are never replaced.
-One switch, "AI suggestions" (`suggestMatters`), covers all three.
+One switch, "AI suggestions" (`suggestMatters`), covers all of them.
+
+Sitting summaries (2026-11-12): before naming, the same round asks `POST /desktop-time/summaries` for one line per
+sitting (`src/shared/summaries.ts`, tested in `summaries.test.ts`; prompt in `kiwi/backend/src/lib/desktopSummaries.ts`).
+A sitting is an activity: pending, not Personal, a minute or more (`SUMMARY_MIN_SECONDS`), with text to read or a
+screenshot; 40 a request, 20 screenshots among them, each once (closed sittings never change). The main process reads
+and shrinks the screenshot (`Screenshots.forSummary`). The line (`Activity.summary`, redacted here too, `screenshot`
+when one was read) leads each item in a row (`SummaryLines` in App.tsx) and each sitting of a stretch, makes a sitting
+readable for the matter and draft requests (`describe()` carries it; a titles-off sitting with only a screenshot can
+now be named), and at keep is the first fact of its evidence and shown on its "Work done" row. Never synced. A Kiwi
+without the route answers 404 and the round goes on without summaries, quietly, for the rest of the run.
 
 ## Billing
 
@@ -467,3 +480,8 @@ Matters page refuses it as a name); daily backups; a lock from before a restart 
 go; the Keep sheet says which time is missing. Checked and left: a clock set back already ends the sitting at
 its last good moment, and renaming a matter keeps making its rows the person's (a join must not rename them).
 Version 0.16.3. Tests 251.
+2026-11-12: sitting summaries ("just some AI summary from what you captured for that sitting"): a line per sitting from
+Kiwi's model, reading one screenshot of it when screenshots are on (Matters, Screenshots). Kiwi gained
+`POST /desktop-time/summaries` and images in `completeText` (Gemini only). Verified against a stand-in running Kiwi's
+own cleaners: the Word and Preview sittings went with a 960 px screenshot, the excluded app and the 30 s sitting did
+not, the untitled Preview sitting was named and drafted from its line. Tests 261.
