@@ -464,3 +464,25 @@ textarea { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
 @keyframes card-in { from { opacity: 0; transform: translateY(22px) scale(0.96); } to { opacity: 1; transform: none; } }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .whats-new-scrim, .sheet.whats-new, .whats-new-hero img, .rise { animation: fade-in 0.15s ease-out both; animation-delay: 0s !important; } }
+
+/* Review rows read as the entry they would become: a tick box, the narrative as the headline, the matter line
+   under it, captured time over billed hours, then Edit… and Approve. The bar above approves the ticked rows. */
+.approve-bar { padding: 2px 0 12px; border-bottom: 1px solid var(--line); }
+.approve-bar button.primary { padding: 9px 15px; font-size: 13px; }
+.row-check-wrap { display: inline-flex; align-items: center; flex: 0 0 auto; }
+input.row-check { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--accent); cursor: pointer; }
+input.row-check:disabled { cursor: default; opacity: 0.45; }
+.narrative { font-size: 14px; font-weight: 400; line-height: 1.4; color: var(--text); user-select: text; overflow-wrap: anywhere; }
+.draft-mark { color: var(--accent); font-size: 12px; cursor: help; }
+.matter-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; margin: 3px 0 2px; }
+.matter-line .editable { flex: 0 1 auto; }
+.matter-number { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.matter-line .suggested { color: var(--accent); white-space: nowrap; }
+.matter-line .codes { color: var(--muted); font-size: 11px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; white-space: nowrap; }
+.row-time { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex: 0 0 auto; white-space: nowrap; }
+.row-time .billed { font-size: 12px; color: var(--accent); font-weight: 600; }
+.row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; }
+.row-actions > span { display: inline-flex; }
+.row-actions button.quiet { padding: 8px 11px; }
+.row-actions button.primary { padding: 9px 15px; font-size: 13px; }
+@media (max-width: 1180px) { .row-actions { flex-wrap: wrap; max-width: 250px; } }

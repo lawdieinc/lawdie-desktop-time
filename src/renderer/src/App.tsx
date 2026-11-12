@@ -1,14 +1,15 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
 import type { SittingSummary } from "@shared/model";
-import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, clipSittings, intervals, reviewedActivities, subtractIntervals, seconds as entrySeconds, secondsWithin, stretchSpan, type Activity, type Draft, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, type Activity, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { itemSummaries } from "@shared/summaries";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
-import { ago, clock, dayLabel, duration, keepBounds, spanLabel, timeBlock, timeValue } from "@shared/format";
+import { ago, clock, dayLabel, duration, spanLabel, timeBlock } from "@shared/format";
 import { viewNow } from "@shared/demo";
-import { applyFix, roundUpToTenth, splitPlan, type EntryDraft, type Fix, type PlanLine } from "@shared/rules";
-import { EditSheet, EntryRules, RulesCheck, SplitLines, projectByName, rulesContext, sameDayOf } from "./Rules";
+import { applyFix, type Fix, type PlanLine } from "@shared/rules";
+import { APPROVE_MESSAGES, approveCheck, approveSummary, billedHours, keepPreview, keepStart, singleOf, type ApproveVerdict } from "@shared/keep";
+import { EditSheet, EntryRules, RulesCheck, SplitLines } from "./Rules";
 import { NarrativeEntry, PrivateRow, SUGGESTED_TIP, flaggedTip, hasNarrative } from "./Narrative";
 import { AddEntryForm, ImportedPanel, TypedEntries } from "./Imported";
 import { ClientRulesView } from "./ClientRules";
@@ -47,12 +48,12 @@ export function App(): ReactNode {
     const page = useRef<HTMLDivElement>(null);
     const timeScroll = useRef<number | null>(null);
     const [rulesView, setRulesView] = useState<{ book: string | null; rule: string | null }>({ book: null, rule: null });
-    // Toasts: a line saying what just happened (a move, a merge), gone on its own after a few seconds.
+    // Toasts: a line saying what just happened (a move, a merge, an approval), gone on its own after a few seconds; a long report stays longer.
     const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
-    const notify = (text: string): void => {
+    const notify = (text: string, ms = 6000): void => {
         const id = Date.now() + Math.random();
         setToasts((t) => [...t.slice(-2), { id, text }]);
-        setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
+        setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), ms);
     };
     const openRules = (book: string | null, rule: string | null = null): void => {
         if (route === "today") timeScroll.current = page.current?.scrollTop ?? 0;
@@ -194,9 +195,10 @@ export function App(): ReactNode {
     );
 }
 
-/** `notify(text)`: a toast from anywhere in the window. */
-const NoticeContext = createContext<(text: string) => void>(() => undefined);
-const useNotify = (): ((text: string) => void) => useContext(NoticeContext);
+/** `notify(text)`: a toast from anywhere in the window, for six seconds or the `ms` given. */
+type Notify = (text: string, ms?: number) => void;
+const NoticeContext = createContext<Notify>(() => undefined);
+const useNotify = (): Notify => useContext(NoticeContext);
 
 function statusLine(state: AppState, now: number): string {
     const sync = state.workspace.sync;
@@ -464,6 +466,34 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
     const kept = useMemo(() => sortBy(w.entries.filter((e) => e.activityID), sort, (e) => ({ at: e.endedAt, seconds: entrySeconds(e), name: e.description })), [w.entries, sort]);
     const raw = useMemo(() => sortBy(w.activities.filter((a) => filter === "all" || a.disposition === filter), sort, (a) => ({ at: a.endedAt, seconds: (Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000, name: a.document?.name || a.title || a.app })), [w.activities, filter, sort]);
     const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
+    // What each row would be kept as, and whether Approve can keep it as shown. The main process decides again when asked; this is what the row shows.
+    const rows = useMemo(() => pendingRows.map((r): ReviewRow => {
+        const stretch = "group" in r ? matterStretch(r.group) : r.stretch;
+        const matter = "group" in r ? r.group.matter : null;
+        const sittings = stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a);
+        return { id: stretch.id, stretch, matter, sittings, ...rowFacts(w, stretch, sittings, matter, Date.now()) };
+    }), [w, pendingRows, byID]);
+    const rowByID = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
+    // Ticked rows, for Approve selected. A row that can no longer be approved, or is gone, is not counted.
+    const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+    const selected = rows.filter((r) => ticked.has(r.id) && canSelect(r.verdict));
+    const tick = (id: string, on: boolean): void => setTicked((t) => { const next = new Set(t); if (on) next.add(id); else next.delete(id); return next; });
+    const [approving, setApproving] = useState(false);
+    /** Keep these rows as shown. The report says what was kept and names what was not; rows not kept stay ticked. */
+    const approve = async (list: ReviewRow[]): Promise<void> => {
+        if (approving || !list.length) return;
+        setApproving(true);
+        try {
+            const report = await window.lawdie.approveRows(list.map((r) => r.stretch.activityIDs));
+            if (!report) { notify("That could not be saved, so nothing was kept. Try again, or use Edit… on a row.", 12000); return; }
+            const left = new Set(report.skipped.map((x) => x.activityIDs.join("\n")));
+            setTicked((t) => new Set([...t].filter((id) => !list.some((r) => r.id === id) || left.has(rowByID.get(id)?.stretch.activityIDs.join("\n") ?? ""))));
+            const one = list.length === 1 && report.kept.length === 1 ? report.kept[0] : null;
+            if (one) notify(`Kept “${one.label}” on ${list[0].matter}: ${one.hours.toFixed(1)} hr.`);
+            else notify(approveSummary(report), 12000);
+        } finally { setApproving(false); }
+    };
+    const edit = (r: ReviewRow, fallback: string): void => setReviewing({ stretch: r.stretch, matter: r.matter, description: descriptionOf(r.sittings)?.text ?? fallback });
     const current = w.currentActivity;
     const shortSeconds = short.reduce((n, st) => n + st.seconds, 0);
     const gapMinutes = Math.round(STRETCH_GAP_MS / 60_000);
@@ -502,43 +532,19 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
             <Panel>
                 {filter === "pending" ? (
                     <>
+                        {rows.length > 0 && <ApproveBar rows={rows} selected={selected} approving={approving} onSelect={(ids) => setTicked(new Set(ids))} onApprove={() => void approve(selected)} />}
                         {tutorial && <SampleRow tutorial={tutorial} open={!!open[tutorial.stretch.id] || tourStep === "row"} onToggle={() => toggle(tutorial.stretch.id)} notify={notify} onKeep={() => setReviewing({ stretch: tutorial.stretch, matter: tutorial.sittings[0].matter ?? null, description: tutorial.stretch.draft?.text ?? tutorial.stretch.name })} />}
                         {!tutorial && groups.length === 0 && stretches.length === 0 && short.length === 0 && personal.length === 0 && (
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
-                        {pendingRows.map((r) => "group" in r ? (
-                            <MatterRow key={r.group.id} w={w} onMoved={onMoved} group={r.group} match={matches.get(r.group.activityIDs[0]) ?? null} merged={r.group.activityIDs.some((id) => byID.get(id)?.mergeKey)} described={descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))} idle={idleSeconds(r.group.activityIDs.map((id) => byID.get(id) ?? {}))} shots={r.group.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} open={!!open[r.group.id]} onToggle={() => toggle(r.group.id)}
-                                onKeep={() => setReviewing({ stretch: matterStretch(r.group), matter: r.group.matter, description: descriptionOf(r.group.activityIDs.map((id) => byID.get(id)))?.text ?? r.group.documents.slice(0, 3).map((d) => d.name).join("; ") })} />
-                        ) : ((st, own) => (
-                            <div key={st.id}>
-                                <div className="activity">
-                                    <span className="app-icon">▭</span>
-                                    <div className="grow">
-                                        <Editable initial={own?.text ?? st.name} onSave={(text) => void window.lawdie.describeActivities(st.activityIDs, text)}>
-                                            <div className="small strong">{own?.by === "person" ? own.text : st.name}</div>
-                                        </Editable>
-                                        {st.draft && own?.by !== "person" && <DraftLine draft={st.draft} />}
-                                        {st.sittings === 1 && <SummaryLines items={st.activityIDs.map((id) => byID.get(id))} />}
-                                        <Shots names={st.activityIDs.flatMap((id) => byID.get(id)?.screenshots ?? [])} />
-                                        <div className="muted tiny meta">
-                                            <span><MatterLabel name={null} /> · {st.app} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{meetingWith(byID.get(st.activityIDs[0]))}{own?.by === "person" && st.name !== own.text ? ` · ${st.name}` : ""}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(st.activityIDs.map((id) => byID.get(id) ?? {}))} /></span>
-                                            {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={!!open[st.id]} onClick={() => toggle(st.id)} />}
-                                        </div>
-                                        <MergeLine match={matches.get(st.activityIDs[0]) ?? null} merged={st.activityIDs.some((id) => byID.get(id)?.mergeKey)} />
-                                    </div>
-                                    <span className="mono">{duration(st.seconds)}</span>
-                                    <MatterMenu w={w} ids={st.activityIDs} current={null} what={own?.text ?? st.name} onMoved={onMoved} />
-                                    {matches.get(st.activityIDs[0]) ? <MergeButtons ids={st.activityIDs} match={matches.get(st.activityIDs[0])!} /> : <>
-                                        <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(st.activityIDs, PERSONAL)}>Personal</button>
-                                        <button type="button" className="quiet" title="Take this stretch out of review without keeping time." onClick={() => void window.lawdie.dismissActivity(st.activityIDs)}>Dismiss</button>
-                                        <button type="button" className="primary" title="Check this stretch and save it as a time entry." onClick={() => setReviewing({ stretch: st, matter: null, description: own?.text ?? st.document?.name ?? st.name })}>Keep time</button>
-                                    </>}
-                                </div>
-                                {open[st.id] && st.sittings > 1 && (
-                                    <Sittings all={w.activities} items={st.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} onDismiss={st.sittings > 1 ? (id) => void window.lawdie.dismissActivity(id) : undefined} />
-                                )}
-                            </div>
-                        ))(r.stretch, descriptionOf(r.stretch.activityIDs.map((id) => byID.get(id)))))}
+                        {pendingRows.map((r) => {
+                            const row = rowByID.get("group" in r ? r.group.id : r.stretch.id);
+                            if (!row) return null;
+                            const common = { w, row, onMoved, match: matches.get(row.stretch.activityIDs[0]) ?? null, merged: row.sittings.some((a) => a.mergeKey), ticked: ticked.has(row.id), onTick: (on: boolean) => tick(row.id, on), approving, onApprove: () => void approve([row]), open: !!open[row.id], onToggle: () => toggle(row.id) };
+                            return "group" in r
+                                ? <MatterRow key={row.id} {...common} group={r.group} onEdit={() => edit(row, r.group.documents.slice(0, 3).map((d) => d.name).join("; "))} />
+                                : <StretchRow key={row.id} {...common} onEdit={() => edit(row, r.stretch.document?.name ?? r.stretch.name)} />;
+                        })}
                         {personal.length > 0 && <PersonalRow groups={personal} open={!!open.personal} onToggle={() => toggle("personal")} />}
                         {short.length > 0 && (
                             <div className="activity">
@@ -572,7 +578,7 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
                                     </div>
                                     <span className="mono">{duration(entrySeconds(e))}</span>
                                     <span className="muted small status kept">Kept</span>
-                                    <button type="button" className="quiet" onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
+                                    <button type="button" className="quiet" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
                                 </div>
                                 {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
                                 {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entryID={e.id} byID={byID} />}
@@ -600,31 +606,145 @@ function ActivityView({ w, state, tutorial = null }: { w: Workspace; state: AppS
     );
 }
 
+/** What a review row would be kept as (src/shared/keep.ts): whether Approve can keep it as shown, its billed hours, its matter's project, and under a client's rules the client and the codes. */
+type RowFacts = { verdict: ApproveVerdict; hours: number; project: Project | undefined; client: string | null; codes: string };
+/** A row of To review: a matter's day or a stretch on no matter, with its activities and what it would be kept as. */
+type ReviewRow = RowFacts & { id: string; stretch: Stretch; matter: string | null; sittings: Activity[] };
+
+function rowFacts(w: Workspace, stretch: Stretch, sittings: Activity[], matter: string | null, now: number): RowFacts {
+    const start = keepStart(w, stretch, sittings, matter, stretch.name);
+    const p = keepPreview(w, stretch, sittings, start, start.single);
+    return { verdict: approveCheck(w, stretch, sittings, matter, now), hours: p.hours, project: p.project, client: p.rc.book?.client ?? null, codes: p.rc.book ? [p.input.taskCode, p.input.activityCode].filter(Boolean).join(" / ") : "" };
+}
+
+/** A row can be ticked when Approve is not disabled on it. One that needs the Keep sheet can be: the report names it and leaves it. */
+const canSelect = (v: ApproveVerdict): boolean => v.ok || v.opensSheet;
+const possessiveOf = (name: string): string => (name.endsWith("s") ? `${name}'` : `${name}'s`);
+const SELECT_ROW_TIP = "Select this row to approve it with others.";
+
+/** Above the rows: select all, select by day, what is selected, and Approve selected. */
+function ApproveBar({ rows, selected, approving, onSelect, onApprove }: { rows: ReviewRow[]; selected: ReviewRow[]; approving: boolean; onSelect: (ids: string[]) => void; onApprove: () => void }): ReactNode {
+    const can = rows.filter((r) => canSelect(r.verdict));
+    const all = can.length > 0 && selected.length === can.length;
+    const box = useRef<HTMLInputElement>(null);
+    useEffect(() => { if (box.current) box.current.indeterminate = selected.length > 0 && !all; }, [selected.length, all]);
+    // The days the rows are from, newest first, each with its rows.
+    const days = new Map<string, ReviewRow[]>();
+    for (const r of [...can].sort((a, b) => Date.parse(b.stretch.startedAt) - Date.parse(a.stretch.startedAt))) { const k = dayKey(Date.parse(r.stretch.startedAt)); days.set(k, [...(days.get(k) ?? []), r]); }
+    const dayName = (r: ReviewRow): string => { const d = dayLabel(r.stretch.startedAt); return d === "Today" || d === "Yesterday" ? d.toLowerCase() : d; };
+    const hours = selected.reduce((n, r) => n + r.hours, 0);
+    const allTip = can.length ? "Select every row you can approve, or clear the selection." : "No row can be approved yet. Each row's Approve button says what it needs.";
+    const goTip = approving ? "Keeping the selected rows now." : selected.length ? "Keep the selected rows as shown. Rows that need the Keep sheet are named and left for you." : "Select rows first.";
+    return (
+        <div className="approve-bar row gap">
+            <span className="row-check-wrap" title={allTip}><input ref={box} type="checkbox" className="row-check" checked={all} disabled={!can.length} aria-label="Select all" title={allTip} onChange={() => onSelect(all ? [] : can.map((r) => r.id))} /></span>
+            <Menu label="Select" tip="Choose which rows to select.">
+                <button type="button" role="menuitem" disabled={!can.length} title="Select every row that can be approved." onClick={() => onSelect(can.map((r) => r.id))}>Every row</button>
+                {[...days.values()].map((list) => <button key={list[0].id} type="button" role="menuitem" title={`Select only the rows from ${dayName(list[0])}.`} onClick={() => onSelect(list.map((r) => r.id))}>Rows from {dayName(list[0])} ({list.length})</button>)}
+                <span className="menu-sep" aria-hidden="true" />
+                <button type="button" role="menuitem" disabled={!selected.length} title="Untick every row." onClick={() => onSelect([])}>Clear selection</button>
+            </Menu>
+            <span className="grow muted small">{selected.length ? `${selected.length} selected · ${hours.toFixed(1)} hr` : "Approve keeps a row as it reads. Tick rows to approve several at once."}</span>
+            <span title={goTip}><button type="button" className="primary approve-selected" disabled={!selected.length || approving} title={goTip} onClick={onApprove}>Approve selected ({selected.length})</button></span>
+        </div>
+    );
+}
+
+/** A row's tick box. Disabled, with the reason, when the row cannot be approved as shown. */
+function RowCheck({ verdict, ticked, onTick }: { verdict: ApproveVerdict; ticked: boolean; onTick: (on: boolean) => void }): ReactNode {
+    const can = canSelect(verdict);
+    const tip = verdict.ok || can ? SELECT_ROW_TIP : verdict.message;
+    return <span className="row-check-wrap" title={tip}><input type="checkbox" className="row-check" checked={ticked && can} disabled={!can} aria-label="Select this row" title={tip} onChange={(e) => onTick(e.target.checked)} /></span>;
+}
+
+/** A row's headline: the narrative it would be kept as, the person's or a draft (marked ✦), with the pencil; "Add a description" when there is none. */
+function Narrative({ ids, described }: { ids: string[]; described: ReturnType<typeof descriptionOf> }): ReactNode {
+    return (
+        <Editable initial={described?.text ?? ""} placeholder="Describe this work" title="Describe this work: the narrative it is kept as" onSave={(text) => void window.lawdie.describeActivities(ids, text)}>
+            {described ? <div className="narrative">{described.text}{described.by !== "person" && <> <DraftMark source={described.by} /></>}</div> : null}
+        </Editable>
+    );
+}
+
+/** Under the headline: the matter (given as children), its number and client, whether the AI suggested it, and the codes a client's rules give the entry. */
+function MatterLine({ row, children }: { row: Pick<ReviewRow, "matter" | "sittings" | "project" | "client" | "codes">; children: ReactNode }): ReactNode {
+    const p = row.project;
+    const suggested = !!row.matter && row.sittings.length > 0 && row.sittings.every((a) => a.matterBy === "ai");
+    return (
+        <div className="matter-line tiny">
+            {children}
+            {p?.matterNumber && <span className="matter-number" title="The matter's number, set on its page.">No. {p.matterNumber}</span>}
+            {p?.client && <span className="muted" title="The matter's client, set on its page.">{p.client}</span>}
+            {suggested && <span className="suggested" title="Kiwi's AI suggested this matter; approving keeps the time on it.">✦ suggested</span>}
+            {row.client && row.codes && <span className="codes mono" title={`UTBMS task and activity codes ${possessiveOf(row.client)} rules give this entry.`}>{row.codes}</span>}
+        </div>
+    );
+}
+
+/** A row's time: what was captured, and under it the hours it bills as. */
+function RowTime({ seconds, hours, client }: { seconds: number; hours: number; client: string | null }): ReactNode {
+    return (
+        <span className="row-time">
+            <span className="mono">{duration(seconds)}</span>
+            <span className="mono billed" title={`Billed as ${hours.toFixed(1)} hours: captured time rounded up to the tenth${client ? `, as ${possessiveOf(client)} rules require` : ""}.`}>{hours.toFixed(1)} hr</span>
+        </span>
+    );
+}
+
+const EDIT_TIP = "Open the Keep sheet to change the matter, description, times, hours or codes before keeping.";
+
+/** Approve: keeps the row as shown; opens the Keep sheet when the row needs it; disabled, saying why, when something on the row must change first. */
+function ApproveButton({ row, approving, onApprove, onEdit }: { row: Pick<ReviewRow, "verdict" | "hours" | "matter">; approving: boolean; onApprove: () => void; onEdit: () => void }): ReactNode {
+    const v = row.verdict;
+    if (v.ok) return <button type="button" className="primary approve" disabled={approving} title={`Keep this as shown: ${row.hours.toFixed(1)} hr on ${row.matter}, billable.`} onClick={onApprove}>Approve</button>;
+    if (v.opensSheet) return <button type="button" className="primary approve" title={`Opens the Keep sheet: ${v.message}`} onClick={onEdit}>Approve</button>;
+    return <span title={v.message}><button type="button" className="primary approve" disabled title={v.message}>Approve</button></span>;
+}
+
+/** A row's buttons: Matter, then the kept-entry question while it is open, else Personal, Dismiss, Edit… and Approve. */
+function RowActions({ w, row, match, what, dismissTip, approving, onMoved, onApprove, onEdit }: { w: Workspace; row: ReviewRow; match: TimeEntry | null; what: string; dismissTip: string; approving: boolean; onMoved: (ids: string[]) => void; onApprove: () => void; onEdit: () => void }): ReactNode {
+    const ids = row.stretch.activityIDs;
+    return (
+        <span className="row-actions">
+            <MatterMenu w={w} ids={ids} current={row.matter} what={what} onMoved={onMoved} />
+            {match ? <MergeButtons ids={ids} match={match} /> : <>
+                <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(ids, PERSONAL)}>Personal</button>
+                <button type="button" className="quiet" title={dismissTip} onClick={() => void window.lawdie.dismissActivity(ids)}>Dismiss</button>
+                <button type="button" className="quiet edit" title={EDIT_TIP} onClick={onEdit}>Edit…</button>
+                <ApproveButton row={row} approving={approving} onApprove={onApprove} onEdit={onEdit} />
+            </>}
+        </span>
+    );
+}
+
 /**
  * The tutorial's sample stretch, laid out like a matter's row so the tutorial can point at its parts.
- * Its buttons say what the real ones do; only Keep time opens anything, and that sheet saves nothing.
+ * Its buttons say what the real ones do; only Edit… opens anything, and that sheet saves nothing. Approve is disabled: the sample is never kept.
  */
 function SampleRow({ tutorial: { stretch: st, sittings }, open, onToggle, notify, onKeep }: { tutorial: Tutorial; open: boolean; onToggle: () => void; notify: (text: string) => void; onKeep: () => void }): ReactNode {
     const idle = idleSeconds(sittings);
     const explain = (what: string): void => notify(`On a real row, ${what}. This sample row stays until the tutorial ends.`);
+    const never = APPROVE_MESSAGES.tutorial;
     return (
         <div data-tour="review-row">
             <div className="activity">
+                <span className="row-check-wrap" title={never}><input type="checkbox" className="row-check" checked={false} disabled readOnly aria-label="Select this row" title={never} /></span>
                 <span className="app-icon matter-icon" aria-hidden="true">§</span>
                 <div className="grow">
-                    <div className="small strong">{sittings[0].matter} <span className="sample-tag" title="A sample the tutorial shows. It is not in your workspace and nothing done to it is saved.">Sample</span></div>
-                    {st.draft && <DraftLine draft={st.draft} />}
+                    <div className="narrative">{st.draft?.text ?? st.name}{st.draft && <> <DraftMark source={st.draft.source} /></>} <span className="sample-tag" title="A sample the tutorial shows. It is not in your workspace and nothing done to it is saved.">Sample</span></div>
+                    <MatterLine row={{ matter: sittings[0].matter ?? null, sittings, project: undefined, client: null, codes: "" }}><span className="matter-label">{sittings[0].matter}</span></MatterLine>
                     <div className="muted tiny meta">
                         <span>{st.app} · {dayLabel(st.startedAt)} {spanLabel(st.startedAt, st.endedAt, st.sittings)} · {st.sittings} sittings<IdleTag seconds={idle} /></span>
                         <SittingsToggle label="1 item" open={open} what="the documents in this matter" onClick={onToggle} />
                     </div>
                 </div>
-                <span className="mono">{duration(st.seconds)}</span>
-                <span className="row gap" data-tour="review-actions">
+                <RowTime seconds={st.seconds} hours={billedHours(st.seconds)} client={null} />
+                <span className="row-actions" data-tour="review-actions">
                     <button type="button" className="quiet menu-button" title="Move this time to another matter, off any matter, or to a new one." onClick={() => explain("Matter moves this time to another matter, off any matter, or to a new one you name in place")}>Matter <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
                     <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => explain(`${PERSONAL} keeps the time out of billing and sync for good`)}>Personal</button>
                     <button type="button" className="quiet" title="Take this stretch out of review without keeping time." onClick={() => explain("Dismiss takes the stretch out of review without keeping time")}>Dismiss</button>
-                    <button type="button" className="primary" title="Check this stretch and save it as a time entry. The sample saves nothing." onClick={onKeep}>Keep time</button>
+                    <button type="button" className="quiet edit" title={`${EDIT_TIP} The sample saves nothing.`} onClick={onKeep}>Edit…</button>
+                    <span title={never}><button type="button" className="primary approve" disabled title={never}>Approve</button></span>
                 </span>
             </div>
             {open && (
@@ -722,7 +842,7 @@ function Editable({ initial, placeholder, title = "Rename: the description this 
     const begin = (): void => { setText(initial); setEditing(true); };
     const finish = (save: boolean): void => { setEditing(false); if (save && text.trim() !== initial.trim()) onSave(text.trim()); };
     if (editing) return (
-        <input className="inline-edit" autoFocus value={text} placeholder={placeholder} maxLength={500} aria-label="Description"
+        <input className="inline-edit" autoFocus value={text} placeholder={placeholder} maxLength={500} aria-label="Description" title="Enter saves, Escape cancels."
             onChange={(e) => setText(e.target.value)} onBlur={() => finish(true)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } }} />
     );
@@ -735,9 +855,10 @@ function Editable({ initial, placeholder, title = "Rename: the description this 
     );
 }
 
-/** An AI-drafted billing description, under the row it was drafted for. */
-function DraftLine({ draft }: { draft: Draft }): ReactNode {
-    return <div className="draft-line" title={draft.source === "sample" ? "Sample draft, not generated from your data" : draft.source === "capture" ? "Written from the captured apps, documents and people." : "Drafted by AI from what was captured"}><span aria-hidden="true">✦</span> {draft.text}</div>;
+/** "✦" after a row's narrative that is a draft, not the person's words: who wrote it, and that Approve keeps it as it reads. */
+function DraftMark({ source }: { source: DraftSource }): ReactNode {
+    const from = source === "sample" ? "Sample draft, not generated from your data." : source === "capture" ? "Written from the captured apps, documents and people." : "Drafted by AI from what was captured.";
+    return <span className="draft-mark" title={`${from} Approve keeps it as written; the pencil changes it.`}>✦</span>;
 }
 
 /** "✦ AI" after a description that is an AI draft kept as written. */
@@ -776,7 +897,7 @@ function MatterMenu({ w, ids, current, what, label = "Matter", className, onMove
     };
     const finish = (save: boolean): void => { setNaming(false); if (save && name.trim()) move(name); setName(""); };
     if (naming) return (
-        <input className="inline-edit matter-new" autoFocus value={name} placeholder="New matter's name" aria-label="New matter" maxLength={MATTER_MAX}
+        <input className="inline-edit matter-new" autoFocus value={name} placeholder="New matter's name" aria-label="New matter" maxLength={MATTER_MAX} title="Name the new matter. Enter saves, Escape cancels."
             onChange={(e) => setName(e.target.value)} onBlur={() => finish(true)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } }} />
     );
@@ -790,39 +911,38 @@ function MatterMenu({ w, ids, current, what, label = "Matter", className, onMove
     );
 }
 
-/** One matter's day: every app and document it was in, as one row to keep. */
-function MatterRow({ w, onMoved, group: g, match, merged, described, idle, shots, open, onToggle, onKeep }: { w: Workspace; onMoved: (ids: string[]) => void; group: MatterGroup; match: TimeEntry | null; merged: boolean; described: ReturnType<typeof descriptionOf>; idle: number; shots: string[]; open: boolean; onToggle: () => void; onKeep: () => void }): ReactNode {
+/** What every review row is given: the row and what it would be kept as, its kept-entry question, its tick, and Approve and Edit…. */
+type RowProps = { w: Workspace; row: ReviewRow; onMoved: (ids: string[]) => void; match: TimeEntry | null; merged: boolean; ticked: boolean; onTick: (on: boolean) => void; approving: boolean; onApprove: () => void; onEdit: () => void; open: boolean; onToggle: () => void };
+
+/** One matter's day: every app and document it was in, as one row that reads as the entry it would be: its narrative, its matter, its time and billed hours. */
+function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, approving, onApprove, onEdit, open, onToggle }: RowProps & { group: MatterGroup }): ReactNode {
     const notify = useNotify();
     return (
         <div>
             <div className="activity">
+                <RowCheck verdict={row.verdict} ticked={ticked} onTick={onTick} />
                 <span className="app-icon matter-icon" aria-hidden="true">§</span>
                 <div className="grow">
-                    <Editable initial={g.matter} title="Rename this matter, everywhere it appears; another matter's name merges the two" onSave={(name) => {
-                        if (!name) return;
-                        if (isPersonal(name)) { void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok) notify(`The time on “${g.matter}” waiting for review is now personal. “Not personal” on an item brings it back.`); }); return; }
-                        const into = name.toLowerCase() === g.matter.toLowerCase() ? null : existingMatter(w, name);
-                        void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok && into) notify(`“${g.matter}” merged into “${into}”: its time is on that matter now.`); });
-                    }}>
-                        <div className="small strong">{g.matter}</div>
-                    </Editable>
-                    <Editable initial={described?.text ?? ""} placeholder="Describe this work" title="Describe this work: the description it is kept as, or the start of one" onSave={(text) => void window.lawdie.describeActivities(g.activityIDs, text)}>
-                        {described?.by === "person" ? <div className="draft-line own">{described.text}</div> : g.draft ? <DraftLine draft={g.draft} /> : null}
-                    </Editable>
-                    <Shots names={shots} />
+                    <Narrative ids={g.activityIDs} described={descriptionOf(row.sittings)} />
+                    <MatterLine row={row}>
+                        <Editable initial={g.matter} title="Rename this matter, everywhere it appears; another matter's name merges the two" onSave={(name) => {
+                            if (!name) return;
+                            if (isPersonal(name)) { void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok) notify(`The time on “${g.matter}” waiting for review is now personal. “Not personal” on an item brings it back.`); }); return; }
+                            const into = name.toLowerCase() === g.matter.toLowerCase() ? null : existingMatter(w, name);
+                            void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok && into) notify(`“${g.matter}” merged into “${into}”: its time is on that matter now.`); });
+                        }}>
+                            <span className="matter-label">{g.matter}</span>
+                        </Editable>
+                    </MatterLine>
+                    <Shots names={row.sittings.flatMap((a) => a.screenshots ?? [])} />
                     <div className="muted tiny meta">
-                        <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}<IdleTag seconds={idle} /></span>
+                        <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}<IdleTag seconds={idleSeconds(row.sittings)} /></span>
                         <SittingsToggle label={`${g.documents.length} ${g.documents.length === 1 ? "item" : "items"}`} open={open} what="the documents in this matter" onClick={onToggle} />
                     </div>
                     <MergeLine match={match} merged={merged} />
                 </div>
-                <span className="mono">{duration(g.seconds)}</span>
-                <MatterMenu w={w} ids={g.activityIDs} current={g.matter} what={`${g.matter}'s time`} onMoved={onMoved} />
-                {match ? <MergeButtons ids={g.activityIDs} match={match} /> : <>
-                    <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(g.activityIDs, PERSONAL)}>Personal</button>
-                    <button type="button" className="quiet" title="Take this matter's activity out of review without keeping time." onClick={() => void window.lawdie.dismissActivity(g.activityIDs)}>Dismiss</button>
-                    <button type="button" className="primary" title="Check this matter's time and save it." onClick={onKeep}>Keep time</button>
-                </>}
+                <RowTime seconds={g.seconds} hours={row.hours} client={row.client} />
+                <RowActions w={w} row={row} match={match} what={`${g.matter}'s time`} dismissTip="Take this matter's activity out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
             </div>
             {open && (
                 <div className="sittings">
@@ -848,6 +968,36 @@ function MatterRow({ w, onMoved, group: g, match, merged, described, idle, shots
     );
 }
 
+/** A stretch of work on no matter yet: the sittings on one document, as one row. Approve waits for a matter; Edit… keeps it with or without one. */
+function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving, onApprove, onEdit, open, onToggle }: RowProps): ReactNode {
+    const st = row.stretch;
+    const own = descriptionOf(row.sittings);
+    return (
+        <div>
+            <div className="activity">
+                <RowCheck verdict={row.verdict} ticked={ticked} onTick={onTick} />
+                <span className="app-icon">▭</span>
+                <div className="grow">
+                    <Narrative ids={st.activityIDs} described={own} />
+                    <MatterLine row={row}><MatterLabel name={null} /></MatterLine>
+                    {st.sittings === 1 && <SummaryLines items={row.sittings} />}
+                    <Shots names={row.sittings.flatMap((a) => a.screenshots ?? [])} />
+                    <div className="muted tiny meta">
+                        <span>{st.app}{st.name !== st.app ? ` · ${st.name}` : ""} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{meetingWith(row.sittings[0])}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(row.sittings)} /></span>
+                        {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={open} onClick={onToggle} />}
+                    </div>
+                    <MergeLine match={match} merged={merged} />
+                </div>
+                <RowTime seconds={st.seconds} hours={row.hours} client={row.client} />
+                <RowActions w={w} row={row} match={match} what={own?.text ?? st.name} dismissTip="Take this stretch out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
+            </div>
+            {open && st.sittings > 1 && (
+                <Sittings all={w.activities} items={row.sittings} onDismiss={(id) => void window.lawdie.dismissActivity(id)} />
+            )}
+        </div>
+    );
+}
+
 /** Time the AI or the person called personal, every day of it in one row: dismissed in one go, or an item sent back to review. Never kept. */
 function PersonalRow({ groups, open, onToggle }: { groups: MatterGroup[]; open: boolean; onToggle: () => void }): ReactNode {
     const items = groups.flatMap((g) => g.documents.map((d) => ({ ...d, day: g.startedAt })));
@@ -864,7 +1014,7 @@ function PersonalRow({ groups, open, onToggle }: { groups: MatterGroup[]; open: 
                     </div>
                 </div>
                 <span className="mono">{duration(seconds)}</span>
-                <button type="button" className="quiet" onClick={() => void window.lawdie.dismissActivity(groups.flatMap((g) => g.activityIDs))}>Dismiss all</button>
+                <button type="button" className="quiet" title="Take all the personal time out of review. It is never kept." onClick={() => void window.lawdie.dismissActivity(groups.flatMap((g) => g.activityIDs))}>Dismiss all</button>
             </div>
             {open && (
                 <div className="sittings">
@@ -936,42 +1086,24 @@ function Sittings({ items, all, onDismiss }: { items: (Interval & { id?: string;
 /** "HH:MM" in local time, and back onto the stretch's day (an end before the start rolls to the next day). */
 
 function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects, sittings, keep = (ids, input) => window.lawdie.keepActivity(ids, input), onClose }: { w: Workspace; stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; keep?: (ids: string[], input: KeepInput) => Promise<boolean>; onClose: () => void }): ReactNode {
-    const [matter, setMatter] = useState(suggested ?? "");
-    const project = projectByName(w, matter);
-    const rc = rulesContext(w, project);
-    const day = new Date(stretch.startedAt).toLocaleDateString("en-CA");
-    // The client's rules want one task per entry: the captured tasks of this stretch, each with its narrative, hours and codes.
-    const initialPlan = useMemo(() => (rc.ctx ? splitPlan(sittings, rc.ctx, rc.profile, { billable: true, hourlyRate: project?.hourlyRate ?? 0, day }) : []), [sittings, rc.ctx, rc.profile, project?.hourlyRate, day]);
-    const single = initialPlan.length === 1 ? initialPlan[0].draft : null;
-    const [description, setDescription] = useState(descriptionOf(sittings)?.text ?? single?.description ?? initialDescription);
-    const asDrafted = (!!stretch.draft && description.trim() === stretch.draft.text) || (!!single && description.trim() === single.description);
-    const [billable, setBillable] = useState(true);
-    const [startText, setStartText] = useState(timeValue(stretch.startedAt));
-    const [endText, setEndText] = useState(timeValue(stretch.endedAt));
-    const [hoursSet, setHoursSet] = useState<number | null>(null);
-    const [codes, setCodes] = useState<{ taskCode?: string; activityCode?: string }>(single ? { taskCode: single.taskCode, activityCode: single.activityCode } : {});
-    const [rate, setRate] = useState<number | null>(null);
+    // What the sheet opens with and what it derives are src/shared/keep.ts, which Approve keeps from too.
+    const [opening] = useState(() => keepStart(w, stretch, sittings, suggested, initialDescription));
+    const [matter, setMatter] = useState(opening.matter);
+    // The client's rules want one task per entry: when this stretch is one captured task, its narrative and codes from capture.
+    const single = useMemo(() => singleOf(w, stretch, sittings, matter), [w, stretch, sittings, matter]);
+    const [description, setDescription] = useState(opening.description);
+    const [billable, setBillable] = useState(opening.billable);
+    const [startText, setStartText] = useState(opening.startText);
+    const [endText, setEndText] = useState(opening.endText);
+    const [hoursSet, setHoursSet] = useState<number | null>(opening.hoursSet);
+    const [codes, setCodes] = useState<{ taskCode?: string; activityCode?: string }>(opening.codes);
+    const [rate, setRate] = useState<number | null>(opening.rate);
     const [lines, setLines] = useState<PlanLine[] | null>(null);
     const [foldTarget, setFoldTarget] = useState<string | null>(null);
     const [problem, setProblem] = useState<string | null>(null);
-    const [leaveOutIdle, setLeaveOutIdle] = useState(false);
-    const { start, end, changed } = keepBounds(stretch, startText, endText);
-    // A cleared time box is "" (the browser's time input): say so, rather than show 0s.
-    const missingTime = !startText || !endText;
-    const spans: Interval[] = sittings.flatMap(intervals);
-    const imported = sittings.some((a) => a.origin);
-    const span = imported ? (() => { const kept = clipSittings(spans, start, end); return kept.length ? { startedAt: kept[0].startedAt, endedAt: kept[kept.length - 1].endedAt, sittings: kept } : null; })() : stretchSpan(spans, start, end);
-    const idleList = sittings.flatMap((a) => a.idle ?? []);
-    const idle = span ? idleList.reduce((n, i) => n + intervals(span).reduce((m, s) => m + Math.max(0, Math.min(Date.parse(i.endedAt), Date.parse(s.endedAt)) - Math.max(Date.parse(i.startedAt), Date.parse(s.startedAt))) / 1000, 0), 0) : 0;
-    const left = span && leaveOutIdle && idle > 0 ? subtractIntervals(intervals(span), idleList) : null;
-    const preview = left ? (left.length ? { startedAt: left[0].startedAt, endedAt: left[left.length - 1].endedAt, sittings: left } : null) : span;
-    const previewSeconds = preview ? intervals(preview).reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0) : 0;
-    const hours = hoursSet ?? Math.max(0.1, roundUpToTenth(previewSeconds / 3600));
-    const hourlyRate = rate ?? project?.hourlyRate ?? 0;
-    const plan = rc.ctx && preview ? splitPlan(reviewedActivities(sittings, intervals(preview)), rc.ctx, rc.profile, { billable, hourlyRate, day, ...(hoursSet !== null ? { hours: hoursSet } : {}) }) : [];
-    const draft: EntryDraft = { description, hours, ...codes, billable, hourlyRate, day };
-    const sameDay = sameDayOf(w, project?.id ?? null, day);
-    const check = { ...rc, sameDay, splitCount: plan.length, suggestion: single?.description ?? null };
+    const [leaveOutIdle, setLeaveOutIdle] = useState(opening.leaveOutIdle);
+    // A cleared time box is "" (the browser's time input): `missingTime` says so, rather than show 0s.
+    const { rc, missingTime, imported, span, idle, left, preview, previewSeconds, hours, plan, draft, sameDay, check, asDrafted, input } = keepPreview(w, stretch, sittings, { matter, description, billable, startText, endText, leaveOutIdle, hoursSet, codes, rate }, single);
     const onFix = (fix: Fix): void => {
         if (fix.split) { setLines(plan); return; }
         if (fix.foldInto) setFoldTarget(fix.foldInto);
@@ -989,7 +1121,6 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
         }
         if (!description.trim()) { setProblem("Add a description."); return; }
         if (!preview) { setProblem(span ? "All of this time was idle. Dismiss it instead." : "No captured time falls between those times."); return; }
-        const input = { description, projectID: null, matter: matter.trim() || null, billable, ...(asDrafted ? { drafted: (stretch.draft?.source ?? "capture") as DraftSource } : {}), ...(changed ? { startedAt: new Date(start).toISOString(), endedAt: new Date(end).toISOString() } : {}), ...(leaveOutIdle && idle > 0 ? { leaveOutIdle: true } : {}), ...(rc.book ? { hours, ...codes, hourlyRate } : {}) };
         // Folded into the day's email entry: the sittings join that entry, which takes the summed hours.
         const ok = foldTarget ? await window.lawdie.keepLines([{ activityIDs: stretch.activityIDs, input, foldInto: foldTarget }]) : await keep(stretch.activityIDs, input);
         if (ok) onClose();
@@ -1021,7 +1152,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
                             {rc.book && <label className="field"><span className="eyebrow">Activity</span><input value={codes.activityCode ?? ""} placeholder="A103" title="UTBMS activity code for this entry." onChange={(e) => setCodes({ ...codes, activityCode: e.target.value.toUpperCase() })} /></label>}
                             <label className="row gap check" title="Bill this time to the client."><input type="checkbox" checked={billable} title="Bill this time to the client." onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
                         </div>
-                        {idle >= 60 && <label className="row gap check"><input type="checkbox" checked={leaveOutIdle} onChange={(e) => setLeaveOutIdle(e.target.checked)} /> Leave out {duration(idle)} idle (no mouse or keyboard for {IDLE_FLAG_SECONDS / 60} minutes or more)</label>}
+                        {idle >= 60 && <label className="row gap check" title="Keep this time without the stretches that had no mouse or keyboard input."><input type="checkbox" checked={leaveOutIdle} title="Keep this time without the stretches that had no mouse or keyboard input." onChange={(e) => setLeaveOutIdle(e.target.checked)} /> Leave out {duration(idle)} idle (no mouse or keyboard for {IDLE_FLAG_SECONDS / 60} minutes or more)</label>}
                         <RulesCheck draft={draft} c={check} onFix={onFix} />
                         {(stretch.sittings > 1 || (left?.length ?? 0) > 1) && !rc.book && <Sittings items={intervals(preview ?? { startedAt: stretch.startedAt, endedAt: stretch.endedAt })} />}
                         {!rc.book && <p className="muted tiny">{stretch.sittings > 1 ? "Only the sittings count; narrowing the times trims them, and time in other apps between them stays free to keep on its own." : imported ? "Imported time stays within the captured intervals. Any portion you leave out is treated as reviewed." : "Change the times if the work ran longer than what was captured."} If this overlaps tracked time, dismiss the activity instead.</p>}

@@ -150,6 +150,25 @@ the totals, so the model quotes figures rather than computing them). Prompts liv
 record their source; "sample" ones come only from demo data and are never replaced.
 One switch, "AI suggestions" (`suggestMatters`), covers all of them.
 
+Approve (2026-11-12): a review row reads as the entry it would become (`MatterRow`, `StretchRow`, `SampleRow` in App.tsx):
+the narrative as its headline (the person's, else the draft marked ✦), the matter line under it (name, number, client,
+"✦ suggested" while every sitting's matter is the AI's, the codes under a client's rules), captured time over billed
+hours in tenths (`billedHours()`), a tick box, Edit… (the Keep sheet) and Approve. `src/shared/keep.ts` is the one place
+that says what a row is kept as, pure and tested (`keep.test.ts`): `keepStart()`/`keepPreview()` are everything the Keep
+sheet opens with and derives (bounds, the time kept, hours, the rules' findings, the `KeepInput`), and Approve keeps that
+input with nothing changed, so the two cannot drift. `approveCheck()` is the verdict on a row, in order: the tutorial's
+sample, time in progress or gone, already reviewed, Personal, no matter, an open kept-entry question and no description
+(the person's or a draft; capture's own single-task narrative does not count) disable the button and say why; imported
+time covered since it came in (`importedCovered()` in feed.ts, the non-mutating half of `clipImported`), more than one
+Kiwi matter, a finding from the client's rules and an overlap with kept time or the running timer make Approve open the
+sheet instead. Approving accepts a suggested matter: the sittings become the person's, as at any keep. The window sends
+only activity ids (`approveRows` in the preload and index.ts, one row or the ticked ones from `ApproveBar`, at most
+`APPROVE_MAX_ROWS`); the main process reads each row again from the live workspace (`inboxRowOf()`), oldest first, so a
+later row sees the entries kept before it, keeps each on its own (a refused keep puts the workspace back whole) in one
+store change, and answers an `ApproveReport` that the toast reads out (`approveSummary()`: what was kept, the first
+three that were not and why). The helpers the rules need of a matter (`rulesContext`, `projectByName`, `sameDayOf`,
+`draftOf`) live in keep.ts and Rules.tsx re-exports them.
+
 Sitting summaries (2026-11-12): before naming, the same round asks `POST /desktop-time/summaries` for one line per
 sitting (`src/shared/summaries.ts`, tested in `summaries.test.ts`; prompt in `kiwi/backend/src/lib/desktopSummaries.ts`).
 A sitting is an activity: pending, not Personal, a minute or more (`SUMMARY_MIN_SECONDS`), with text to read or a
@@ -246,8 +265,8 @@ carries the step id, a `Menu` whose `tourStep` it is stays open (Entries, Billin
 with its button above the dim layer, Settings switches to the Billing tab, the sample row unfolds
 its item, and the rules step routes to the Client rules page (the New rulebook sheet when no client
 has rules yet; a rulebook made there is real). The sample row (`SampleRow` in App.tsx) is the window's only:
-`isTutorialID` ids never enter the workspace, its Keep time opens the real `KeepSheet` with a `keep`
-override that saves nothing and says so in a toast, and `keepStretch` refuses its ids (tested). The
+`isTutorialID` ids never enter the workspace, its Edit… opens the real `KeepSheet` with a `keep`
+override that saves nothing and says so in a toast (its Approve is disabled), and `keepStretch` refuses its ids (tested). The
 small blocks shared by both files live in `ui.tsx`. Entry points: the welcome itself, Settings → Display
 & data → "Learn the app", and `--route welcome|tutorial|whatsnew` for the harness.
 
