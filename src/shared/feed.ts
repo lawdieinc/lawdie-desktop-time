@@ -49,13 +49,36 @@ export function subtractIntervals(source: Interval[], occupied: Interval[]): Int
     }
     return result.filter((i) => date(i.endedAt) - date(i.startedAt) >= 1000);
 }
-export function clipImported(w: Workspace, now: number): void {
+/**
+ * What is left of each pending imported row once this computer's own time, kept time, the segment in progress and a
+ * running timer are taken out, and earlier imports before later ones. Changes nothing: `clipImported` applies it,
+ * and Approve (src/shared/keep.ts) asks it whether a row is still whole.
+ */
+export function importedRemaining(w: Workspace, now: number): Map<string, Interval[]> {
     // A calendar row is what was planned, not what this computer saw: it never clips imported time; the two sit side by side for review.
     const occupied = [...w.activities.filter((a) => !a.origin && !a.ownerID.startsWith("calendar:")).flatMap(intervals), ...w.entries.flatMap(intervals), ...(w.currentActivity ? intervals(w.currentActivity) : []), ...(w.timer ? [{ startedAt: w.timer.startedAt, endedAt: new Date(now).toISOString() }] : [])];
     // Existing reviewed evidence takes precedence; new imports are deterministic by time and source.
     const imported = w.activities.filter((a) => a.origin && a.disposition === "pending").sort((a, b) => date(a.startedAt) - date(b.startedAt) || (a.originRef ?? "").localeCompare(b.originRef ?? ""));
+    const out = new Map<string, Interval[]>();
     for (const a of imported) {
         const remaining = subtractIntervals(intervals(a), occupied);
+        out.set(a.id, remaining);
+        occupied.push(...remaining);
+    }
+    return out;
+}
+const totalSeconds = (list: Interval[]): number => list.reduce((n, i) => n + (date(i.endedAt) - date(i.startedAt)) / 1000, 0);
+/** Whether other time has covered any of these imported rows since they were last clipped: keeping them would keep less than the row shows. */
+export function importedCovered(w: Workspace, ids: readonly string[], now: number): boolean {
+    const mine = w.activities.filter((a) => ids.includes(a.id) && a.origin && a.disposition === "pending");
+    if (!mine.length) return false;
+    const remaining = importedRemaining(w, now);
+    return mine.some((a) => totalSeconds(remaining.get(a.id) ?? []) < totalSeconds(intervals(a)) - 0.5);
+}
+export function clipImported(w: Workspace, now: number): void {
+    const byID = new Map(w.activities.map((a) => [a.id, a]));
+    for (const [id, remaining] of importedRemaining(w, now)) {
+        const a = byID.get(id)!;
         a.sittings = remaining;
         if (!remaining.length) {
             a.disposition = "dismissed";
@@ -63,7 +86,6 @@ export function clipImported(w: Workspace, now: number): void {
             if (receipt) receipt.disposition = "overlap";
         } else {
             a.startedAt = remaining[0].startedAt; a.endedAt = remaining[remaining.length - 1].endedAt;
-            occupied.push(...remaining);
         }
     }
 }

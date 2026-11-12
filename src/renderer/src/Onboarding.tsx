@@ -97,7 +97,7 @@ export function Welcome({ state, onDone }: { state: AppState; onDone: (startTour
                 {step === "done" && (
                     <>
                         <div className="heading"><h2 className="display" id="welcome-title">You're set.</h2><p className="muted">{on.length ? `On: ${on.join(", ")}.` : "Capture is still off; switch it on from the sidebar when you are ready."} {w.sync ? `Kept time syncs to ${product}.` : "Nothing leaves this " + machine + " until you connect."} {w.billing ? `Invoices and time sheets print for ${w.billing.firm.name}${w.billing.logo ? ", with its logo" : ""}.` : "Set the firm up in Settings → Billing before the first invoice."}</p></div>
-                        <p className="small">Work as usual. When you like, open <strong>Activity</strong>: each stretch of work waits there with its time, and <strong>Keep time</strong> turns it into an entry. A two-minute tutorial walks the screens with a sample stretch; nothing it does is saved.</p>
+                        <p className="small">Work as usual. When you like, open <strong>Activity</strong>: each stretch of work waits there with its time, and <strong>Approve</strong> (or <strong>Edit…</strong> to change it first) turns it into an entry. A two-minute tutorial walks the screens with a sample stretch; nothing it does is saved.</p>
                     </>
                 )}
                 <div className="row between welcome-actions">

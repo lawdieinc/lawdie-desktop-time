@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountOf, applyJoins, ensureFeed, importFeed, joinMatter, joinRequest, matchingProject, parseFeedPage, refreshReceipts, subtractIntervals, undoJoin, type FeedPage, type FeedRow } from "./feed";
+import { accountOf, applyJoins, clipImported, ensureFeed, importFeed, importedCovered, importedRemaining, joinMatter, joinRequest, matchingProject, parseFeedPage, refreshReceipts, subtractIntervals, undoJoin, type FeedPage, type FeedRow } from "./feed";
 import { PERSONAL, WorkspaceError, deleteEntry, dismissActivities, emptyWorkspace, keepStretch, mergeProjects, projectNamed, prune, setMatter, syncBatches, syncRequest, updateProject, validate, type Activity, type SyncTarget, type Workspace } from "./model";
 import { applyMatters, inboxOf } from "./matters";
 
@@ -112,6 +112,36 @@ describe("this computer's time wins an overlap", () => {
         w.activities.push(local({ startedAt: iso(0), endedAt: iso(600) }));
         expect(() => keepStretch(w, [imported.id], { description: "x", projectID: null, billable: true }, NOW)).toThrow(/covered by other activity/);
         expect(w.activities.find((a) => a.id === imported.id)!.disposition).toBe("dismissed");
+    });
+
+    it("says what would be left without changing anything, and clipping applies exactly that", () => {
+        const w = connected();
+        // Two imports that overlap each other (the earlier wins), and one this computer covers whole.
+        importFeed(w, page([row(), row({ id: "seg-2", started_at: iso(400), ended_at: iso(900), seconds: 500 }), row({ id: "seg-3", started_at: iso(2000), ended_at: iso(2300), seconds: 300 })]), NOW);
+        const id = (ref: string): string => w.activities.find((a) => a.originRef === ref)!.id;
+        expect(w.activities.find((a) => a.originRef === "seg-2")!.sittings).toEqual([{ startedAt: iso(600), endedAt: iso(900) }]);
+        expect(importedCovered(w, [id("seg-1"), id("seg-2"), id("seg-3")], NOW)).toBe(false);
+        // Capture that arrived since: part of the first, all of the third.
+        w.activities.push(local({ startedAt: iso(100), endedAt: iso(200) }), local({ startedAt: iso(1900), endedAt: iso(2400) }));
+        const before = structuredClone(w);
+        const remaining = importedRemaining(w, NOW);
+        expect(w).toEqual(before);
+        expect(remaining.get(id("seg-1"))).toEqual([{ startedAt: iso(0), endedAt: iso(100) }, { startedAt: iso(200), endedAt: iso(600) }]);
+        expect(remaining.get(id("seg-2"))).toEqual([{ startedAt: iso(600), endedAt: iso(900) }]);
+        expect(remaining.get(id("seg-3"))).toEqual([]);
+        expect(importedCovered(w, [id("seg-1")], NOW)).toBe(true);
+        expect(importedCovered(w, [id("seg-2")], NOW)).toBe(false);
+        expect(importedCovered(w, [id("seg-3")], NOW)).toBe(true);
+        expect(importedCovered(w, [w.activities[w.activities.length - 1].id], NOW)).toBe(false); // not imported
+        clipImported(w, NOW);
+        for (const [ref, left] of [["seg-1", remaining.get(id("seg-1"))!], ["seg-2", remaining.get(id("seg-2"))!]] as const) {
+            expect(w.activities.find((a) => a.originRef === ref)).toMatchObject({ disposition: "pending", sittings: left, startedAt: left[0].startedAt, endedAt: left[left.length - 1].endedAt });
+        }
+        expect(w.activities.find((a) => a.originRef === "seg-3")).toMatchObject({ disposition: "dismissed", sittings: [] });
+        expect(w.feed!.receipts["browser:seg-3"].disposition).toBe("overlap");
+        // Clipped once, nothing more is covered.
+        expect(importedCovered(w, [id("seg-1"), id("seg-2")], NOW)).toBe(false);
+        validate(w);
     });
 });
 
