@@ -593,3 +593,7 @@ Same day: idle options 1, 6, 12, 15, 30, 60 minutes (a value saved before stays 
 above), also in 0.18.0. Tests 307.
 Same day: time by hand (section above): hours and times changed in place, Add time and Add sitting, all through review.
 Verified through the harness on a scratch workspace. Tests 317.
+2026-11-13: a user's window stopped answering clicks after a restart (LAW-1403). Found: `importedRemaining()` checked every imported
+sitting against every other interval, and Approve asked it once per review row, so with unreviewed time now waiting 90 days a
+workspace of 4,400 sittings took 4 s per feed page in the main process and 15 s per save in the window. It is now a sorted pass
+(`Taken` in feed.ts, 21 ms and 59 ms on the same file) worked out once per screen. Recreated in the app on that file (the window held for 11 s in 0.18.0); the user had the import on and thousands waiting. Version 0.18.1.

@@ -50,29 +50,79 @@ export function subtractIntervals(source: Interval[], occupied: Interval[]): Int
     return result.filter((i) => date(i.endedAt) - date(i.startedAt) >= 1000);
 }
 /**
+ * Time already taken, as sorted intervals that never touch or overlap, so taking it out of a sitting is a search
+ * and a short walk rather than a pass over everything. With every imported sitting checked against every other
+ * interval, 4,400 unreviewed sittings took four seconds a pass and froze the app (2026-11-13).
+ */
+class Taken {
+    private starts: number[] = [];
+    private ends: number[] = [];
+    constructor(list: Interval[]) {
+        const all = list.map((i) => [date(i.startedAt), date(i.endedAt)] as const).filter(([s, e]) => e > s).sort((a, b) => a[0] - b[0]);
+        for (const [s, e] of all) {
+            const last = this.ends.length - 1;
+            if (last >= 0 && s <= this.ends[last]) this.ends[last] = Math.max(this.ends[last], e);
+            else { this.starts.push(s); this.ends.push(e); }
+        }
+    }
+    /** The first interval that ends after `t` (or at it, when `touching`). */
+    private from(t: number, touching: boolean): number {
+        let lo = 0, hi = this.ends.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (touching ? this.ends[mid] >= t : this.ends[mid] > t) hi = mid; else lo = mid + 1; }
+        return lo;
+    }
+    /** What is left of `source`, as subtractIntervals answers: an end that was not cut keeps its own text, and nothing under a second is kept. */
+    subtract(source: Interval[]): Interval[] {
+        const out: Interval[] = [];
+        for (const i of source) {
+            const a = date(i.startedAt), b = date(i.endedAt);
+            let cursor = a;
+            const startText = (): string => (cursor === a ? i.startedAt : new Date(cursor).toISOString());
+            for (let n = this.from(a, false); n < this.starts.length && this.starts[n] < b; n++) {
+                if (this.starts[n] > cursor) out.push({ startedAt: startText(), endedAt: new Date(this.starts[n]).toISOString() });
+                cursor = Math.max(cursor, this.ends[n]);
+            }
+            if (cursor < b) out.push({ startedAt: startText(), endedAt: i.endedAt });
+        }
+        return out.filter((i) => date(i.endedAt) - date(i.startedAt) >= 1000);
+    }
+    add(list: Interval[]): void {
+        for (const i of list) {
+            let s = date(i.startedAt), e = date(i.endedAt);
+            if (!(e > s)) continue;
+            const at = this.from(s, true);
+            let end = at;
+            while (end < this.starts.length && this.starts[end] <= e) { s = Math.min(s, this.starts[end]); e = Math.max(e, this.ends[end]); end++; }
+            this.starts.splice(at, end - at, s);
+            this.ends.splice(at, end - at, e);
+        }
+    }
+}
+/**
  * What is left of each pending imported row once this computer's own time, kept time, the segment in progress and a
  * running timer are taken out, and earlier imports before later ones. Changes nothing: `clipImported` applies it,
  * and Approve (src/shared/keep.ts) asks it whether a row is still whole.
  */
 export function importedRemaining(w: Workspace, now: number): Map<string, Interval[]> {
     // A calendar row is what was planned, not what this computer saw: it never clips imported time; the two sit side by side for review.
-    const occupied = [...w.activities.filter((a) => !a.origin && !a.ownerID.startsWith("calendar:")).flatMap(intervals), ...w.entries.flatMap(intervals), ...(w.currentActivity ? intervals(w.currentActivity) : []), ...(w.timer ? [{ startedAt: w.timer.startedAt, endedAt: new Date(now).toISOString() }] : [])];
+    const taken = new Taken([...w.activities.filter((a) => !a.origin && !a.ownerID.startsWith("calendar:")).flatMap(intervals), ...w.entries.flatMap(intervals), ...(w.currentActivity ? intervals(w.currentActivity) : []), ...(w.timer ? [{ startedAt: w.timer.startedAt, endedAt: new Date(now).toISOString() }] : [])]);
     // Existing reviewed evidence takes precedence; new imports are deterministic by time and source.
     const imported = w.activities.filter((a) => a.origin && a.disposition === "pending").sort((a, b) => date(a.startedAt) - date(b.startedAt) || (a.originRef ?? "").localeCompare(b.originRef ?? ""));
     const out = new Map<string, Interval[]>();
     for (const a of imported) {
-        const remaining = subtractIntervals(intervals(a), occupied);
+        const remaining = taken.subtract(intervals(a));
         out.set(a.id, remaining);
-        occupied.push(...remaining);
+        taken.add(remaining);
     }
     return out;
 }
 const totalSeconds = (list: Interval[]): number => list.reduce((n, i) => n + (date(i.endedAt) - date(i.startedAt)) / 1000, 0);
 /** Whether other time has covered any of these imported rows since they were last clipped: keeping them would keep less than the row shows. */
-export function importedCovered(w: Workspace, ids: readonly string[], now: number): boolean {
+export function importedCovered(w: Workspace, ids: readonly string[], now: number, known?: Map<string, Interval[]>): boolean {
     const mine = w.activities.filter((a) => ids.includes(a.id) && a.origin && a.disposition === "pending");
     if (!mine.length) return false;
-    const remaining = importedRemaining(w, now);
+    // A screen asking about every row works `importedRemaining` out once and passes it in.
+    const remaining = known ?? importedRemaining(w, now);
     return mine.some((a) => totalSeconds(remaining.get(a.id) ?? []) < totalSeconds(intervals(a)) - 0.5);
 }
 export function clipImported(w: Workspace, now: number): void {

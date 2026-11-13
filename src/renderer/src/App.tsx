@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState } from "@shared/state";
 import type { SittingSummary } from "@shared/model";
+import { importedRemaining } from "@shared/feed";
 import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, type Activity, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { itemSummaries } from "@shared/summaries";
@@ -502,12 +503,12 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
     const raw = useMemo(() => sortBy(w.activities.filter((a) => filter === "all" || a.disposition === filter), sort, (a) => ({ at: a.endedAt, seconds: (Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000, name: a.document?.name || a.title || a.app })), [w.activities, filter, sort]);
     const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
     // What each row would be kept as, and whether Approve can keep it as shown. The main process decides again when asked; this is what the row shows.
-    const rows = useMemo(() => pendingRows.map((r): ReviewRow => {
+    const rows = useMemo(() => { const at = Date.now(), remaining = importedRemaining(w, at); return pendingRows.map((r): ReviewRow => {
         const stretch = "group" in r ? matterStretch(r.group) : r.stretch;
         const matter = "group" in r ? r.group.matter : null;
         const sittings = stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a);
-        return { id: stretch.id, stretch, matter, sittings, ...rowFacts(w, stretch, sittings, matter, Date.now()) };
-    }), [w, pendingRows, byID]);
+        return { id: stretch.id, stretch, matter, sittings, ...rowFacts(w, stretch, sittings, matter, at, remaining) };
+    }); }, [w, pendingRows, byID]);
     const rowByID = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
     // Ticked rows, for Approve selected. A row that can no longer be approved, or is gone, is not counted.
     const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
@@ -650,10 +651,10 @@ type RowFacts = { verdict: ApproveVerdict; hours: number; project: Project | und
 /** A row of To review: a matter's day or a stretch on no matter, with its activities and what it would be kept as. */
 type ReviewRow = RowFacts & { id: string; stretch: Stretch; matter: string | null; sittings: Activity[] };
 
-function rowFacts(w: Workspace, stretch: Stretch, sittings: Activity[], matter: string | null, now: number): RowFacts {
+function rowFacts(w: Workspace, stretch: Stretch, sittings: Activity[], matter: string | null, now: number, remaining?: Map<string, Interval[]>): RowFacts {
     const start = keepStart(w, stretch, sittings, matter, stretch.name);
     const p = keepPreview(w, stretch, sittings, start, start.single);
-    return { verdict: approveCheck(w, stretch, sittings, matter, now), hours: p.hours, project: p.project, client: p.rc.book?.client ?? null, codes: p.rc.book ? [p.input.taskCode, p.input.activityCode].filter(Boolean).join(" / ") : "" };
+    return { verdict: approveCheck(w, stretch, sittings, matter, now, remaining), hours: p.hours, project: p.project, client: p.rc.book?.client ?? null, codes: p.rc.book ? [p.input.taskCode, p.input.activityCode].filter(Boolean).join(" / ") : "" };
 }
 
 /** A row can be ticked when Approve is not disabled on it. One that needs the Keep sheet can be: the report names it and leaves it. */

@@ -190,7 +190,7 @@ export const APPROVE_MESSAGES = {
 } as const;
 
 /** The verdict on one row, against the workspace as it is now. `sittings` are the row's activities; `matter` its matter (null for a stretch on none). */
-export function approveCheck(w: Workspace, stretch: Stretch, sittings: readonly Activity[], matter: string | null, now: number): ApproveVerdict {
+export function approveCheck(w: Workspace, stretch: Stretch, sittings: readonly Activity[], matter: string | null, now: number, remaining?: Map<string, Interval[]>): ApproveVerdict {
     const ids = stretch.activityIDs;
     if (ids.some(isTutorialID)) return no("tutorial", APPROVE_MESSAGES.tutorial);
     if (ids.some((id) => id === w.currentActivity?.id)) return no("in-progress", APPROVE_MESSAGES.inProgress);
@@ -201,7 +201,7 @@ export function approveCheck(w: Workspace, stretch: Stretch, sittings: readonly 
     if (!matter?.trim()) return no("no-matter", APPROVE_MESSAGES.noMatter);
     if (keptMatch(w, ids)) return no("merge-question", APPROVE_MESSAGES.mergeQuestion);
     if (!descriptionOf(sittings)) return no("no-description", APPROVE_MESSAGES.noDescription);
-    if (importedCovered(w, ids, now)) return no("imported-overlap", APPROVE_MESSAGES.importedOverlap, true);
+    if (importedCovered(w, ids, now, remaining)) return no("imported-overlap", APPROVE_MESSAGES.importedOverlap, true);
     // As keepStretch has it: one row, one Kiwi matter.
     if (new Set(sittings.filter((a) => a.matter === matter && a.kiwiProjectID).map((a) => a.kiwiProjectID)).size > 1) return no("kiwi-matters", APPROVE_MESSAGES.kiwiMatters, true);
     const start = keepStart(w, stretch, sittings, matter, stretch.name);

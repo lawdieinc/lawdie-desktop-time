@@ -114,6 +114,37 @@ describe("this computer's time wins an overlap", () => {
         expect(w.activities.find((a) => a.id === imported.id)!.disposition).toBe("dismissed");
     });
 
+    it("answers as taking every interval out one by one does, on a crowded workspace, and quickly", () => {
+        // The check the faster pass replaced (2026-11-13: it froze the app at a few thousand unreviewed sittings).
+        const oneByOne = (w: Workspace, now: number): Map<string, { startedAt: string; endedAt: string }[]> => {
+            const occupied = [...w.activities.filter((a) => !a.origin && !a.ownerID.startsWith("calendar:")).flatMap((a) => a.sittings ?? [{ startedAt: a.startedAt, endedAt: a.endedAt }]), ...(w.timer ? [{ startedAt: w.timer.startedAt, endedAt: new Date(now).toISOString() }] : [])];
+            const out = new Map<string, { startedAt: string; endedAt: string }[]>();
+            for (const a of w.activities.filter((x) => x.origin && x.disposition === "pending").sort((x, y) => Date.parse(x.startedAt) - Date.parse(y.startedAt) || (x.originRef ?? "").localeCompare(y.originRef ?? ""))) {
+                const left = subtractIntervals(a.sittings ?? [{ startedAt: a.startedAt, endedAt: a.endedAt }], occupied);
+                out.set(a.id, left); occupied.push(...left);
+            }
+            return out;
+        };
+        let seed = 7;
+        const rand = (n: number): number => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+        const w = connected();
+        ensureFeed(w, ACCOUNT);
+        for (let n = 0; n < 400; n++) {
+            const start = rand(40_000), length = 1 + rand(900);
+            if (n % 3 === 0) w.activities.push(local({ id: `l-${n}`, startedAt: iso(start), endedAt: iso(start + length) }));
+            else w.activities.push({ ...local({ id: `i-${n}`, startedAt: iso(start), endedAt: iso(start + length) }), origin: "browser", sourceKind: "browser", originRef: `seg-${n}`, ownerID: "import:browser" });
+        }
+        expect([...importedRemaining(w, at(50_000))]).toEqual([...oneByOne(w, at(50_000))]);
+        // Twelve weeks of browser time waiting for review: a pass must not hold the app up.
+        for (let n = 400; n < 6000; n++) {
+            const start = rand(7_000_000), length = 1 + rand(900);
+            w.activities.push({ ...local({ id: `i-${n}`, startedAt: iso(start), endedAt: iso(start + length) }), origin: "browser", sourceKind: "browser", originRef: `seg-${n}`, ownerID: "import:browser" });
+        }
+        const began = performance.now();
+        importedRemaining(w, at(7_100_000));
+        expect(performance.now() - began).toBeLessThan(500);
+    });
+
     it("says what would be left without changing anything, and clipping applies exactly that", () => {
         const w = connected();
         // Two imports that overlap each other (the earlier wins), and one this computer covers whole.
