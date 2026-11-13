@@ -72,9 +72,12 @@ export class Screenshots {
             const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), CAPTURE_TIMEOUT_MS); });
             const sources = await Promise.race([desktopCapturer.getSources({ types: ["window"], thumbnailSize: SIZE, fetchWindowIcons: false }), timeout]).finally(() => clearTimeout(timer));
             if (!sources) return this.fail("timeout", `window capture took over ${CAPTURE_TIMEOUT_MS / 1000} s`);
-            const source = sources.find((s) => s.id.split(":")[1] === String(windowID));
-            if (!source || source.thumbnail.isEmpty()) return this.fail(source ? "empty" : "not-found", `window ${windowID} ${source ? "came back empty" : "was not offered"}`);
             if (!(await stillInFront())) return false;
+            const source = sources.find((s) => s.id.split(":")[1] === String(windowID));
+            // Windows can disappear or be omitted while Electron enumerates them. Skip this
+            // screenshot; never substitute another window or the desktop for the requested one.
+            if (!source) return false;
+            if (source.thumbnail.isEmpty()) return this.fail("empty", `window ${windowID} came back empty`);
             mkdirSync(this.dir, { recursive: true, mode: 0o700 });
             await writeFile(file, source.thumbnail.toJPEG(QUALITY), { mode: 0o600 });
             return true;
