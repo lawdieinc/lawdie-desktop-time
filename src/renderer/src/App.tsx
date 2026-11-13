@@ -29,6 +29,7 @@ import { LATEST_RELEASE, needsWhatsNew } from "@shared/releases";
 import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
 import type { SearchTarget } from "@shared/search";
 import { SearchBar, reveal } from "./Search";
+import { AddSitting, AddTimeSheet, HoursEdit, SittingTimes, TimeEdit, timesEditable } from "./Manual";
 import { BILLING_MODES, billedHours as billed, billingModeOf, entryHours, hoursText, hoursWithin, hr, incrementOf, sumHours, type BillingMode } from "@shared/billingMode";
 
 /* The window. Four screens (Time, Activity, Matters, Settings) and the Kiwi
@@ -394,7 +395,7 @@ function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: {
             </div>
             {entry.status === "suggested" && <button type="button" className="fix" title={SUGGESTED_TIP} onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>}
             {entry.status === "flagged" && <button type="button" className="fix" title={flaggedTip(entry)} onClick={() => setEditing(true)}>{entry.projectID ? "Fix and confirm" : "Assign and edit"}</button>}
-            <span className="mono" title={timeBlock(entry)}>{hr(entryHours(entry))}</span>
+            <HoursEdit hours={entryHours(entry)} title={`${timeBlock(entry)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(entry.id, { hours: h }); }} />
             <button type="button" className="quiet" disabled={draft !== null} title={inline ? "Edit this narrative here, in the row." : "Change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}>Edit</button>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
             {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
@@ -454,6 +455,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
     const [sort, setSort] = useState<SortBy>("newest");
     const [reviewing, setReviewing] = useState<{ stretch: Stretch; matter: string | null; description: string } | null>(null);
+    const [addingTime, setAddingTime] = useState(false);
     const notify = useNotify();
     // The sample's sheet: the tutorial follows it opening and closing; ending the tutorial closes it.
     const sampleOpen = !!reviewing && isTutorialID(reviewing.stretch.id);
@@ -535,6 +537,8 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
         <>
             <div className="row between">
                 <Heading title="Activity" />
+                <span className="grow" />
+                <button type="button" className="quiet" disabled={state.loadFailed} title="Add time capture did not see, such as a call or a meeting away from the computer. It lands in To review." onClick={() => setAddingTime(true)}>Add time</button>
                 <button type="button" className="primary" disabled={state.loadFailed} title={w.preferences.captureEnabled ? "Stop recording app activity until you start it again." : "Start recording app activity."} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>{w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}</button>
             </div>
             <Panel tour="capture-status">
@@ -610,7 +614,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                                             {spans.length > 1 && <SittingsToggle label={`${spans.length} sittings`} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
                                         </div>
                                     </div>
-                                    <span className="mono">{hr(entryHours(e))}</span>
+                                    <HoursEdit hours={entryHours(e)} title={`${timeBlock(e)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(e.id, { hours: h }); }} />
                                     <span className="muted small status kept">Kept</span>
                                     <button type="button" className="quiet" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
                                 </div>
@@ -636,6 +640,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                 ))}
             </Panel>
             {reviewing && <KeepSheet key={reviewing.stretch.id} w={w} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={sampleOpen && tutorial ? tutorial.sittings : reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} keep={sampleOpen ? keepSample : undefined} onClose={() => setReviewing(null)} />}
+            {addingTime && <AddTimeSheet w={w} now={Date.now()} notify={notify} onClose={() => { setAddingTime(false); setFilter("pending"); }} />}
         </>
     );
 }
@@ -716,10 +721,13 @@ function MatterLine({ row, children }: { row: Pick<ReviewRow, "matter" | "sittin
 }
 
 /** A row's time, as the hours it bills as: the billing mode's increment, or the client's own under its rules. */
-function RowTime({ hours, client, mode }: { hours: number; client: string | null; mode: BillingMode }): ReactNode {
+function RowTime({ hours, client, mode, sittings }: { hours: number; client: string | null; mode: BillingMode; sittings?: readonly Activity[] }): ReactNode {
+    const set = !!sittings?.some((a) => a.billHours != null);
+    const tip = set ? `Billed as ${hoursText(hours)} hours.` : `Billed as ${hoursText(hours)} hours: captured time rounded up${client ? `, as ${possessiveOf(client)} rules require` : ` to the ${BILLING_MODES[mode].unit}`}.`;
     return (
         <span className="row-time">
-            <span className="mono billed" title={`Billed as ${hoursText(hours)} hours: captured time rounded up${client ? `, as ${possessiveOf(client)} rules require` : ` to the ${BILLING_MODES[mode].unit}`}.`}>{hr(hours)}</span>
+            {sittings ? <HoursEdit hours={hours} set={set} title={tip} onSave={(h) => void window.lawdie.setRowHours(sittings.map((a) => a.id), h)} />
+                : <span className="mono billed" title={tip}>{hr(hours)}</span>}
         </span>
     );
 }
@@ -974,7 +982,7 @@ function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, a
                     </div>
                     <MergeLine match={match} merged={merged} />
                 </div>
-                <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} />
+                <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} sittings={row.sittings} />
                 <RowActions w={w} row={row} match={match} what={`${g.matter}'s time`} dismissTip="Take this matter's activity out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
             </div>
             {open && (
@@ -985,16 +993,18 @@ function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, a
                             <div className="grow item-body">
                                 <div><span className="small">{d.name}</span> <span className="tiny muted">{d.app}{d.activityIDs.length > 1 ? ` · ${d.activityIDs.length} sittings` : ""}</span></div>
                                 <SummaryLines items={w.activities.filter((a) => d.activityIDs.includes(a.id))} />
+                                <SittingTimes acts={row.sittings.filter((a) => d.activityIDs.includes(a.id))} notify={notify} />
                                 {((item) => <>
                                     <div className="tiny muted">{item.facts}</div>
                                     {item.text && <div className="tiny muted item-text">{item.text}</div>}
-                                </>)(describeItem(w.activities.filter((a) => d.activityIDs.includes(a.id)), w.activities))}
+                                </>)(describeItem(w.activities.filter((a) => d.activityIDs.includes(a.id)), w.activities, { noSpan: row.sittings.some((a) => d.activityIDs.includes(a.id) && timesEditable(a)) }))}
                             </div>
                             <span className="mono small">{duration(d.seconds)}</span>
                             <MatterMenu w={w} ids={d.activityIDs} current={g.matter} what={d.name} label="Move…" className="link sitting-dismiss" onMoved={onMoved} />
                             <button type="button" className="link sitting-dismiss" title={`Dismiss ${d.activityIDs.length === 1 ? "this sitting" : `these ${d.activityIDs.length} sittings`}; the rest of the matter stays to review`} onClick={() => void window.lawdie.dismissActivity(d.activityIDs)}>Dismiss</button>
                         </div>
                     ))}
+                    {<div className="sitting"><span className="sitting-dot new" aria-hidden="true" /><AddSitting like={g.activityIDs[0]} day={g.startedAt} notify={notify} /></div>}
                 </div>
             )}
         </div>
@@ -1005,6 +1015,7 @@ function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, a
 function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving, onApprove, onEdit, open, onToggle }: RowProps): ReactNode {
     const st = row.stretch;
     const own = descriptionOf(row.sittings);
+    const notify = useNotify();
     return (
         <div data-search-id={row.id}>
             <div className="activity">
@@ -1019,13 +1030,14 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
                         <span>{st.app}{st.name !== st.app ? ` · ${st.name}` : ""} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{meetingWith(row.sittings[0])}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(row.sittings)} /></span>
                         {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={open} onClick={onToggle} />}
                     </div>
+                    {st.sittings === 1 && <SittingTimes acts={row.sittings} notify={notify} />}
                     <MergeLine match={match} merged={merged} />
                 </div>
-                <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} />
+                <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} sittings={row.sittings} />
                 <RowActions w={w} row={row} match={match} what={own?.text ?? st.name} dismissTip="Take this stretch out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
             </div>
             {open && st.sittings > 1 && (
-                <Sittings all={w.activities} items={row.sittings} onDismiss={(id) => void window.lawdie.dismissActivity(id)} />
+                <Sittings all={w.activities} items={row.sittings} onDismiss={(id) => void window.lawdie.dismissActivity(id)} notify={notify} />
             )}
         </div>
     );
@@ -1091,7 +1103,7 @@ function SittingsToggle({ label, open, onClick, what = "the sittings" }: { label
 /** The sittings inside a stretch or a kept entry as a timeline: each sitting on the rail,
  *  the time away between two of them named, and, while a stretch is still under review,
  *  a Dismiss on each that drops it from the stretch. */
-function Sittings({ items, all, onDismiss }: { items: (Interval & { id?: string; endedBy?: string; endedTo?: string })[]; all?: readonly Activity[]; onDismiss?: (id: string) => void }): ReactNode {
+function Sittings({ items, all, onDismiss, notify }: { items: (Interval & { id?: string; endedBy?: string; endedTo?: string })[]; all?: readonly Activity[]; onDismiss?: (id: string) => void; notify?: (text: string) => void }): ReactNode {
     return (
         <div className="sittings">
             {items.map((i, n) => {
@@ -1102,7 +1114,7 @@ function Sittings({ items, all, onDismiss }: { items: (Interval & { id?: string;
                         {prev && away >= 30 && <div className="sitting-gap"><span className="sitting-rail" aria-hidden="true" /><span className="tiny muted">{duration(away)} away</span></div>}
                         <div className="sitting">
                             <span className="sitting-dot" aria-hidden="true" />
-                            <span className="small">{clock(i.startedAt)}–{clock(i.endedAt)}</span>
+                            {((a) => (a && notify ? <TimeEdit a={a} notify={notify} /> : <span className="small">{clock(i.startedAt)}–{clock(i.endedAt)}</span>))(i.id ? all?.find((x) => x.id === i.id) : undefined)}
                             {i.endedBy && <span className="tiny muted">{endedText(i, all)}</span>}
                             {((summary) => summary && <span className="tiny sitting-summary" title={summaryTitle(summary)}>{summary.text}</span>)(i.id ? all?.find((a) => a.id === i.id)?.summary : undefined)}
                             <span className="grow" />

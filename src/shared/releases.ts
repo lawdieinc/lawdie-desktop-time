@@ -40,10 +40,10 @@ export const RELEASES: readonly Release[] = [
         date: "2026-11-12",
         title: "Approve your day in a click",
         items: [
-            { icon: "sparkle", title: "Rows lead with the description", description: "Each row shows its narrative, matter number and hours, as billed.", route: "activity" },
             { icon: "clock", title: "Approve, or approve them all", description: "Approve keeps a row as shown; tick rows and approve them together.", route: "activity" },
             { icon: "shield", title: "Unreviewed time waits for you", description: "Time you have not reviewed stays 90 days, with a warning a week before.", route: "activity" },
             { icon: "invoice", title: "Tenths or quarter hours", description: "Choose your billing mode in Settings; time shows in hours, never minutes and seconds.", route: "settings" },
+            { icon: "clock", title: "Fix or add time yourself", description: "Press any hours or times to change them; Add time for work capture missed.", route: "activity" },
             { icon: "compass", title: "Search everything", description: "Press ⌘K (Ctrl+K) to find a matter, an entry, time to review, a rule or an invoice." },
         ],
     },

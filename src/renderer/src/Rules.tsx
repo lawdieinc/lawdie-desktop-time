@@ -1,5 +1,8 @@
 import { useState, type ReactNode } from "react";
-import type { TimeEntry, Workspace } from "@shared/model";
+import { createPortal } from "react-dom";
+import { clipSittings, intervals, type TimeEntry, type Workspace } from "@shared/model";
+import { keepBounds, timeValue } from "@shared/format";
+import { billedHours, incrementFor } from "@shared/billingMode";
 import { narrativeFor } from "@shared/narrative";
 import { draftOf, projectByName, rulesContext, sameDayOf } from "@shared/keep";
 import { applyFix, checkEntry, rulesMet, type CheckContext, type EntryDraft, type Finding, type Fix, type PlanLine } from "@shared/rules";
@@ -96,18 +99,30 @@ export function EditSheet({ w, entry, onClose }: { w: Workspace; entry: TimeEntr
     // A flagged entry has no matter yet: the person picks one here.
     const assign = entry.status === "flagged" || !entry.projectID;
     const [projectID, setProjectID] = useState<string>(entry.projectID ?? "");
+    // The entry's times: one sitting takes them as typed, several are trimmed to them.
+    const [startText, setStartText] = useState(timeValue(entry.startedAt));
+    const [endText, setEndText] = useState(timeValue(entry.endedAt));
+    const several = (entry.sittings?.length ?? 0) > 1;
     const suggestion = suggestionFor(w, entry, c);
     const check: CheckContext = { ...c, sameDay: sameDayOf(w, entry.projectID, d.day, entry.id), suggestion };
     const save = async (): Promise<void> => {
         if (!d.description.trim()) { setProblem("Add a description."); return; }
         if (entry.status === "flagged" && !projectID) { setProblem("Choose the matter for this time."); return; }
         // Hours are written only when the entry already bills hours or the person changed them, so a plain entry stays as it was.
-        const sendHours = entry.hours !== undefined || d.hours !== draftOf(entry).hours;
-        const ok = await window.lawdie.editEntry(entry.id, { description: d.description, ...(sendHours ? { hours: d.hours } : {}), taskCode: d.taskCode ?? "", activityCode: d.activityCode ?? "", billable: d.billable, hourlyRate: d.hourlyRate,
+        const typedHours = d.hours !== draftOf(entry).hours;
+        if (!startText || !endText) { setProblem("Enter a start and an end time."); return; }
+        const b = keepBounds(entry, startText, endText);
+        // New times and hours left alone: the hours follow the new time, rounded as the billing mode (or the client's rule) says.
+        const kept = b.changed ? (several ? clipSittings(intervals(entry), b.start, b.end) : [{ startedAt: new Date(b.start).toISOString(), endedAt: new Date(b.end).toISOString() }]) : [];
+        const secs = kept.reduce((n, i) => n + (Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000, 0);
+        const hours = b.changed && !typedHours && secs > 0 ? billedHours(secs, incrementFor(w.preferences, c.book)) : d.hours;
+        const sendHours = entry.hours !== undefined || typedHours || b.changed;
+        const ok = await window.lawdie.editEntry(entry.id, { description: d.description, ...(sendHours ? { hours } : {}), ...(b.changed ? { startedAt: new Date(b.start).toISOString(), endedAt: new Date(b.end).toISOString() } : {}), taskCode: d.taskCode ?? "", activityCode: d.activityCode ?? "", billable: d.billable, hourlyRate: d.hourlyRate,
             ...(assign && projectID !== (entry.projectID ?? "") ? { projectID: projectID || null } : {}), ...(entry.status === "suggested" || entry.status === "flagged" ? { confirm: true } : {}) });
-        if (ok) onClose(); else setProblem("That could not be saved.");
+        if (ok) onClose(); else setProblem(b.changed ? "That could not be saved. The times may overlap another entry, or end in the future." : "That could not be saved.");
     };
-    return (
+    // On the page's own layer: a panel's blur would otherwise hold the sheet inside the panel.
+    return createPortal(
         <div className="scrim" onClick={onClose}>
             <form className="sheet wide" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
                 <div className="heading"><p className="eyebrow">{project?.name ?? "No matter"}</p><h2 className="display">Edit entry</h2></div>
@@ -122,6 +137,8 @@ export function EditSheet({ w, entry, onClose }: { w: Workspace; entry: TimeEntr
                 )}
                 <label className="field"><span className="eyebrow">Narrative</span><input autoFocus value={d.description} placeholder={entry.raw === "" ? "Nothing was typed. Say what the work was." : undefined} title="Edit the narrative; the client's rules check it as you type." onChange={(e) => setD({ ...d, description: e.target.value })} /></label>
                 <div className="row gap">
+                    <label className="field"><span className="eyebrow">Start</span><input type="time" value={startText} title={several ? "When the entry starts. Its sittings are trimmed to the new times." : "When the work started."} onChange={(e) => setStartText(e.target.value)} /></label>
+                    <label className="field"><span className="eyebrow">End</span><input type="time" value={endText} title={several ? "When the entry ends. Its sittings are trimmed to the new times." : "When the work ended."} onChange={(e) => setEndText(e.target.value)} /></label>
                     <label className="field"><span className="eyebrow">Hours</span><input type="number" step="0.05" min="0" value={d.hours} title="Billed hours for this entry." onChange={(e) => setD({ ...d, hours: Number(e.target.value) })} /></label>
                     <label className="field"><span className="eyebrow">Task code</span><input value={d.taskCode ?? ""} title="UTBMS task code, such as P500." onChange={(e) => setD({ ...d, taskCode: e.target.value.toUpperCase() })} /></label>
                     <label className="field"><span className="eyebrow">Activity code</span><input value={d.activityCode ?? ""} title="UTBMS activity code, such as A103." onChange={(e) => setD({ ...d, activityCode: e.target.value.toUpperCase() })} /></label>
@@ -135,7 +152,8 @@ export function EditSheet({ w, entry, onClose }: { w: Workspace; entry: TimeEntr
                     <span className="row gap"><button type="button" className="quiet" title="Close without saving." onClick={onClose}>Cancel</button><button type="submit" className="primary" title="Save the entry as shown.">Save</button></span>
                 </div>
             </form>
-        </div>
+        </div>,
+        document.body,
     );
 }
 

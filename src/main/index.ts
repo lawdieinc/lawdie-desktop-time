@@ -19,6 +19,7 @@ import { applyRules, type AppliedBill } from "@shared/applyRules";
 import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
 import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, issueInvoice, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, pendingDays, pendingExpiring, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
+import { addManualTime, editActivityTime, setRowHours, type ManualInput } from "@shared/manual";
 import { LOGO_MIN_PX, logoCandidates, siteURL } from "@shared/logo";
 import { addRulebook, removeClientRule, removeRulebook, saveClientRule, updateRulebook, type ClientRuleInput, type RulebookInput } from "@shared/clientRulebooks";
 import { recordRejection, type RejectionInput } from "@shared/rejection";
@@ -262,6 +263,10 @@ app.whenReady().then(() => {
         return ok ? report : null;
     });
     ipcMain.handle("editEntry", (_e, id: string, change: EntryChange) => store.change((w) => { editEntry(w, String(id), change ?? {}, clock()); }));
+    // Time put in or corrected by hand (src/shared/manual.ts): it waits in review like captured time.
+    ipcMain.handle("addManualTime", (_e, input: ManualInput) => store.change((w) => { addManualTime(w, { startedAt: String(input?.startedAt ?? ""), endedAt: String(input?.endedAt ?? ""), note: typeof input?.note === "string" ? input.note : "", matter: typeof input?.matter === "string" ? input.matter : null, ...(typeof input?.like === "string" ? { like: input.like } : {}) }, clock()); }));
+    ipcMain.handle("editActivityTime", (_e, id: string, startedAt: string, endedAt: string) => store.change((w) => editActivityTime(w, String(id), String(startedAt), String(endedAt), clock())));
+    ipcMain.handle("setRowHours", (_e, ids: string[], hours: number | null) => store.change((w) => setRowHours(w, Array.isArray(ids) ? ids.map(String) : [], hours === null ? null : Number(hours))));
     ipcMain.handle("dismissActivity", (_e, ids: string | string[]) => store.change((w) => dismissActivities(w, Array.isArray(ids) ? ids : [ids])));
     ipcMain.handle("deleteEntry", (_e, id: string) => store.change((w) => deleteEntry(w, id)));
     ipcMain.handle("describeActivities", (_e, ids: string[], text: string) => store.change((w) => describeActivities(w, Array.isArray(ids) ? ids : [], typeof text === "string" ? text : "")));

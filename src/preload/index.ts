@@ -6,6 +6,7 @@ import type { ApproveReport } from "@shared/keep";
 import type { ClientRuleInput, RulebookInput } from "@shared/clientRulebooks";
 import type { RejectionInput } from "@shared/rejection";
 import type { Destination, Product } from "@shared/kiwi";
+import type { ManualInput } from "@shared/manual";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
 export const api = {
@@ -35,6 +36,9 @@ export const api = {
     keepLines: (lines: KeepLine[]): Promise<boolean> => ipcRenderer.invoke("keepLines", lines),
     /** A kept entry's description, hours, codes, billable flag or rate: a client rule's fix, or a person's edit. */
     editEntry: (id: string, change: EntryChange): Promise<boolean> => ipcRenderer.invoke("editEntry", id, change),
+    addManualTime: (input: ManualInput): Promise<boolean> => ipcRenderer.invoke("addManualTime", input),
+    editActivityTime: (id: string, startedAt: string, endedAt: string): Promise<boolean> => ipcRenderer.invoke("editActivityTime", id, startedAt, endedAt),
+    setRowHours: (ids: string[], hours: number | null): Promise<boolean> => ipcRenderer.invoke("setRowHours", ids, hours),
     dismissActivity: (ids: string | string[]): Promise<boolean> => ipcRenderer.invoke("dismissActivity", ids),
     deleteEntry: (id: string): Promise<boolean> => ipcRenderer.invoke("deleteEntry", id),
     /** The person's description of pending activities, before keeping; "" clears it. */

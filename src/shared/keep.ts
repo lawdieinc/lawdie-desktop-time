@@ -84,7 +84,8 @@ export function keepStart(w: Workspace, stretch: Stretch, sittings: readonly Act
         startText: timeValue(stretch.startedAt),
         endText: timeValue(stretch.endedAt),
         leaveOutIdle: false,
-        hoursSet: null,
+        // Hours the person typed on the row stand until they change them.
+        hoursSet: sittings.find((a) => a.billHours != null)?.billHours ?? null,
         codes: single ? { taskCode: single.taskCode, activityCode: single.activityCode } : {},
         rate: null,
         single,

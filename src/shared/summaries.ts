@@ -15,7 +15,7 @@
 
 import { callApp } from "./calls";
 import { describe, readable } from "./matters";
-import { SUMMARY_MAX, intervals, isBrowser, isExcluded, isPersonal, redact, screenshotTime, seconds, type Activity, type Workspace } from "./model";
+import { MANUAL_OWNER_ID, SUMMARY_MAX, intervals, isBrowser, isExcluded, isPersonal, redact, screenshotTime, seconds, type Activity, type Workspace } from "./model";
 
 /** Sittings per request (Kiwi's limit), and screenshots among them. */
 export const SUMMARY_BATCH = 40;
@@ -41,7 +41,7 @@ export function summaryShot(w: Workspace, a: Activity): string | null {
 /** Sittings that need a summary, newest first (what the person is about to review gets its line first; a backlog after an update follows): pending, not Personal, a minute or more, with text to read or a screenshot. */
 export function unsummarised(w: Workspace, skip: ReadonlySet<string> = new Set()): Activity[] {
     return w.activities
-        .filter((a) => a.disposition === "pending" && !a.summary && !skip.has(a.id) && !isPersonal(a.matter ?? null) && seconds(a) >= SUMMARY_MIN_SECONDS && (readable(a) || !!summaryShot(w, a)))
+        .filter((a) => a.disposition === "pending" && a.ownerID !== MANUAL_OWNER_ID && !a.summary && !skip.has(a.id) && !isPersonal(a.matter ?? null) && seconds(a) >= SUMMARY_MIN_SECONDS && (readable(a) || !!summaryShot(w, a)))
         .sort((a, b) => ms(b.startedAt) - ms(a.startedAt));
 }
 

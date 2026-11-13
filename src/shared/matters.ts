@@ -141,7 +141,7 @@ const ITEM_TEXT_MAX = 160;
  * page's site, a chat), some of its text (the Office excerpt or the on-screen text, when those
  * are switched on), when it was, where the time went next, and idle time flagged on it.
  */
-export function describeItem(items: readonly Activity[], all: readonly Activity[] = []): { facts: string; text: string | null } {
+export function describeItem(items: readonly Activity[], all: readonly Activity[] = [], opts: { /** Leave the times out: the row shows them as controls. */ noSpan?: boolean } = {}): { facts: string; text: string | null } {
     const sorted = [...items].sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
     const first = sorted[0];
     if (!first) return { facts: "", text: null };
@@ -163,12 +163,13 @@ export function describeItem(items: readonly Activity[], all: readonly Activity[
     const seen = sorted.map((a) => (a.document?.excerpt || a.screenText || "").replace(/\s+/g, " ").trim()).find(Boolean);
     const text = seen ? (seen.length > ITEM_TEXT_MAX ? `“${seen.slice(0, ITEM_TEXT_MAX - 1).trimEnd()}…”` : `“${seen}”`) : null;
     const spans = sorted.flatMap((a) => intervals(a)).sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
-    parts.push(spanLabel(spans[0].startedAt, spans[spans.length - 1].endedAt, spans.length));
+    if (!opts.noSpan) parts.push(spanLabel(spans[0].startedAt, spans[spans.length - 1].endedAt, spans.length));
     const last = sorted[sorted.length - 1];
     const next = endedText(last, all);
     if (next) parts.push(next);
     const idle = idleSeconds(sorted);
     if (idle >= 60) parts.push(`${Math.round(idle / 60)} min idle`);
+    if (sorted.some((x) => x.timeEdited)) parts.push("time changed by you");
     return { facts: parts.join(" · "), text };
 }
 

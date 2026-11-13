@@ -387,6 +387,10 @@ export type Activity = {
     mergeKey?: string;
     /** Kept entries the person said this is not more of: never offered again. */
     separateFrom?: string[];
+    /** The person changed this sitting's start or end (src/shared/manual.ts): the times are theirs, not capture's. */
+    timeEdited?: true;
+    /** Hours the person typed on its review row (on the row's first sitting): what the row is kept as, instead of its time rounded. */
+    billHours?: number;
     /** The calendar meeting this was (src/shared/meetings.ts): a call capture counted, or a row from the calendar itself (ownerID "calendar:…"). */
     meeting?: MeetingRef;
 };
@@ -905,7 +909,9 @@ export type EntryChange = { description?: string; hours?: number; taskCode?: str
     /** The matter the entry goes to (a flagged entry the person assigns). */
     projectID?: string | null;
     /** The person confirms a suggested or flagged entry as it now stands. */
-    confirm?: boolean };
+    confirm?: boolean;
+    /** New bounds: one sitting takes them as given, several are trimmed to them. */
+    startedAt?: string; endedAt?: string };
 
 /** Change a kept entry's description, billing details, billable flag or rate (a client rule's fix). Its times stay. */
 export function editEntry(w: Workspace, id: string, change: EntryChange, now: number): TimeEntry {
@@ -933,6 +939,15 @@ export function editEntry(w: Workspace, id: string, change: EntryChange, now: nu
     if (!next.status) delete next.why;
     if (change.billable !== undefined) next.billable = change.billable === true;
     if (change.hourlyRate !== undefined) next.hourlyRate = change.hourlyRate;
+    if (change.startedAt !== undefined || change.endedAt !== undefined) {
+        const from = change.startedAt ?? e.startedAt, to = change.endedAt ?? e.endedAt;
+        if (!validIso(from) || !validIso(to) || !(ms(to) > ms(from))) throw new WorkspaceError("The end must be after the start.");
+        if (ms(to) - ms(from) > 86_400_000) throw new WorkspaceError("An entry cannot be longer than a day.");
+        const span = stretchSpan(e.sittings ?? [], ms(from), ms(to));
+        if (!span) throw new WorkspaceError("None of this entry's time falls between those times.");
+        next.startedAt = span.startedAt; next.endedAt = span.endedAt;
+        if (span.sittings) next.sittings = span.sittings; else delete next.sittings;
+    }
     saveEntry(w, next, now);
     return next;
 }
@@ -946,6 +961,9 @@ export const MATTER_MAX = 120;
  * legal matter).
  */
 export const PERSONAL = "Personal";
+/** Time the person added by hand (src/shared/manual.ts): its `ownerID`, and the app name its row shows. */
+export const MANUAL_OWNER_ID = "manual";
+export const MANUAL_APP = "Added by you";
 export const isPersonal = (matter: string | null | undefined): boolean => !!matter && matter.trim().toLowerCase() === PERSONAL.toLowerCase();
 
 /** The project a matter name stands for: an open one of that name (any case), else a new one. */
@@ -1456,7 +1474,7 @@ export function referencedScreenshots(w: Workspace): Set<string> {
 /** How a sitting ended, in words. */
 const ENDED_BY: Record<string, string> = {
     switched: "switched apps", idle: "went idle", suspended: "the computer slept", gap: "lost track", paused: "paused capture",
-    quit: "quit the app", excluded: "opened a private app", browser: "went to the browser", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down", calendar: "on your calendar, not on this computer",
+    quit: "quit the app", excluded: "opened a private app", browser: "went to the browser", "privacy-change": "changed privacy settings", "crash-recovered": "the app went down", calendar: "on your calendar, not on this computer", manual: "added by you",
 };
 
 /** The site of the browser time (brought in from Kiwi) that began as this ended, if any. */
@@ -1744,7 +1762,7 @@ export function validate(w: Workspace): Workspace {
         billingValid(w.billing) && invoicesValid(w.invoices) &&
         w.entries.every((e) => validIso(e.startedAt) && validIso(e.endedAt) && ms(e.endedAt) > ms(e.startedAt) && Number.isFinite(e.hourlyRate) && e.hourlyRate >= 0 && (e.sittings == null || (Array.isArray(e.sittings) && sittingsValid(e))) && (e.activityIDs == null || Array.isArray(e.activityIDs)) && (e.drafted == null || DRAFT_SOURCES.has(e.drafted)) && shotsValid(e.screenshots, SCREENSHOTS_MAX * 20) && (e.hours == null || (Number.isFinite(e.hours) && e.hours >= 0 && e.hours <= 24))) &&
         (w.rulebooks == null || (Array.isArray(w.rulebooks) && w.rulebooks.every((r) => r && typeof r.clientId === "string" && Array.isArray(r.rules)))) &&
-        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.reviewedAt == null || validIso(a.reviewedAt)) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && draftValid(a.draft) && summaryValid(a.summary) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
+        w.activities.every((a) => validIso(a.startedAt) && validIso(a.endedAt) && ms(a.endedAt) >= ms(a.startedAt) && DISPOSITIONS.has(a.disposition) && (a.reviewedAt == null || validIso(a.reviewedAt)) && (a.matter == null || (typeof a.matter === "string" && a.matter.length <= MATTER_MAX)) && (a.matterBy == null || a.matterBy === "ai" || a.matterBy === "person") && (a.timeEdited == null || a.timeEdited === true) && (a.billHours == null || (Number.isFinite(a.billHours) && a.billHours > 0 && a.billHours <= 24)) && draftValid(a.draft) && summaryValid(a.summary) && (a.mergeKey == null || typeof a.mergeKey === "string") && (a.separateFrom == null || (Array.isArray(a.separateFrom) && a.separateFrom.length <= 20)) && (a.description == null || (typeof a.description === "string" && a.description.length <= DRAFT_MAX)) && (a.screenText == null || (typeof a.screenText === "string" && a.screenText.length <= SCREEN_TEXT_MAX)) && shotsValid(a.screenshots, SCREENSHOTS_MAX) && (a.endedTo == null || typeof a.endedTo === "string") && (a.idle == null || (Array.isArray(a.idle) && a.idle.every((i) => validIso(i.startedAt) && validIso(i.endedAt)))) && (a.document == null || (typeof a.document.name === "string" && a.document.name.length > 0 && (a.document.excerpt ?? "").length <= EXCERPT_MAX))) &&
         (!w.timer || (validIso(w.timer.startedAt) && validIso(w.timer.lastHeartbeat) && ms(w.timer.lastHeartbeat) >= ms(w.timer.startedAt))) &&
         (!w.sync || (Array.isArray(w.sync.targets) && w.sync.targets.length > 0 && new Set(w.sync.targets.map((t) => t.product)).size === w.sync.targets.length &&
             w.sync.targets.every((t) => isProduct(t.product) && typeof t.serverURL === "string" && t.serverURL.length > 0 && typeof t.deviceID === "string" && t.deviceID.length > 0 && Array.isArray(t.deletedEntryIDs))));

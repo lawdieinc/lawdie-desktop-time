@@ -13,7 +13,7 @@ the wire contract land in all three repos together.
   overlap clipping, matter links), `export.ts` (kept entries as CSV: project, date, hours,
   description; the Time screen's Export CSV, for the range shown), `format.ts`, `state.ts`; billing (see
   Billing): `rules.ts`, `clientRules.ts`, `applyRules.ts`, `invoice.ts`, `invoiceHtml.ts`, `narrative.ts`,
-  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`; `search.ts` (the search bar's finding), `billingMode.ts` (tenths or quarter hours). Everything here is under
+  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`; `search.ts` (the search bar's finding), `billingMode.ts` (tenths or quarter hours), `manual.ts` (time added or corrected by hand). Everything here is under
   `model.test.ts`, `feed.test.ts` and the billing tests beside their files.
 - `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock that names the boot it was taken in, daily copies in `backups/` (7),
   leftovers of a cut-short save removed at launch),
@@ -24,7 +24,7 @@ the wire contract land in all three repos together.
   `xlsx.ts` (the time sheet as Word; a time-system export read).
 - `src/preload/` — the whole surface the window may touch (`window.lawdie`).
 - `src/renderer/` — React. `App.tsx` (the screens), with billing beside it: `Billing.tsx`, `ClientRules.tsx`,
-  `Rules.tsx`, `Narrative.tsx`, `Imported.tsx`, `Menu.tsx`; `Search.tsx` (the top bar's search); brand in `styles.css` (see `docs/brand.md`).
+  `Rules.tsx`, `Narrative.tsx`, `Imported.tsx`, `Menu.tsx`; `Search.tsx` (the top bar's search), `Manual.tsx` (hours and times changed in place, Add time, Add sitting); brand in `styles.css` (see `docs/brand.md`).
 - `resources/` fonts and brand assets; `build/` icons; `electron-builder.yml` installers.
 - `legacy/swift/` — the first, macOS-only version. Reference only; not built.
 
@@ -303,6 +303,32 @@ billed: sittings and items inside a row, idle, "away" gaps, Personal, the work s
 live "Currently in …" clock. Invoices, time sheets and the DOCX print hours through `hoursText`. Sync is unchanged:
 the destinations still get captured `seconds`, never the rounded hours.
 
+## Time by hand
+
+A person can correct time and add what capture missed (2026-11-12: "you should be able to modify the time directly, and
+add sittings"). `src/shared/manual.ts` is pure and tested (`manual.test.ts`); the controls are in `Manual.tsx`. Capture's
+rules say what capture records; this is the person's own statement, marked as theirs, and it still goes through review.
+- Activity → "Add time" (`AddTimeSheet`) and a matter row's "+ Add sitting" (`AddSitting`, on the row's day) call
+  `addManualTime()`: a closed, pending sitting with `ownerID` `MANUAL_OWNER_ID`, app "Added by you", `endedBy` "manual".
+  A matter given is the person's. The note is the sitting's title, and the row's description only when the sitting is
+  a row of its own, so it never speaks for captured work it joins. `like` names a sitting of the row to join (its
+  project ids and `mergeKey` are copied). Refused: an end not after the start, the future, over a day, older than
+  `pendingDays()`. Never sent for a sitting summary. Time that overlaps captured sittings in a row counts once
+  (`mergeAdjacent` at keep), and overlap with kept time is the Keep sheet's question, as for any row. The Time page's
+  Entries → Add entry (a typed note) is unchanged, by the user's decision.
+- A sitting's times are a control (`TimeEdit`, in a matter's items, a stretch's sittings and a one-sitting stretch):
+  `editActivityTime()` sets start and end on a pending sitting and marks it `timeEdited` ("time changed by you" on the
+  item); idle is kept only inside the new times. Not imported or calendar time.
+- A review row's hours are a control (`HoursEdit` in `RowTime`): `setRowHours()` puts `billHours` on the row's first
+  sitting, `keepStart()` opens with it as `hoursSet`, so Approve and the Keep sheet keep those hours; emptied, the row
+  goes back to its time rounded. A kept entry's hours are the same control on the Time page and the Kept list
+  (`editEntry` `hours`).
+- A kept entry's Edit sheet has Start and End (`EntryChange.startedAt`/`endedAt`): one sitting takes the bounds as
+  given, several are trimmed to them (`stretchSpan`), `saveEntry` refuses an overlap with other kept time or the
+  future, and the hours follow the new time unless the person typed hours. The sheet is a portal on `document.body`
+  (a panel's `backdrop-filter` held it inside the panel).
+Schema stays 3 (`timeEdited`, `billHours` are optional).
+
 ## Search
 
 One search bar in the top bar (2026-11-12, "a search bar to search anywhere"; settings left out by the user's decision).
@@ -565,3 +591,5 @@ Same day: a search bar across matters, time to review, kept entries, client rule
 Verified through the harness on a scratch workspace: each kind of result opens its screen. Tests 301.
 Same day: idle options 1, 6, 12, 15, 30, 60 minutes (a value saved before stays listed), and the billing mode (section
 above), also in 0.18.0. Tests 307.
+Same day: time by hand (section above): hours and times changed in place, Add time and Add sitting, all through review.
+Verified through the harness on a scratch workspace. Tests 317.
