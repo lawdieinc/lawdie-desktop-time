@@ -1,8 +1,9 @@
 /* The app-updates email (2026-11-13): one release from `releases.ts` as a newsletter, a little longer than the
    What's new card (the release's `intro`, each item's `more`, its `picture`). Pure: `newsletterFor()` gives the
    subject, the HTML and the plain text; `scripts/newsletter.mjs` hands them to Resend, which owns the list, the
-   sending and the unsubscribe page. Laid out as a time sheet: release and date in the header, the picture as
-   "Exhibit A", the items as numbered lines. The HTML is email HTML on purpose: tables and inline styles in the
+   sending and the unsubscribe page. Laid out on espresso and cream: a dark top with the title very large, the
+   release's picture across the line where dark meets cream, the items as numbered sections (an item's own picture
+   under its words), one download button. The HTML is email HTML on purpose: tables and inline styles in the
    brand's colours (docs/brand.md), since mail clients drop most stylesheets; the fonts fall back to Georgia and
    Arial where a client will not load them. The pictures are files in `docs/newsletter/`, read by the mail client
    from this public repo (`IMAGE_BASE`), so they show only once that folder is pushed. */
@@ -44,7 +45,7 @@ export type Newsletter = {
     images: string[];
 };
 
-const COLOR = { page: "#F3F0E8", cream: "#F9F6F2", card: "#FFFFFF", espresso: "#3D3731", taupe: "#7C7366", sand: "#D8D1C7", gold: "#8B5C2A" };
+const COLOR = { page: "#F3F0E8", cream: "#F9F6F2", card: "#FFFFFF", espresso: "#3D3731", taupe: "#7C7366", sand: "#D8D1C7", gold: "#8B5C2A", rule: "#5F5850" };
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
 const SANS = "'Source Sans 3', 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif";
 const MONO = "'Fragment Mono', Menlo, Consolas, monospace";
@@ -56,12 +57,12 @@ const esc = (s: string): string =>
 /** What an item says in the email: its paragraph, else the card's one line. */
 export const itemBody = (item: Release["items"][number]): string => item.more?.trim() || item.description;
 
-/** The headline: the title with its last word in italic brown-gold. */
+/** The headline: the title with its last word in italic over a brown-gold line. */
 function headline(title: string): string {
     const words = title.trim().split(/\s+/);
     const last = words.pop() ?? "";
     const lead = words.length ? `${esc(words.join(" "))} ` : "";
-    return `${lead}<span style="font-style:italic;color:${COLOR.gold};">${esc(last)}</span>`;
+    return `${lead}<span style="font-style:italic;border-bottom:6px solid ${COLOR.gold};">${esc(last)}</span>`;
 }
 
 export function newsletterFor(release: Release, options: NewsletterOptions = {}): Newsletter {
@@ -76,18 +77,25 @@ export function newsletterFor(release: Release, options: NewsletterOptions = {})
     const why = "You are getting this because you use Lawdie Time Capture.";
     const mark = `${base}/${MARK_FILE}`;
     const picture = release.picture ? { ...release.picture, src: `${base}/${release.picture.file}` } : null;
-    const label = `font-family:${MONO};font-size:11px;line-height:16px;letter-spacing:2px;text-transform:uppercase;color:${COLOR.taupe};`;
+    const images = [mark, ...(picture ? [picture.src] : [])];
+    const mono = `font-family:${MONO};text-transform:uppercase;`;
+    // "0.18.0" reads as "V 0.18" beside the name; a patch release keeps its last number.
+    const version = release.id.replace(/\.0$/, "");
 
     const items = release.items
         .map((item, i) => {
-            const last = i === release.items.length - 1;
-            const rule = `border-bottom:1px solid ${last ? COLOR.espresso : COLOR.sand};`;
+            const rule = i === release.items.length - 1 ? "" : `border-bottom:1px solid ${COLOR.sand};`;
+            const src = item.picture ? `${base}/${item.picture.file}` : null;
+            if (src) images.push(src);
             return `
           <tr>
-            <td width="52" valign="top" style="width:52px;padding:28px 0;${rule}font-family:${MONO};font-size:15px;line-height:32px;color:${COLOR.gold};">${String(i + 1).padStart(2, "0")}</td>
-            <td valign="top" style="padding:28px 0;${rule}">
-              <h2 style="margin:0 0 10px 0;font-family:${SERIF};font-size:27px;line-height:32px;font-weight:600;letter-spacing:-0.3px;color:${COLOR.espresso};">${esc(item.title)}</h2>
-              <p style="margin:0;font-family:${SANS};font-size:16px;line-height:25px;color:${COLOR.espresso};">${esc(itemBody(item))}</p>
+            <td class="nl-no" width="76" valign="top" style="width:76px;padding:40px 0;${rule}font-family:${MONO};font-size:34px;line-height:40px;color:${COLOR.gold};">${String(i + 1).padStart(2, "0")}</td>
+            <td valign="top" style="padding:40px 0;${rule}">
+              <h2 class="nl-h2" style="margin:0 0 14px 0;font-family:${SERIF};font-size:32px;line-height:38px;font-weight:600;letter-spacing:-0.4px;color:${COLOR.espresso};">${esc(item.title)}</h2>
+              <p style="margin:0;font-family:${SANS};font-size:17px;line-height:27px;color:${COLOR.espresso};">${esc(itemBody(item))}</p>${
+                  src ? `
+              <img src="${esc(src)}" width="468" alt="${esc(item.picture?.alt ?? "")}" style="display:block;width:100%;max-width:468px;height:auto;margin:20px 0 0 0;border:1px solid ${COLOR.sand};border-radius:10px;">` : ""
+              }
             </td>
           </tr>`;
         })
@@ -103,75 +111,59 @@ export function newsletterFor(release: Release, options: NewsletterOptions = {})
 <link rel="stylesheet" href="${FONTS}">
 <style>
 @media (max-width: 520px) {
-  .nl-outer { padding: 12px 8px 24px 8px !important; }
-  .nl-pad { padding-left: 20px !important; padding-right: 20px !important; }
-  .nl-h1 { font-size: 46px !important; line-height: 48px !important; letter-spacing: -1.2px !important; }
-  .nl-intro { font-size: 17px !important; line-height: 27px !important; }
+  .nl-pad { padding-left: 22px !important; padding-right: 22px !important; }
+  .nl-top { padding-top: 40px !important; padding-bottom: 40px !important; }
+  .nl-h1 { font-size: 52px !important; line-height: 54px !important; letter-spacing: -1.4px !important; }
+  .nl-h1 span { border-bottom-width: 4px !important; }
+  .nl-intro { font-size: 18px !important; line-height: 28px !important; }
+  .nl-no { width: 46px !important; font-size: 22px !important; }
+  .nl-h2 { font-size: 26px !important; line-height: 31px !important; }
 }
 </style>
 </head>
 <body style="margin:0;padding:0;background:${COLOR.page};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:${COLOR.page};">${esc(preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${COLOR.page};">
-  <tr><td class="nl-outer" align="center" style="padding:32px 16px 40px 16px;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:624px;">
-      <tr><td style="background:${COLOR.card};border:1px solid ${COLOR.sand};">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:${COLOR.cream};">
 
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr><td class="nl-pad" style="padding:34px 36px 26px 36px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-              <td width="58" valign="middle" style="width:58px;"><img src="${esc(mark)}" width="46" height="46" alt="" style="display:block;width:46px;height:46px;border:0;"></td>
-              <td valign="middle">
-                <div style="font-family:${SERIF};font-size:28px;line-height:30px;font-weight:800;letter-spacing:-0.3px;color:${COLOR.espresso};">Lawdie</div>
-                <div style="font-family:${SANS};font-size:14px;line-height:18px;color:${COLOR.taupe};">Time Capture</div>
-              </td>
-              <td valign="middle" align="right" style="font-family:${MONO};font-size:11px;line-height:21px;letter-spacing:1.2px;text-transform:uppercase;color:${COLOR.espresso};white-space:nowrap;">
-                <span style="color:${COLOR.taupe};">Release</span>&nbsp;&nbsp;${esc(release.id)}<br>
-                <span style="color:${COLOR.taupe};">Date</span>&nbsp;&nbsp;${esc(date)}
-              </td>
-            </tr></table>
-          </td></tr>
-          <tr><td class="nl-pad" style="padding:0 36px;"><div style="border-top:3px solid ${COLOR.espresso};font-size:0;line-height:0;">&nbsp;</div></td></tr>
-
-          <tr><td class="nl-pad" style="padding:34px 36px 0 36px;">
-            <p style="margin:0 0 16px 0;font-family:${MONO};font-size:12px;line-height:16px;letter-spacing:3px;text-transform:uppercase;color:${COLOR.gold};">Statement of changes</p>
-            <h1 class="nl-h1" style="margin:0;font-family:${SERIF};font-size:72px;line-height:70px;font-weight:600;letter-spacing:-2.2px;color:${COLOR.espresso};">${headline(release.title)}</h1>${
-                intro ? `
-            <p class="nl-intro" style="margin:24px 0 0 0;font-family:${SANS};font-size:19px;line-height:30px;color:${COLOR.espresso};">${esc(intro)}</p>` : ""
-            }
-          </td></tr>${
-              picture ? `
-
-          <tr><td class="nl-pad" style="padding:34px 36px 0 36px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-              <td style="padding:0 0 10px 0;${label}">Exhibit A</td>
-              <td align="right" style="padding:0 0 10px 0;${label}">${esc(picture.label ?? "")}</td>
-            </tr></table>
-            <img src="${esc(picture.src)}" width="550" alt="${esc(picture.alt)}" style="display:block;width:100%;max-width:550px;height:auto;border:1px solid ${COLOR.sand};">
-          </td></tr>` : ""
-          }
-
-          <tr><td class="nl-pad" style="padding:38px 36px 0 36px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td width="52" style="width:52px;padding:10px 0;border-top:1px solid ${COLOR.espresso};border-bottom:1px solid ${COLOR.espresso};${label}">No.</td>
-                <td style="padding:10px 0;border-top:1px solid ${COLOR.espresso};border-bottom:1px solid ${COLOR.espresso};${label}">What changed</td>
-              </tr>${items}
-            </table>
-          </td></tr>
-
-          <tr><td class="nl-pad" style="padding:32px 36px 36px 36px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr><td align="center" bgcolor="${COLOR.gold}" style="background:${COLOR.gold};border-radius:8px;">
-                <a href="${esc(download)}" style="display:block;padding:18px 24px;font-family:${SANS};font-size:18px;line-height:22px;font-weight:600;color:${COLOR.cream};text-decoration:none;">Download the latest version</a>
-              </td></tr>
-              <tr><td align="center" style="padding:14px 0 0 0;${label}">macOS · Windows · Linux</td></tr>
-            </table>
-          </td></tr>
-        </table>
-
+      <tr><td class="nl-pad" bgcolor="${COLOR.espresso}" style="background:${COLOR.espresso};padding:28px 48px;border-bottom:1px solid ${COLOR.rule};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td width="52" valign="middle" style="width:52px;"><img src="${esc(mark)}" width="40" height="40" alt="" style="display:block;width:40px;height:40px;border:0;"></td>
+          <td valign="middle" style="font-family:${SERIF};font-size:26px;line-height:30px;font-weight:800;letter-spacing:-0.3px;color:${COLOR.cream};">Lawdie</td>
+          <td valign="middle" align="right" style="${mono}font-size:12px;line-height:16px;letter-spacing:2px;color:${COLOR.sand};">Time Capture · V ${esc(version)}</td>
+        </tr></table>
       </td></tr>
-      <tr><td style="padding:24px 8px 0 8px;font-family:${SANS};font-size:14px;line-height:22px;color:${COLOR.espresso};">
+
+      <tr><td class="nl-pad nl-top" bgcolor="${COLOR.espresso}" style="background:${COLOR.espresso};padding:64px 48px 56px 48px;">
+        <p style="margin:0 0 22px 0;${mono}font-size:13px;line-height:18px;letter-spacing:3px;color:${COLOR.sand};">What's new · ${esc(date)}</p>
+        <h1 class="nl-h1" style="margin:0;font-family:${SERIF};font-size:84px;line-height:84px;font-weight:600;letter-spacing:-2.6px;color:${COLOR.cream};">${headline(release.title)}</h1>${
+            intro ? `
+        <p class="nl-intro" style="margin:34px 0 0 0;font-family:${SANS};font-size:20px;line-height:31px;color:${COLOR.sand};">${esc(intro)}</p>` : ""
+        }
+      </td></tr>${
+          picture ? `
+
+      <tr><td class="nl-pad" align="center" bgcolor="${COLOR.cream}" style="background:${COLOR.cream};background-image:linear-gradient(${COLOR.espresso} 0%,${COLOR.espresso} 46%,${COLOR.cream} 46%,${COLOR.cream} 100%);padding:0 48px;">
+        <img src="${esc(picture.src)}" width="544" alt="${esc(picture.alt)}" style="display:block;width:100%;max-width:544px;height:auto;border:1px solid ${COLOR.sand};border-radius:12px;">
+      </td></tr>` : ""
+      }
+
+      <tr><td class="nl-pad" style="padding:12px 48px 0 48px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${items}
+        </table>
+      </td></tr>
+
+      <tr><td class="nl-pad" style="padding:8px 48px 0 48px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td align="center" bgcolor="${COLOR.gold}" style="background:${COLOR.gold};border-radius:8px;">
+            <a href="${esc(download)}" style="display:block;padding:18px 24px;font-family:${SANS};font-size:18px;line-height:22px;font-weight:600;color:${COLOR.cream};text-decoration:none;">Download the latest version</a>
+          </td></tr>
+          <tr><td align="center" style="padding:14px 0 0 0;${mono}font-size:11px;line-height:16px;letter-spacing:2px;color:${COLOR.taupe};">macOS · Windows · Linux</td></tr>
+        </table>
+      </td></tr>
+
+      <tr><td class="nl-pad" style="padding:36px 48px 44px 48px;font-family:${SANS};font-size:14px;line-height:22px;color:${COLOR.taupe};">
         ${esc(why)} <a href="${esc(unsubscribe)}" style="color:${COLOR.gold};text-decoration:underline;">Unsubscribe</a>${address ? `<br>${esc(address)}` : ""}
       </td></tr>
     </table>
@@ -196,7 +188,7 @@ export function newsletterFor(release: Release, options: NewsletterOptions = {})
         "",
     ].join("\n");
 
-    return { name: `Time Capture ${release.id}`, subject, preheader, html, text, images: [mark, ...(picture ? [picture.src] : [])] };
+    return { name: `Time Capture ${release.id}`, subject, preheader, html, text, images };
 }
 
 /** The addresses in a pasted list or a CSV export: one a line (the first on it), lower-cased, each once. */

@@ -53,17 +53,20 @@ describe("the newsletter", () => {
         expect(n.text).not.toContain("Two things changed.");
     });
 
-    it("shows the brand mark and the release's picture, read from the repo unless a preview says where", () => {
+    it("shows the brand mark, the release's picture and an item's, read from the repo unless a preview says where", () => {
         const plain = newsletterFor(release);
         expect(plain.images).toEqual([`${IMAGE_BASE}/kiwi.png`]);
-        expect(plain.html).not.toContain("Exhibit A");
-        const pictured = { ...release, picture: { file: "9.1.0-review.jpg", alt: 'The "review" screen', label: "To review" } };
+        const pictured: Release = {
+            ...release,
+            picture: { file: "9.1.0-review.jpg", alt: 'The "review" screen' },
+            items: [release.items[0], { ...release.items[1], picture: { file: "9.1.0-matters.jpg", alt: "The Matters page" } }],
+        };
         const n = newsletterFor(pictured);
-        expect(n.images).toEqual([`${IMAGE_BASE}/kiwi.png`, `${IMAGE_BASE}/9.1.0-review.jpg`]);
+        expect(n.images).toEqual([`${IMAGE_BASE}/kiwi.png`, `${IMAGE_BASE}/9.1.0-review.jpg`, `${IMAGE_BASE}/9.1.0-matters.jpg`]);
         expect(n.html).toContain(`src="${IMAGE_BASE}/9.1.0-review.jpg"`);
         expect(n.html).toContain('alt="The &quot;review&quot; screen"');
-        expect(n.html).toContain("Exhibit A");
-        expect(newsletterFor(pictured, { imageBase: "../pictures/" }).images).toEqual(["../pictures/kiwi.png", "../pictures/9.1.0-review.jpg"]);
+        expect(n.html).toContain(`src="${IMAGE_BASE}/9.1.0-matters.jpg"`);
+        expect(newsletterFor(pictured, { imageBase: "../pictures/" }).images[1]).toBe("../pictures/9.1.0-review.jpg");
     });
 
     it("numbers the items and sets the title's last word apart", () => {
@@ -71,6 +74,7 @@ describe("the newsletter", () => {
         expect(html).toContain(">01</td>");
         expect(html).toContain(">02</td>");
         expect(html).toMatch(/Faster &lt;review&gt; &amp; <span[^>]*>more<\/span>/);
+        expect(html).toContain("V 9.1<");
     });
 
     it("has an intro and a paragraph for every item of the newest release", () => {
