@@ -358,6 +358,36 @@ item's link): never over the welcome (finishing the welcome marks the release se
 both), the tutorial, or a demo. "See all updates" lists every release in the same sheet. Also from Settings →
 Display & data → "See what's new", the tray's "What's new", and `--route whatsnew`.
 
+## Newsletter
+
+App updates by email (2026-11-13: "a slightly more descriptive version of the whats new modal but over email"), sent
+through Resend, which owns the list (contacts in one segment), the sending (a broadcast) and the unsubscribe link and
+page; nothing of it is in the app, and the app never holds an email address. The words live with the card's: a
+release's `intro` and each item's `more` in `releases.ts` (never shown on the card; an item without `more` goes out
+with its one line; `picture` is the release's one screenshot). `src/shared/newsletter.ts` is pure and tested
+(`newsletter.test.ts`): `newsletterFor(release)` gives subject, preheader, HTML and plain text, always with an
+unsubscribe link (`UNSUBSCRIBE_PLACEHOLDER`, which Resend fills per recipient). The HTML is laid out as a time sheet
+(chosen from three directions on 2026-11-13; "prepared for", a figure per item and an install box were tried and
+dropped by the user): the kiwi and release/date in the header, "Statement of changes", the title very large with its
+last word in italic brown-gold, the picture as "Exhibit A", the items as numbered lines, one download button. Tables
+and inline styles, brand colours only, no gradients or shadows; web fonts where the client loads them, Georgia and
+Arial elsewhere. The pictures are files in `docs/newsletter/` (not `resources/`, which ships in the installers): the
+kiwi mark and one screenshot per release, about 1100 px wide, always of the demo workspace (`--demo
+resources/demo/manatt.json`), never a real one. A mail client reads them from this public repo (`IMAGE_BASE`, raw
+GitHub on main), so they must be pushed before a send. `scripts/newsletter.mjs`
+(`npm run newsletter --`, the shared code bundled by esbuild in memory): `preview [version]` writes
+`out/newsletter/<version>.html|txt` with the pictures read from the folder, and needs no key; `draft [version]` makes
+a draft broadcast, refusing while a picture does not answer on GitHub (`RESEND_API_KEY`,
+`RESEND_SEGMENT_ID`, `NEWSLETTER_FROM`; optional `NEWSLETTER_REPLY_TO`, `NEWSLETTER_ADDRESS` for a postal address in
+the footer; all read from a git-ignored `.env` at the repo root); `send <broadcast id>` sends it after "send" is typed (`--at` schedules); `contacts <file>` adds a file's
+addresses to the segment and never touches a contact Resend already has, so an unsubscribe is never undone. Resend's
+API has no test send: the test goes from its dashboard, on the draft. Sent by hand, not by `release.yml`. The sender
+is on `updates.lawdie.ai` (verified in Resend; its DNS records are in Route 53), since `lawdie.ai` itself is not
+verified there. Not built
+yet: filling the segment from Kiwi's and the CRM's paired devices (the addresses are theirs), and a switch in the app.
+Still unchecked on the live account: that a re-added contact stays unsubscribed and that the broadcast carries the
+one-click unsubscribe header. The first send (one subscriber) landed in Outlook's Junk; cause not found yet.
+
 ## Error reports
 
 Errors go to Honeybadger (project "Time Capture Desktop", 2026-11-06), the way Kiwi's do. The rules are
@@ -593,6 +623,8 @@ Same day: idle options 1, 6, 12, 15, 30, 60 minutes (a value saved before stays 
 above), also in 0.18.0. Tests 307.
 Same day: time by hand (section above): hours and times changed in place, Add time and Add sitting, all through review.
 Verified through the harness on a scratch workspace. Tests 317.
+2026-11-13: an app-updates newsletter through Resend (section above): the email from the release notes, a preview, a
+draft, a send and a contacts script. The preview was looked at in Chrome. Later the same day: the sending domain set up, a first send to the one subscriber, and the email redesigned as a time sheet with the kiwi and a screenshot. Tests 326.
 2026-11-13: a user's window stopped answering clicks after a restart (LAW-1403). Found: `importedRemaining()` checked every imported
 sitting against every other interval, and Approve asked it once per review row, so with unreviewed time now waiting 90 days a
 workspace of 4,400 sittings took 4 s per feed page in the main process and 15 s per save in the window. It is now a sorted pass

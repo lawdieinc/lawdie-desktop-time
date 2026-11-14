@@ -14,6 +14,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
+    "newsletter": "node --env-file-if-exists=.env scripts/newsletter.mjs",
     "package": "npm run build && electron-builder --config electron-builder.yml --publish never",
     "package:mac": "npm run build && electron-builder --config electron-builder.yml --publish never --mac",
     "package:win": "npm run build && electron-builder --config electron-builder.yml --publish never --win",

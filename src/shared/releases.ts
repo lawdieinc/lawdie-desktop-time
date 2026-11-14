@@ -8,6 +8,11 @@
      - `date` is the day it ships, YYYY-MM-DD.
      - Two to five items, each a short title and one plain sentence a lawyer would understand: what they can now
        do, not what moved in the code. `icon` is one of RELEASE_ICONS; `route` opens that screen.
+     - `intro` (two or three sentences) and each item's `more` (a short paragraph: how it works, where it is,
+       what it never does) are for the email newsletter (`newsletter.ts`); the card never shows them. Write them
+       for the newest release; an item without `more` goes out with its one line. `picture` is the newsletter's
+       one screenshot, a file in `docs/newsletter/` taken from the demo workspace (never a real one): about
+       1100 px wide, named for the release.
    A release that only fixes bugs adds no entry, and the card stays closed. */
 
 import { needsWelcome } from "./onboarding";
@@ -21,6 +26,8 @@ export type ReleaseItem = {
     title: string;
     /** One line, about twelve words: the card shows only this. */
     description: string;
+    /** The newsletter's paragraph for this item, a few plain sentences. Never on the card. */
+    more?: string;
     /** A screen to open, which also closes the card. */
     route?: "today" | "activity" | "matters" | "settings";
 };
@@ -31,6 +38,10 @@ export type Release = {
     /** YYYY-MM-DD. */
     date: string;
     title: string;
+    /** The newsletter's opening, two or three sentences on what the release is about. Never on the card. */
+    intro?: string;
+    /** The newsletter's screenshot: a file in `docs/newsletter/`, what it shows, and a short label over it. */
+    picture?: { file: string; alt: string; label?: string };
     items: readonly ReleaseItem[];
 };
 
@@ -39,22 +50,25 @@ export const RELEASES: readonly Release[] = [
         id: "0.18.0",
         date: "2026-11-12",
         title: "Approve your day in a click",
+        intro: "This update is about getting through a day's time faster: rows you can approve as they stand, time that waits until you have looked at it, and hours shown the way you bill them.",
+        picture: { file: "0.18.0-activity.jpg", alt: "The Activity screen: a row to review with its description, matter, 3.8 hours and an Approve button", label: "Activity · To review" },
         items: [
-            { icon: "clock", title: "Approve, or approve them all", description: "Approve keeps a row as shown; tick rows and approve them together.", route: "activity" },
-            { icon: "shield", title: "Unreviewed time waits for you", description: "Time you have not reviewed stays 90 days, with a warning a week before.", route: "activity" },
-            { icon: "invoice", title: "Tenths or quarter hours", description: "Choose your billing mode in Settings; time shows in hours, never minutes and seconds.", route: "settings" },
-            { icon: "clock", title: "Fix or add time yourself", description: "Press any hours or times to change them; Add time for work capture missed.", route: "activity" },
-            { icon: "compass", title: "Search everything", description: "Press ⌘K (Ctrl+K) to find a matter, an entry, time to review, a rule or an invoice." },
+            { icon: "clock", title: "Approve, or approve them all", description: "Approve keeps a row as shown; tick rows and approve them together.", more: "Each row in To review now reads as the entry it would become: the description, the matter and the hours billed. Approve keeps it exactly as shown, and you can tick several rows and approve them together. A row with no matter or no description says what is missing, and one that breaks a client's rule or overlaps time you already kept opens the Keep sheet instead.", route: "activity" },
+            { icon: "shield", title: "Unreviewed time waits for you", description: "Time you have not reviewed stays 90 days, with a warning a week before.", more: "Time you have not reviewed is no longer removed by the Reviewed activity setting. It stays for 90 days, or longer if that setting is longer, and a week before the oldest of it would go the app warns you on Activity, in the sidebar and in the tray. The setting now only says how long kept and dismissed activity stays.", route: "activity" },
+            { icon: "invoice", title: "Tenths or quarter hours", description: "Choose your billing mode in Settings; time shows in hours, never minutes and seconds.", more: "Settings → Billing → Billing mode sets tenths of an hour or quarter hours. Time is rounded up to the increment, and a client's own increment rule still wins for that client. The hours are fixed when you keep an entry, so changing the mode later never changes one you already kept.", route: "settings" },
+            { icon: "clock", title: "Fix or add time yourself", description: "Press any hours or times to change them; Add time for work capture missed.", more: "Press a row's hours, or a sitting's start and end times, to change them. Add time on Activity, or Add sitting on a matter's row, records work the computer did not see, such as a meeting away from your desk. What you add is marked as yours and still goes through review. A kept entry's Edit sheet has Start and End too.", route: "activity" },
+            { icon: "compass", title: "Search everything", description: "Press ⌘K (Ctrl+K) to find a matter, an entry, time to review, a rule or an invoice.", more: "One search bar covers matters, time to review, kept entries, client rules and invoices, and picking a result opens its screen with the item shown. The search runs on your computer; nothing you type is sent anywhere." },
         ],
     },
     {
         id: "0.17.0",
         date: "2026-11-12",
         title: "Each sitting says what it was",
+        intro: "Rows in To review are easier to read: each sitting now carries a line saying what the work was.",
         items: [
-            { icon: "sparkle", title: "A line for every sitting", description: "Open a row to see what each stretch of work was, written by Kiwi's AI.", route: "activity" },
-            { icon: "compass", title: "Screenshots help, if they are on", description: "With screenshots on, the AI reads one of each sitting to describe it better.", route: "settings" },
-            { icon: "matter", title: "Better matters and drafts", description: "Those lines help name the matter and draft the description you keep." },
+            { icon: "sparkle", title: "A line for every sitting", description: "Open a row to see what each stretch of work was, written by Kiwi's AI.", more: "With AI suggestions on and Kiwi connected, every sitting of a minute or more gets a one-line summary, shown when you open a row. Sittings from before the update are summarised too.", route: "activity" },
+            { icon: "compass", title: "Screenshots help, if they are on", description: "With screenshots on, the AI reads one of each sitting to describe it better.", more: "If screenshots are switched on, Kiwi's AI reads one screenshot of each sitting to write that line. Never of a browser, an excluded app or a call. Nothing changes if screenshots are off.", route: "settings" },
+            { icon: "matter", title: "Better matters and drafts", description: "Those lines help name the matter and draft the description you keep.", more: "The same lines are used when the app names the matter and drafts the billing description, so a sitting with no readable title can still be named." },
         ],
     },
     {
