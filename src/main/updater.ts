@@ -24,8 +24,13 @@ const { autoUpdater } = electronUpdater;
 const CHECK_EVERY_MS = 4 * 60 * 60_000;
 const FIRST_CHECK_MS = 30_000;
 
+// GitHubProvider embeds the original error's stack in its feed/version errors, without a cause.
+// Match explicit transport tokens only; a missing release or malformed feed still needs a report.
+const TRANSIENT_CHECK_ERROR = /\bnet::(?:ERR_TIMED_OUT|ERR_CONNECTION_TIMED_OUT|ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET)\b/;
+
 export class Updater {
     private timer: NodeJS.Timeout | null = null;
+    private readonly handledErrors = new WeakSet<object>();
     /** Called once a version has downloaded and waits for Install. */
     onReady: (version: string) => void = () => {};
 
@@ -45,7 +50,9 @@ export class Updater {
             this.store.setUpdateReady(info.version);
             if (first) this.onReady(info.version);
         });
-        autoUpdater.on("error", (err) => report("updater", err));
+        // AppUpdater labels check failures separately from download/install errors, then rethrows
+        // the same object. Use that label so even a download timeout remains reportable.
+        autoUpdater.on("error", (err, message) => this.handleError(err, message?.startsWith("Cannot check for updates: ") === true));
         setTimeout(() => void this.check(), FIRST_CHECK_MS);
         this.timer = setInterval(() => void this.check(), CHECK_EVERY_MS);
     }
@@ -59,12 +66,24 @@ export class Updater {
         if (this.store.updateReady) autoUpdater.quitAndInstall();
     }
 
+    private handleError(err: unknown, checking: boolean): void {
+        if (err !== null && typeof err === "object") {
+            if (this.handledErrors.has(err)) return;
+            this.handledErrors.add(err);
+        }
+        if (checking && err instanceof Error && TRANSIENT_CHECK_ERROR.test(err.message)) {
+            console.warn("[updater] Check failed; will retry on schedule:", err.message);
+            return;
+        }
+        report("updater", err);
+    }
+
     private async check(): Promise<void> {
         if (this.store.updateReady) return;
         try {
             await autoUpdater.checkForUpdates();
         } catch (err) {
-            report("updater", err);
+            this.handleError(err, true);
         }
     }
 }
