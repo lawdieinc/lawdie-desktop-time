@@ -645,3 +645,7 @@ had, so a save that only moved the sitting in progress works nothing out again. 
 2026-11-16: Honeybadger got "Cannot parse releases feed … net::ERR_TIMED_OUT" from the updater: a check that never reached
 GitHub. The updater now only logs those (`isNetworkError()` in errorReport.ts, tested), as sync and the feed already do. Tests 330.
 Same day: version 0.18.2 ships both, with a What's new entry for the lists drawn 50 at a time.
+Same day: version 0.18.3 guards repeated Install requests while macOS prepares an update, and removes a failed
+attempt's restart callback before retrying. Honeybadger's "The command is disabled and cannot be executed" pointed
+to Squirrel's preparation check; overlapping Install requests could start that check twice. Covered by seven updater
+tests, including failure/retry and Windows/Linux paths. Tests 337.
