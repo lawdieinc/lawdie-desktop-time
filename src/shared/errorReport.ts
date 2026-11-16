@@ -137,6 +137,13 @@ export function featuresOn(p: { captureEnabled?: boolean; captureTitles?: boolea
 }
 
 /** An error as the client wants it, whatever was thrown. */
+/** A request that never reached its server: a laptop offline, a firewall, a server that did not answer in time. Not a
+    bug, so the updater logs it and tries again later (sync and the feed never report theirs either). */
+export function isNetworkError(error: unknown): boolean {
+    const text = error instanceof Error ? `${(error as { code?: unknown }).code ?? ""} ${error.message}` : String(error);
+    return /net::ERR_|\b(ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ECONNABORTED|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|EPIPE)\b|socket hang up/.test(text);
+}
+
 export function asError(value: unknown): Error {
     if (value instanceof Error) return value;
     return new Error(typeof value === "string" ? value : "Non-Error value thrown");

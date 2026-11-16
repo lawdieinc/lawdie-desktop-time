@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONTEXT_KEYS, MAX_PER_GROUP_HOUR, cleanNotice, createGroupBudget, featuresOn, fingerprintOf, firstFrame, framesOf, parseQueue, scrubCauses, scrubText, type NoticeLike } from "./errorReport";
+import { CONTEXT_KEYS, MAX_PER_GROUP_HOUR, cleanNotice, createGroupBudget, featuresOn, fingerprintOf, firstFrame, isNetworkError, framesOf, parseQueue, scrubCauses, scrubText, type NoticeLike } from "./errorReport";
 
 describe("error reports", () => {
     it("scrubs what could name a person, a file or a secret", () => {
@@ -63,5 +63,15 @@ describe("error reports", () => {
         expect(q.length).toBe(50);
         expect(q[0].message).toBe("m10");
         expect(parseQueue("")).toEqual([]);
+    });
+
+    it("tells a request that never arrived from a bug", () => {
+        expect(isNetworkError(new Error("Cannot parse releases feed: Error: Unable to find latest version on GitHub, please ensure a production release exists: Error: net::ERR_TIMED_OUT"))).toBe(true);
+        expect(isNetworkError(new Error("net::ERR_INTERNET_DISCONNECTED"))).toBe(true);
+        expect(isNetworkError(Object.assign(new Error("getaddrinfo failed"), { code: "ENOTFOUND" }))).toBe(true);
+        expect(isNetworkError(new Error("socket hang up"))).toBe(true);
+        expect(isNetworkError(new Error("Cannot parse releases feed: Unexpected token < in JSON"))).toBe(false);
+        expect(isNetworkError(new Error("sha512 checksum mismatch"))).toBe(false);
+        expect(isNetworkError(new Error("HttpError: 404"))).toBe(false);
     });
 });

@@ -13,6 +13,7 @@
 
 import { existsSync } from "node:fs";
 import { report } from "./errors";
+import { isNetworkError } from "../shared/errorReport";
 import { join } from "node:path";
 import { app } from "electron";
 // CommonJS, and this bundle is an ES module: a named import fails at launch.
@@ -45,7 +46,7 @@ export class Updater {
             this.store.setUpdateReady(info.version);
             if (first) this.onReady(info.version);
         });
-        autoUpdater.on("error", (err) => report("updater", err));
+        autoUpdater.on("error", (err) => failed(err));
         setTimeout(() => void this.check(), FIRST_CHECK_MS);
         this.timer = setInterval(() => void this.check(), CHECK_EVERY_MS);
     }
@@ -64,7 +65,14 @@ export class Updater {
         try {
             await autoUpdater.checkForUpdates();
         } catch (err) {
-            report("updater", err);
+            failed(err);
         }
     }
+}
+
+/** A check or download that failed. One that never reached GitHub (offline, a firewall, a timeout) is only logged: the
+    next check is in four hours, and it is not a bug to report. */
+function failed(err: unknown): void {
+    if (isNetworkError(err)) console.warn("[updater]", err instanceof Error ? err.message.slice(0, 200) : err);
+    else report("updater", err);
 }
