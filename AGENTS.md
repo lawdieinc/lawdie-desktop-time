@@ -632,3 +632,13 @@ draft, a send and a contacts script. The preview was looked at in Chrome. Later 
 sitting against every other interval, and Approve asked it once per review row, so with unreviewed time now waiting 90 days a
 workspace of 4,400 sittings took 4 s per feed page in the main process and 15 s per save in the window. It is now a sorted pass
 (`Taken` in feed.ts, 21 ms and 59 ms on the same file) worked out once per screen. Recreated in the app on that file (the window held for 11 s in 0.18.0); the user had the import on and thousands waiting. Version 0.18.1.
+2026-11-15: the same user still found 0.18.1 slow. Measured on the 4,400-sitting file with capture on, over the DevTools protocol
+(`--remote-debugging-port`, a `longtask` observer): Activity drew all 936 review rows (28,000 elements) again once a second for the
+window's clock and again at each 5 s save, so the window was blocked 15% of the time and a click took 110–230 ms. Now: the Activity
+lists are drawn `PAGE_ROWS` (50) at a time with "Show 50 more" / "Show all" (`ShowMore`; a search hit past the page extends it, and
+Select / Approve selected act on the rows drawn); `ActivityView` is `memo` and "Currently in …" counts on its own clock (`Elapsed`),
+with `notify` and the screen's other props kept stable so the once-a-second tick never reaches it; and `createSharer()` in
+`src/shared/state.ts` (tested, `state.test.ts`) hands the window the unchanged parts of each new workspace as the objects it already
+had, so a save that only moved the sitting in progress works nothing out again. After: 1,800 elements, no long tasks in 30 s, a tick
+18 ms, the To review tab 38 ms. Left as it is: the main process still copies, checks and writes the whole file at each 5 s sample
+(about 60 ms on that file), and Matters and Time still follow the clock (short lists there). Not released yet. Tests 329.

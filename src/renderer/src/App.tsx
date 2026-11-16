@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AppState } from "@shared/state";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createSharer, type AppState } from "@shared/state";
 import type { SittingSummary } from "@shared/model";
 import { importedRemaining } from "@shared/feed";
 import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, type Activity, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
@@ -58,11 +58,13 @@ export function App(): ReactNode {
     const [rulesView, setRulesView] = useState<{ book: string | null; rule: string | null }>({ book: null, rule: null });
     // Toasts: a line saying what just happened (a move, a merge, an approval), gone on its own after a few seconds; a long report stays longer.
     const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
-    const notify = (text: string, ms = 6000): void => {
+    // The same function for the life of the window: it is a context value, and a new one each second (the clock
+    // below) would draw every screen that says anything again each second.
+    const notify = useCallback((text: string, ms = 6000): void => {
         const id = Date.now() + Math.random();
         setToasts((t) => [...t.slice(-2), { id, text }]);
         setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), ms);
-    };
+    }, []);
     const openRules = (book: string | null, rule: string | null = null): void => {
         if (route === "today") timeScroll.current = page.current?.scrollTop ?? 0;
         setRulesView({ book, rule });
@@ -84,7 +86,7 @@ export function App(): ReactNode {
     const [keepOpen, setKeepOpen] = useState(false);
     // A search result being opened: the screen named takes it and clears it.
     const [focus, setFocus] = useState<(SearchTarget & { n: number }) | null>(null);
-    const focused = (): void => setFocus(null);
+    const focused = useCallback((): void => setFocus(null), []);
     const openHit = (t: SearchTarget): void => {
         if (t.route === "rules") { setFocus(null); openRules(t.book, t.rule); return; }
         setFocus({ ...t, n: Date.now() });
@@ -101,10 +103,14 @@ export function App(): ReactNode {
     }, [tour]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { if (tour === null) return; const n = stepAfter(TOUR_STEPS, tour, keepOpen ? "keep-open" : "keep-closed"); if (n !== null) setTour(n); }, [keepOpen]); // eslint-disable-line react-hooks/exhaustive-deps
     const sample = useMemo(() => tutorialStretch(Date.now()), [tour === null]); // eslint-disable-line react-hooks/exhaustive-deps
+    const tutorial = useMemo(() => (tour !== null ? { ...sample, onSheet: setKeepOpen } : null), [tour !== null, sample]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
-        void window.lawdie.getState().then(setState);
-        const offState = window.lawdie.onState(setState);
+        // Parts of the workspace that did not change stay the objects the screens already have (createSharer).
+        const share = createSharer();
+        const take = (s: AppState): void => setState(share(s));
+        void window.lawdie.getState().then(take);
+        const offState = window.lawdie.onState(take);
         const offRoute = window.lawdie.onRoute((r) => {
             if (r === "welcome") setWelcome(true);
             else if (r === "whatsnew") setWhatsNew(true);
@@ -197,7 +203,7 @@ export function App(): ReactNode {
                     )}
                     {state.loadFailed ? (
                         <Panel><Empty title="Your workspace needs attention" detail="Time Capture could not read the workspace. The original file is preserved." /></Panel>
-                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} tutorial={tour !== null} focus={focusOn("today")} onFocused={focused} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tour !== null ? { ...sample, onSheet: setKeepOpen } : null} focus={focusOn("activity")} onFocused={focused} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} focus={focusOn("matters")} onFocused={focused} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} onWhatsNew={() => setWhatsNew(true)} />}
+                    ) : route === "today" ? <Today w={w} now={viewNow(w, now)} onRules={openRules} tutorial={tour !== null} focus={focusOn("today")} onFocused={focused} /> : route === "rules" ? <ClientRulesView w={w} bookKey={rulesView.book} focusRule={rulesView.rule} day={dayKey(viewNow(w, now))} onBack={() => setRoute("today")} /> : route === "activity" ? <ActivityView w={w} state={state} tutorial={tutorial} focus={focusOn("activity")} onFocused={focused} /> : route === "matters" ? <MattersView w={w} now={now} onReview={() => setRoute("activity")} focus={focusOn("matters")} onFocused={focused} /> : <Settings state={state} now={now} onRules={openRules} onTour={startTour} onWelcome={() => setWelcome(true)} onWhatsNew={() => setWhatsNew(true)} />}
                 </div>
             </main>
             {toasts.length > 0 && (
@@ -452,9 +458,18 @@ function sortBy<T>(items: readonly T[], by: SortBy, key: (item: T) => { at: stri
 /** The tutorial's sample stretch (src/shared/onboarding.ts) while it runs: a row in To review that opens the real Keep sheet and saves nothing. */
 type Tutorial = { stretch: Stretch; sittings: Activity[]; onSheet: (open: boolean) => void };
 
-function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () => undefined }: { w: Workspace; state: AppState; tutorial?: Tutorial | null; focus?: Focus<"activity"> | null; onFocused?: () => void }): ReactNode {
+/** How many rows of a list the Activity screen draws at first, and how many more each "Show more" adds. */
+const PAGE_ROWS = 50;
+
+/** Drawn again only when what it is given changes, never for the window's once-a-second clock: with thousands of rows that was the window's whole time (2026-11-15). */
+const ActivityView = memo(ActivityScreen);
+
+function ActivityScreen({ w, state, tutorial = null, focus = null, onFocused = () => undefined }: { w: Workspace; state: AppState; tutorial?: Tutorial | null; focus?: Focus<"activity"> | null; onFocused?: () => void }): ReactNode {
     const [filter, setFilter] = useState<"pending" | "kept" | "dismissed" | "all">("pending");
     const [sort, setSort] = useState<SortBy>("newest");
+    // A list is drawn a page at a time; changing the tab or the order starts again at the first page.
+    const [shown, setShown] = useState(PAGE_ROWS);
+    const more = { onMore: () => setShown((n) => n + PAGE_ROWS), onAll: () => setShown(Number.MAX_SAFE_INTEGER) };
     const [reviewing, setReviewing] = useState<{ stretch: Stretch; matter: string | null; description: string } | null>(null);
     const [addingTime, setAddingTime] = useState(false);
     const notify = useNotify();
@@ -470,6 +485,9 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
     useEffect(() => {
         if (!focus) return;
         setFilter("pending");
+        // The row may be past the page drawn so far.
+        const at = pendingRows.findIndex((r) => ("group" in r ? r.group.id : r.stretch.id) === focus.row);
+        setShown((n) => Math.max(n, at + 1));
         setOpen((o) => ({ ...o, [focus.row]: true }));
         onFocused();
         reveal(focus.row);
@@ -498,17 +516,19 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
             waiting.set(m.id, [...(waiting.get(m.id) ?? []), ids]);
         }
         return { matches, waiting };
-    }, [w, pendingRows]);
+    }, [w.entries, w.activities, w.projects, pendingRows]); // eslint-disable-line react-hooks/exhaustive-deps
     const kept = useMemo(() => sortBy(w.entries.filter((e) => e.activityID), sort, (e) => ({ at: e.endedAt, seconds: entrySeconds(e), name: e.description })), [w.entries, sort]);
     const raw = useMemo(() => sortBy(w.activities.filter((a) => filter === "all" || a.disposition === filter), sort, (a) => ({ at: a.endedAt, seconds: (Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000, name: a.document?.name || a.title || a.app })), [w.activities, filter, sort]);
     const byID = useMemo(() => new Map(w.activities.map((a) => [a.id, a])), [w.activities]);
     // What each row would be kept as, and whether Approve can keep it as shown. The main process decides again when asked; this is what the row shows.
-    const rows = useMemo(() => { const at = Date.now(), remaining = importedRemaining(w, at); return pendingRows.map((r): ReviewRow => {
+    // Only for the rows drawn: Select and Approve selected act on what is on screen.
+    const shownRows = useMemo(() => pendingRows.slice(0, shown), [pendingRows, shown]);
+    const rows = useMemo(() => { const at = Date.now(), remaining = importedRemaining(w, at); return shownRows.map((r): ReviewRow => {
         const stretch = "group" in r ? matterStretch(r.group) : r.stretch;
         const matter = "group" in r ? r.group.matter : null;
         const sittings = stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a);
         return { id: stretch.id, stretch, matter, sittings, ...rowFacts(w, stretch, sittings, matter, at, remaining) };
-    }); }, [w, pendingRows, byID]);
+    }); }, [w, shownRows, byID]);
     const rowByID = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
     // Ticked rows, for Approve selected. A row that can no longer be approved, or is gone, is not counted.
     const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
@@ -547,7 +567,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                     <span className="big-icon">{w.preferences.captureEnabled ? "∿" : "‖"}</span>
                     <div className="grow">
                         <strong>{w.preferences.captureEnabled ? "Desktop capture is active" : "Capture is paused"}</strong>
-                        <p className="muted small">{current ? `Currently in ${current.app} · ${duration((Date.now() - Date.parse(current.startedAt)) / 1000)}` : w.preferences.captureScreenshots ? "App names and durations, and a screenshot of the window you work in now and then, kept on this computer only. No keystrokes; browsers are left to the browser extension." : w.preferences.captureScreenText ? "App names and durations, and some on-screen text from the apps you work in. No screenshots or keystrokes; browsers are left to the browser extension." : "App names and durations only by default. No screenshots, keystrokes, or page contents."}</p>
+                        <p className="muted small">{current ? <>Currently in {current.app} · <Elapsed since={current.startedAt} /></> : w.preferences.captureScreenshots ? "App names and durations, and a screenshot of the window you work in now and then, kept on this computer only. No keystrokes; browsers are left to the browser extension." : w.preferences.captureScreenText ? "App names and durations, and some on-screen text from the apps you work in. No screenshots or keystrokes; browsers are left to the browser extension." : "App names and durations only by default. No screenshots, keystrokes, or page contents."}</p>
                     </div>
                 </div>
             </Panel>
@@ -558,14 +578,14 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                     <button type="button" className="quiet" disabled={state.matters.running} title={state.matters.running ? "Kiwi is working on the suggestions now." : "Ask Kiwi's AI to name matters and draft descriptions now."} onClick={() => void window.lawdie.suggestMatters(true)}>Suggest now</button>
                 </div>
             )}
-            <ExpiringCallout w={w} now={Date.now()} onShowOldest={() => { setFilter("pending"); setSort("oldest"); }} />
+            <ExpiringCallout w={w} now={Date.now()} onShowOldest={() => { setFilter("pending"); setSort("oldest"); setShown(PAGE_ROWS); }} />
             <div className="row between">
                 <div className="segmented" role="tablist">
-                    {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} title={{ pending: "Show the activity you have not reviewed yet.", kept: "Show the time you kept.", dismissed: "Show the activity you dismissed.", all: "Show every captured sitting." }[f]} onClick={() => setFilter(f)}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All" }[f]}</button>)}
+                    {(["pending", "kept", "dismissed", "all"] as const).map((f) => <button key={f} type="button" role="tab" aria-selected={filter === f} className={filter === f ? "active" : ""} title={{ pending: "Show the activity you have not reviewed yet.", kept: "Show the time you kept.", dismissed: "Show the activity you dismissed.", all: "Show every captured sitting." }[f]} onClick={() => { setFilter(f); setShown(PAGE_ROWS); }}>{{ pending: "To review", kept: "Kept", dismissed: "Dismissed", all: "All" }[f]}</button>)}
                 </div>
                 <div className="row gap">
                     <span className="muted small" title={retentionLabel(w, filter).tip}>{count} · {retentionLabel(w, filter).text}</span>
-                    <select value={sort} onChange={(e) => setSort(e.target.value as SortBy)} aria-label="Sort" title="Change the order of the list.">{(Object.keys(SORTS) as SortBy[]).map((k) => <option key={k} value={k}>{SORTS[k]}</option>)}</select>
+                    <select value={sort} onChange={(e) => { setSort(e.target.value as SortBy); setShown(PAGE_ROWS); }} aria-label="Sort" title="Change the order of the list.">{(Object.keys(SORTS) as SortBy[]).map((k) => <option key={k} value={k}>{SORTS[k]}</option>)}</select>
                 </div>
             </div>
             <Panel>
@@ -576,7 +596,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                         {!tutorial && groups.length === 0 && stretches.length === 0 && short.length === 0 && personal.length === 0 && (
                             <Empty title="You're all caught up." detail="Enable capture, then work in another app. A stretch of work appears here when you switch apps, lock or sleep the computer, or pause capture." />
                         )}
-                        {pendingRows.map((r) => {
+                        {shownRows.map((r) => {
                             const row = rowByID.get("group" in r ? r.group.id : r.stretch.id);
                             if (!row) return null;
                             const common = { w, row, onMoved, match: matches.get(row.stretch.activityIDs[0]) ?? null, merged: row.sittings.some((a) => a.mergeKey), ticked: ticked.has(row.id), onTick: (on: boolean) => tick(row.id, on), approving, onApprove: () => void approve([row]), open: !!open[row.id], onToggle: () => toggle(row.id) };
@@ -584,6 +604,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                                 ? <MatterRow key={row.id} {...common} group={r.group} onEdit={() => edit(row, r.group.documents.slice(0, 3).map((d) => d.name).join("; "))} />
                                 : <StretchRow key={row.id} {...common} onEdit={() => edit(row, r.stretch.document?.name ?? r.stretch.name)} />;
                         })}
+                        <ShowMore shown={shownRows.length} total={pendingRows.length} what="rows" {...more} />
                         {personal.length > 0 && <PersonalRow groups={personal} open={!!open.personal} onToggle={() => toggle("personal")} />}
                         {short.length > 0 && (
                             <div className="activity">
@@ -600,7 +621,7 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                 ) : filter === "kept" ? (
                     kept.length === 0 ? (
                         <Empty title="Nothing kept yet." detail="Keep a stretch from To review and it appears here as the entry it became." />
-                    ) : kept.map((e) => {
+                    ) : <>{kept.slice(0, shown).map((e) => {
                         const spans = intervals(e);
                         const first = byID.get(e.activityID as string);
                         return (
@@ -623,10 +644,10 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                                 {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entryID={e.id} byID={byID} increment={incrementOf(w.preferences)} />}
                             </div>
                         );
-                    })
+                    })}<ShowMore shown={Math.min(shown, kept.length)} total={kept.length} what="entries" {...more} /></>
                 ) : raw.length === 0 ? (
                     <Empty title="No activities here yet." detail="Each sitting, one stay in one app, is listed here once reviewed." />
-                ) : raw.map((a) => (
+                ) : <>{raw.slice(0, shown).map((a) => (
                     <div className="activity" key={a.id}>
                         <span className="app-icon">▭</span>
                         <div className="grow">
@@ -638,11 +659,31 @@ function ActivityView({ w, state, tutorial = null, focus = null, onFocused = () 
                         <span className="mono">{duration((Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 1000)}</span>
                         <span className={"muted small status " + a.disposition}>{a.disposition === "kept" ? "Kept" : a.disposition === "dismissed" ? "Dismissed" : "To review"}</span>
                     </div>
-                ))}
+                ))}<ShowMore shown={Math.min(shown, raw.length)} total={raw.length} what="sittings" {...more} /></>}
             </Panel>
             {reviewing && <KeepSheet key={reviewing.stretch.id} w={w} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={sampleOpen && tutorial ? tutorial.sittings : reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} keep={sampleOpen ? keepSample : undefined} onClose={() => setReviewing(null)} />}
             {addingTime && <AddTimeSheet w={w} now={Date.now()} notify={notify} onClose={() => { setAddingTime(false); setFilter("pending"); }} />}
         </>
+    );
+}
+
+/** The time since a moment, counted on its own clock so nothing around it is drawn again each second. */
+function Elapsed({ since }: { since: string }): ReactNode {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+    return <>{duration(Math.max(0, now - Date.parse(since)) / 1000)}</>;
+}
+
+/** The end of a list drawn a page at a time: how much of it is shown, and the rest on request. */
+function ShowMore({ shown, total, what, onMore, onAll }: { shown: number; total: number; what: string; onMore: () => void; onAll: () => void }): ReactNode {
+    if (total <= shown) return null;
+    const next = Math.min(PAGE_ROWS, total - shown);
+    return (
+        <div className="activity show-more">
+            <span className="grow muted small">Showing {shown.toLocaleString()} of {total.toLocaleString()} {what}. Change the order above, or search, to reach the rest sooner.</span>
+            <button type="button" className="quiet" title={`Show the next ${next} ${what}.`} onClick={onMore}>Show {next} more</button>
+            {total - shown > PAGE_ROWS && <button type="button" className="quiet" title={`Show all ${total.toLocaleString()} ${what}. With thousands, the screen takes longer to answer.`} onClick={onAll}>Show all</button>}
+        </div>
     );
 }
 
