@@ -19,6 +19,7 @@ export class Store {
     notice: string | null = null;
     matters: AppState["matters"] = { running: false, error: null };
     updateReady: string | null = null;
+    updateInstalling = false;
     missing: AppState["missing"] = { screenRecording: false, accessibility: false };
     private listeners = new Set<(state: AppState) => void>();
 
@@ -36,7 +37,7 @@ export class Store {
     }
 
     snapshot(): AppState {
-        return { workspace: this.workspace, feed: this.feedStatus, meetings: this.meetingsStatus, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, missing: this.missing, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
+        return { workspace: this.workspace, feed: this.feedStatus, meetings: this.meetingsStatus, syncing: this.syncing, loadFailed: this.loadFailed, error: this.error, notice: this.notice, matters: this.matters, updateReady: this.updateReady, updateInstalling: this.updateInstalling, missing: this.missing, platform: this.platform, appVersion: this.appVersion, workspacePath: this.file.path };
     }
 
     subscribe(listener: (state: AppState) => void): () => void {
@@ -94,6 +95,11 @@ export class Store {
 
     setUpdateReady(version: string): void {
         this.updateReady = version;
+        this.publish();
+    }
+
+    setUpdateInstalling(installing: boolean): void {
+        this.updateInstalling = installing;
         this.publish();
     }
 
