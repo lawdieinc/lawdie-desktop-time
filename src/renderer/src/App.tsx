@@ -166,7 +166,7 @@ export function App(): ReactNode {
                     <button type="button" className="quiet" disabled={state.loadFailed} title={w.preferences.captureEnabled ? "Stop recording app activity until you start it again." : "Start recording app activity."} onClick={() => void window.lawdie.setCapture(!w.preferences.captureEnabled)}>
                         {w.preferences.captureEnabled ? "Pause capture" : "Enable capture"}
                     </button>
-                    {state.updateReady && <button type="button" className="primary" onClick={() => void window.lawdie.installUpdate()}>Install update</button>}
+                    {state.updateReady && <button type="button" className="primary" disabled={state.updateInstalling} onClick={() => void window.lawdie.installUpdate()}>{state.updateInstalling ? "Installing…" : "Install update"}</button>}
                 </div>
                 <div className="account">
                     <span className="avatar">{w.profile ? w.profile.name[0] : "L"}</span>
@@ -194,11 +194,11 @@ export function App(): ReactNode {
                     {state.updateReady && !updateLater && (
                         <section className="callout" role="status">
                             <div className="grow">
-                                <p className="callout-title">Version {state.updateReady} is ready to install</p>
+                                <p className="callout-title">{state.updateInstalling ? `Installing version ${state.updateReady}…` : `Version ${state.updateReady} is ready to install`}</p>
                                 <p className="muted">You are on {state.appVersion}. Installing restarts the app in a few seconds; nothing you captured is lost.{state.platform === "darwin" ? " If macOS then asks again for Screen Recording or Accessibility, allow it; this window will say so if anything is missing." : ""}</p>
                             </div>
                             <button type="button" className="quiet" onClick={() => setUpdateLater(true)}>Later</button>
-                            <button type="button" className="primary" onClick={() => void window.lawdie.installUpdate()}>Install now</button>
+                            <button type="button" className="primary" disabled={state.updateInstalling} onClick={() => void window.lawdie.installUpdate()}>{state.updateInstalling ? "Installing…" : "Install now"}</button>
                         </section>
                     )}
                     {state.loadFailed ? (

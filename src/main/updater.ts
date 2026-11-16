@@ -15,7 +15,7 @@ import { existsSync } from "node:fs";
 import { report } from "./errors";
 import { isNetworkError } from "../shared/errorReport";
 import { join } from "node:path";
-import { app } from "electron";
+import { app, autoUpdater as nativeUpdater } from "electron";
 // CommonJS, and this bundle is an ES module: a named import fails at launch.
 import electronUpdater from "electron-updater";
 import type { Store } from "./store";
@@ -24,9 +24,12 @@ const { autoUpdater } = electronUpdater;
 
 const CHECK_EVERY_MS = 4 * 60 * 60_000;
 const FIRST_CHECK_MS = 30_000;
+const INSTALL_FAILED = "The update could not be installed. Please try Install again, or quit and reopen the app before retrying.";
 
 export class Updater {
     private timer: NodeJS.Timeout | null = null;
+    private cancelInstall: (() => void) | null = null;
+    private macReady = false;
     /** Called once a version has downloaded and waits for Install. */
     onReady: (version: string) => void = () => {};
 
@@ -46,18 +49,62 @@ export class Updater {
             this.store.setUpdateReady(info.version);
             if (first) this.onReady(info.version);
         });
-        autoUpdater.on("error", (err) => failed(err));
+        autoUpdater.on("error", (err) => this.installFailed(err));
         setTimeout(() => void this.check(), FIRST_CHECK_MS);
         this.timer = setInterval(() => void this.check(), CHECK_EVERY_MS);
     }
 
     stop(): void {
         if (this.timer) clearInterval(this.timer);
+        this.cancelInstall?.();
+        this.cancelInstall = null;
     }
 
     /** Restart into the downloaded version: the only way it is installed. */
     install(): void {
-        if (this.store.updateReady) autoUpdater.quitAndInstall();
+        if (!this.store.updateReady || this.store.updateInstalling) return;
+        this.store.setUpdateInstalling(true);
+        if (this.store.notice === INSTALL_FAILED) this.store.say(null);
+        const finish = (): void => {
+            this.cancelInstall?.();
+            this.cancelInstall = null;
+            try {
+                autoUpdater.quitAndInstall();
+            } catch (err) {
+                this.installFailed(err);
+            }
+        };
+        if (this.store.platform !== "darwin" || this.macReady) {
+            finish();
+            return;
+        }
+        // With autoInstallOnAppQuit=false, the ZIP is ready before Squirrel has staged it.
+        // MacUpdater.quitAndInstall() would add a persistent callback before starting that
+        // check, leaving it behind on failure. Own the staging listeners so retries are safe;
+        // the dependency's earlier native listener marks it ready before finish() runs.
+        const downloaded = (): void => { this.macReady = true; finish(); };
+        const unavailable = (): void => this.installFailed(new Error("The downloaded update could not be staged."));
+        this.cancelInstall = () => {
+            nativeUpdater.removeListener("update-downloaded", downloaded);
+            nativeUpdater.removeListener("update-not-available", unavailable);
+        };
+        nativeUpdater.once("update-downloaded", downloaded);
+        nativeUpdater.once("update-not-available", unavailable);
+        try {
+            nativeUpdater.checkForUpdates();
+        } catch (err) {
+            this.installFailed(err);
+        }
+    }
+
+    private installFailed(err: unknown): void {
+        if (this.store.updateInstalling) {
+            this.cancelInstall?.();
+            this.cancelInstall = null;
+            this.store.setUpdateInstalling(false);
+            this.store.say(INSTALL_FAILED);
+        }
+        failed(err);
     }
 
     private async check(): Promise<void> {

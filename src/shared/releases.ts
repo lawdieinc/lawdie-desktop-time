@@ -49,6 +49,15 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.18.3",
+        date: "2026-11-16",
+        title: "Clearer update progress",
+        intro: "This update makes installing a new version clearer, especially when macOS needs a little longer to prepare the restart.",
+        items: [
+            { icon: "shield", title: "Install once, then wait", description: "Update buttons show when installation is under way, with a retry if it fails.", more: "After you press Install, the app shows Installing while it prepares the restart. If installation fails, a message explains how to retry and the buttons become available again. Updates still install only when you choose Install." },
+        ],
+    },
+    {
         id: "0.18.2",
         date: "2026-11-16",
         title: "A quicker Activity screen",

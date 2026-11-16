@@ -14,6 +14,8 @@ export type AppState = {
     matters: { running: boolean; error: string | null };
     /** A newer version downloaded and waiting for a restart, or null. */
     updateReady: string | null;
+    /** An explicit Install request is staging the update or restarting the app. */
+    updateInstalling: boolean;
     /** macOS permissions a switched-on feature needs and does not have (an update can lose them). */
     missing: { screenRecording: boolean; accessibility: boolean };
     platform: NodeJS.Platform;

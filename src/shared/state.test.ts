@@ -3,7 +3,7 @@ import { emptyWorkspace } from "./model";
 import { createSharer, type AppState } from "./state";
 
 const stateOf = (change: (s: AppState) => void = () => undefined): AppState => {
-    const s = { workspace: emptyWorkspace(), syncing: false, feed: { running: false, error: null }, meetings: { running: false, error: null }, loadFailed: false, error: null, notice: null, matters: { running: false, error: null }, updateReady: null, missing: { screenRecording: false, accessibility: false }, platform: "darwin", appVersion: "1.0.0", workspacePath: "/w.json" } as AppState;
+    const s = { workspace: emptyWorkspace(), syncing: false, feed: { running: false, error: null }, meetings: { running: false, error: null }, loadFailed: false, error: null, notice: null, matters: { running: false, error: null }, updateReady: null, updateInstalling: false, missing: { screenRecording: false, accessibility: false }, platform: "darwin", appVersion: "1.0.0", workspacePath: "/w.json" } as AppState;
     s.workspace.projects.push({ id: "p1", name: "Matter", client: null, hourlyRate: 0, archived: false } as unknown as AppState["workspace"]["projects"][number]);
     change(s);
     // As it arrives in the window: a copy, never the same objects twice.

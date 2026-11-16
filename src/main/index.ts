@@ -150,7 +150,7 @@ function buildTray(store: Store, capture: Capture, updater: Updater): void {
         const menu = Menu.buildFromTemplate([
             ...(expiring ? [{ label: "⚠ Review time before it is removed…", click: () => showRoute(store, "activity") }, { type: "separator" as const }] : []),
             ...(attention ? [{ label: screenRecording ? "⚠ Allow Screen Recording…" : "⚠ Allow Accessibility…", click: () => showWindow(store) }, { type: "separator" as const }] : []),
-            ...(store.updateReady ? [{ label: `Install update ${store.updateReady} and restart`, click: () => updater.install() }, { type: "separator" as const }] : []),
+            ...(store.updateReady ? [{ label: store.updateInstalling ? "Installing update…" : `Install update ${store.updateReady} and restart`, enabled: !store.updateInstalling, click: () => updater.install() }, { type: "separator" as const }] : []),
             { label: on ? "Capture is on" : "Capture is paused", enabled: false },
             { label: on ? "Pause capture" : "Enable capture", click: () => { store.change((w) => { w.preferences.captureEnabled = !on; if (on) closeActivity(w, Date.now(), "paused"); }); void capture.sample(); } },
             { type: "separator" },
