@@ -15,7 +15,7 @@ import { existsSync } from "node:fs";
 import { report } from "./errors";
 import { isNetworkError } from "../shared/errorReport";
 import { join } from "node:path";
-import { app } from "electron";
+import { app, autoUpdater as nativeUpdater } from "electron";
 // CommonJS, and this bundle is an ES module: a named import fails at launch.
 import electronUpdater from "electron-updater";
 import type { Store } from "./store";
@@ -27,6 +27,8 @@ const FIRST_CHECK_MS = 30_000;
 
 export class Updater {
     private timer: NodeJS.Timeout | null = null;
+    private installing = false;
+    private macPrepared = false;
     /** Called once a version has downloaded and waits for Install. */
     onReady: (version: string) => void = () => {};
 
@@ -46,18 +48,51 @@ export class Updater {
             this.store.setUpdateReady(info.version);
             if (first) this.onReady(info.version);
         });
-        autoUpdater.on("error", (err) => failed(err));
+        autoUpdater.on("error", (err) => this.failed(err));
         setTimeout(() => void this.check(), FIRST_CHECK_MS);
         this.timer = setInterval(() => void this.check(), CHECK_EVERY_MS);
     }
 
     stop(): void {
         if (this.timer) clearInterval(this.timer);
+        nativeUpdater.removeListener("update-downloaded", this.macDownloaded);
     }
 
     /** Restart into the downloaded version: the only way it is installed. */
     install(): void {
-        if (this.store.updateReady) autoUpdater.quitAndInstall();
+        if (!this.store.updateReady || this.installing) return;
+        this.installing = true;
+        try {
+            if (process.platform === "darwin" && !this.macPrepared) {
+                // With install-on-quit off, the ZIP is ready but Squirrel has not prepared it yet.
+                // MacUpdater.quitAndInstall starts that check on every call and leaves a restart
+                // listener on failure. Own this handoff so repeated clicks cannot start it twice,
+                // and a retry has only one restart listener. Use only Electron's public API.
+                nativeUpdater.once("update-downloaded", this.macDownloaded);
+                nativeUpdater.checkForUpdates();
+            } else {
+                autoUpdater.quitAndInstall();
+            }
+        } catch (err) {
+            this.failed(err);
+        }
+    }
+
+    private readonly macDownloaded = (): void => {
+        this.macPrepared = true;
+        // MacUpdater's earlier native listener has now marked the update prepared too.
+        // Its quitAndInstall can restart and close the local ZIP server without another check.
+        try {
+            autoUpdater.quitAndInstall();
+        } catch (err) {
+            this.failed(err);
+        }
+    };
+
+    private failed(err: unknown): void {
+        nativeUpdater.removeListener("update-downloaded", this.macDownloaded);
+        this.installing = false;
+        failed(err);
     }
 
     private async check(): Promise<void> {
