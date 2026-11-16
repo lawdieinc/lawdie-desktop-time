@@ -2,6 +2,16 @@
 
 Automated: `npm test`, `npm run typecheck`, `npm run package:mac` / `package:win` / `package:linux` (or the Build workflow).
 
+The Release workflow waits for all three platform builds before creating a release.
+It checks both Mac architectures, Windows NSIS, Linux AppImage, their block maps
+and all three `latest*.yml` manifests, including versions, file references and SHA-512
+checksums. Assets upload to a draft; publication happens only after GitHub's stored
+asset sizes and SHA-256 digests match. A failed build leaves the previous release
+latest; a failed upload leaves an unpublished draft. Retry the workflow to replace
+all assets in that draft. Manual dispatch builds the selected branch, whose package
+version must match the requested stable tag. Already-published releases are refused;
+repairing their assets requires a separate, explicitly authorized release operation.
+
 Manual checks before distributing:
 
 - Fresh launch has zero sample entries and capture disabled.
