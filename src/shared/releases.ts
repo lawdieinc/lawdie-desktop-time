@@ -49,6 +49,15 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.18.2",
+        date: "2026-11-16",
+        title: "A quicker Activity screen",
+        intro: "This update makes Activity quick again when a lot of time is waiting for review.",
+        items: [
+            { icon: "clock", title: "Long lists, 50 rows at a time", description: "Activity shows 50 rows, with Show more below; clicks answer at once.", more: "With a great deal of time waiting, Activity used to draw every row and slow the whole window down. To review, Kept, Dismissed and All now show 50 rows at a time, with Show 50 more and Show all at the end of the list. Search still finds a row further down and opens the list to it. Select and Approve selected act on the rows shown.", route: "activity" },
+        ],
+    },
+    {
         id: "0.18.0",
         date: "2026-11-12",
         title: "Approve your day in a click",

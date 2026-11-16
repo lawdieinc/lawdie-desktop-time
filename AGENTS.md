@@ -641,6 +641,7 @@ with `notify` and the screen's other props kept stable so the once-a-second tick
 `src/shared/state.ts` (tested, `state.test.ts`) hands the window the unchanged parts of each new workspace as the objects it already
 had, so a save that only moved the sitting in progress works nothing out again. After: 1,800 elements, no long tasks in 30 s, a tick
 18 ms, the To review tab 38 ms. Left as it is: the main process still copies, checks and writes the whole file at each 5 s sample
-(about 60 ms on that file), and Matters and Time still follow the clock (short lists there). Not released yet. Tests 329.
+(about 60 ms on that file), and Matters and Time still follow the clock (short lists there). Tests 329.
 2026-11-16: Honeybadger got "Cannot parse releases feed … net::ERR_TIMED_OUT" from the updater: a check that never reached
 GitHub. The updater now only logs those (`isNetworkError()` in errorReport.ts, tested), as sync and the feed already do. Tests 330.
+Same day: version 0.18.2 ships both, with a What's new entry for the lists drawn 50 at a time.
