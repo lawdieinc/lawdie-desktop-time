@@ -61,7 +61,9 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      # The bulk-approval regression measures elapsed time. Do not compete with
+      # other test workers for CPU on the hosted Windows runner.
+      - run: npm test -- --no-file-parallelism
       # One certificate for every release, so macOS keeps Screen Recording and Accessibility
       # across updates. electron-builder only uses a certificate macOS trusts for code
       # signing, so the self-signed one is trusted on the runner first.
