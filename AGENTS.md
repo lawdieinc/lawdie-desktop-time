@@ -649,3 +649,7 @@ Same day: version 0.18.3 guards repeated Install requests while macOS prepares a
 attempt's restart callback before retrying. Honeybadger's "The command is disabled and cannot be executed" pointed
 to Squirrel's preparation check; overlapping Install requests could start that check twice. Covered by seven updater
 tests, including failure/retry and Windows/Linux paths. Tests 337.
+The 0.18.3 release exposed a publishing race: Linux made it latest before Windows had passed its timing test,
+so Windows updaters requested a missing `latest.yml`. The release workflow now collects each platform's build
+as an Actions artifact, checks all installers and matching manifest versions, uploads a draft, then publishes
+only after all three builds and all uploads succeed. A failed build leaves the previous stable release in place.

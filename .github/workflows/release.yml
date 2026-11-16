@@ -1,11 +1,12 @@
 # Cut a release: bump "version" in package.json, commit, then
 #   git tag v0.3.0 && git push origin v0.3.0
 # Each platform builds its own installers (the Windows native helper cannot be
-# cross-built) and attaches them to the GitHub Release for that tag. The package
+# cross-built). Only after all builds pass are their assets uploaded to a draft
+# and published together, so the updater never sees a release missing a platform. The package
 # scripts pass --publish never so electron-builder does not also try to publish
 # on its own (its default on a tag), which is what uploads here instead. "Run
 # workflow" with a tag name rebuilds an existing release from the current main. The Release
-# is created on first upload and assets are overwritten on re-runs, so a release
+# is published after the last upload and assets are overwritten on re-runs, so a release
 # made by hand from local builds is completed, not duplicated, by this workflow.
 name: Release
 on:
@@ -18,6 +19,9 @@ on:
         required: true
 permissions:
   contents: write
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 jobs:
   build:
     strategy:
@@ -81,9 +85,45 @@ jobs:
       - name: Check the macOS signature
         if: matrix.target == 'mac' && env.MAC_IDENTITY != ''
         run: codesign -d -r- "release/mac-arm64/Lawdie Time Capture.app" 2>&1 | grep "certificate"
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: ${{ matrix.assets }}
+          name: installers-${{ matrix.target }}
+          path: ${{ matrix.assets }}
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: release
+      - name: Check every platform is ready
+        shell: bash
+        run: |
+          for name in \
+            Lawdie-Time-Capture-mac-arm64.dmg Lawdie-Time-Capture-mac-x64.dmg \
+            Lawdie-Time-Capture-mac-arm64.zip Lawdie-Time-Capture-mac-x64.zip \
+            Lawdie-Time-Capture-windows-setup.exe Lawdie-Time-Capture-linux.AppImage \
+            latest-mac.yml latest.yml latest-linux.yml; do
+            test -s "release/$name" || { echo "Missing release asset: $name"; exit 1; }
+          done
+          for manifest in latest-mac.yml latest.yml latest-linux.yml; do
+            grep -Fx "version: ${RELEASE_TAG#v}" "release/$manifest"
+          done
+      - name: Upload the complete release as a draft
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: release/*
+          fail_on_unmatched_files: true
           overwrite_files: true
           generate_release_notes: true
+          draft: true
+      - name: Publish the complete release
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
