@@ -7,7 +7,7 @@ import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } f
 import { writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { homedir, hostname } from "node:os";
-import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
+import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, net, Notification, protocol, shell, systemPreferences, Tray } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { isDestination, KiwiClient, PRODUCTS, type Destination, type Product } from "@shared/kiwi";
 import { draftEntry } from "@shared/drafter";
@@ -313,6 +313,8 @@ app.whenReady().then(() => {
     ipcMain.handle("openScreenshot", (_e, name: string) => { const file = shots.file(String(name)); if (file) void shell.openPath(file); });
     ipcMain.handle("showDataFolder", () => shell.showItemInFolder(workspacePath));
     ipcMain.handle("openExternal", (_e, url: string) => { if (/^https?:\/\//.test(url)) void shell.openExternal(url); });
+    // Copy: an entry's narrative or a matter's number, to paste into the firm's time system. Text only, capped.
+    ipcMain.handle("copyText", (_e, text: unknown) => { if (typeof text === "string" && text.length <= 20_000) clipboard.writeText(text); });
     // A narrative's source: an Outlook web link opens in the browser, a document from disk. Looked up here by id, so the window names no paths.
     const localPath = (p: string): string => p.replace(/^~(?=\/)/, homedir());
     ipcMain.handle("openSource", async (_e, id: string, what?: "link" | "path" | "screenshot") => {

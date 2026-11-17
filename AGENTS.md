@@ -653,3 +653,9 @@ The 0.18.3 release exposed a publishing race: Linux made it latest before Window
 so Windows updaters requested a missing `latest.yml`. The release workflow now collects each platform's build
 as an Actions artifact, checks all installers and matching manifest versions, uploads a draft, then publishes
 only after all three builds and all uploads succeed. A failed build leaves the previous stable release in place.
+2026-11-17, after a user's 11/16 feedback: a review row on no matter has a pencil beside "No matter" that names it in place
+(`useMoveToMatter`, shared with the Matter menu: an existing name joins that matter, "Personal" is the Personal button);
+New matter… is the Matter menu's first item; a menu near the left edge opens rightwards (`from-left` in Menu.tsx, the
+Select menu had hidden under the sidebar); a row with the kept-entry question keeps Personal and Dismiss; kept entries
+have Copy (on the Time page the applied lines' narratives, one per line, else the entry's description; `copyText` through the main process's clipboard) and a matter's heading on the
+Time and Matters pages has Copy for its number and name, both selectable; a row's description pencil opens a textarea that grows to the whole text (`Editable multiline`). Version 0.18.4.

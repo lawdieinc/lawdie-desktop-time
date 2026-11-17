@@ -75,6 +75,8 @@ export const api = {
     openScreenshot: (name: string): Promise<void> => ipcRenderer.invoke("openScreenshot", name),
     showDataFolder: (): Promise<void> => ipcRenderer.invoke("showDataFolder"),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke("openExternal", url),
+    /** Put text on the clipboard (a kept entry's narrative, a matter's number or name). */
+    copyText: (text: string): Promise<void> => ipcRenderer.invoke("copyText", text),
     /** Open a narrative's source by evidence id: its Outlook link, or its document on disk. Resolves to a problem, or null. */
     openSource: (id: string, what?: "link" | "path" | "screenshot"): Promise<string | null> => ipcRenderer.invoke("openSource", id, what),
     /** A source's screenshot as a data URL for the in-app viewer, or null. */

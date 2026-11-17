@@ -1,4 +1,4 @@
-import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createSharer, type AppState } from "@shared/state";
 import type { SittingSummary } from "@shared/model";
 import { importedRemaining } from "@shared/feed";
@@ -22,7 +22,7 @@ import { money as dollars, shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
 import kiwiMark from "../../../resources/brand/kiwi.png";
-import { Empty, Heading, Panel, Setting, Toggle } from "./ui";
+import { CopyButton, Empty, Heading, Panel, Setting, Toggle } from "./ui";
 import { Tour, Welcome } from "./Onboarding";
 import { WhatsNew } from "./WhatsNew";
 import { ExpiringCallout, ExpiringSidebar, pendingDays, retentionLabel } from "./Retention";
@@ -363,7 +363,7 @@ function Today({ w, now, onRules, tutorial = false, focus = null, onFocused = ()
                                 <GroupHead title={g.project?.name ?? "No matter yet"}
                                     tip={g.project ? (g.project.client ? `Billed to ${g.project.client.replace(/\.?$/, ".")}` : "No client is set for this matter.") : "Time Lawdie could not put on a matter. It is not billed until it has one."}
                                     total={hr(sumHours(g.entries, start, end))}
-                                    totalTip={g.project ? billedTip(allBill, g.entries) : "Not billed until it has a matter."} />
+                                    totalTip={g.project ? billedTip(allBill, g.entries) : "Not billed until it has a matter."} project={g.project} />
                                 {g.entries.map((e) => <EntryRow key={e.id} entry={e} w={w} lines={lines?.get(e.id)} book={dayBill.book} onRules={onRules} />)}
                             </section>
                         ))}
@@ -403,6 +403,8 @@ function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: {
             {entry.status === "suggested" && <button type="button" className="fix" title={SUGGESTED_TIP} onClick={() => void window.lawdie.editEntry(entry.id, { confirm: true })}>Confirm</button>}
             {entry.status === "flagged" && <button type="button" className="fix" title={flaggedTip(entry)} onClick={() => setEditing(true)}>{entry.projectID ? "Fix and confirm" : "Assign and edit"}</button>}
             <HoursEdit hours={entryHours(entry)} title={`${timeBlock(entry)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(entry.id, { hours: h }); }} />
+            {/* Under a client's rules the narrative as billed, each line of a split entry on its own line; else the entry as kept. */}
+            <CopyButton text={lines?.length ? lines.map((l) => l.narrative).join("\n") : entry.description} what="this entry's narrative" />
             <button type="button" className="quiet" disabled={draft !== null} title={inline ? "Edit this narrative here, in the row." : "Change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}>Edit</button>
             <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
             {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
@@ -431,10 +433,14 @@ function billedTip(bill: AppliedBill, entries: readonly TimeEntry[]): string {
 }
 
 /** A matter's title over its entries, with the group's time on the right. */
-function GroupHead({ title, tip, total, totalTip }: { title: string; tip: string; total: string; totalTip: string }): ReactNode {
+function GroupHead({ title, tip, total, totalTip, project }: { title: string; tip: string; total: string; totalTip: string; project?: Project | null }): ReactNode {
     return (
         <div className="group-head">
             <span className="group-title" title={tip}>{title}</span>
+            {project && <span className="copy-pair">
+                {project.matterNumber && <><span className="matter-number" title="The matter's number, set on its page.">No. {project.matterNumber}</span><CopyButton className="link" text={project.matterNumber} what="the matter number" /></>}
+                <CopyButton className="link" text={project.name} what="the matter's name" label={project.matterNumber ? "Copy name" : "Copy"} />
+            </span>}
             <span className="group-total mono" title={totalTip}>{total}</span>
         </div>
     );
@@ -638,6 +644,7 @@ function ActivityScreen({ w, state, tutorial = null, focus = null, onFocused = (
                                     </div>
                                     <HoursEdit hours={entryHours(e)} title={`${timeBlock(e)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(e.id, { hours: h }); }} />
                                     <span className="muted small status kept">Kept</span>
+                                    <CopyButton text={e.description} what="this entry's narrative" />
                                     <button type="button" className="quiet" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
                                 </div>
                                 {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
@@ -741,7 +748,7 @@ function RowCheck({ verdict, ticked, onTick }: { verdict: ApproveVerdict; ticked
 /** A row's headline: the narrative it would be kept as, the person's or a draft (marked ✦), with the pencil; "Add a description" when there is none. */
 function Narrative({ ids, described }: { ids: string[]; described: ReturnType<typeof descriptionOf> }): ReactNode {
     return (
-        <Editable initial={described?.text ?? ""} placeholder="Describe this work" title="Describe this work: the narrative it is kept as" onSave={(text) => void window.lawdie.describeActivities(ids, text)}>
+        <Editable multiline initial={described?.text ?? ""} placeholder="Describe this work" title="Describe this work: the narrative it is kept as" onSave={(text) => void window.lawdie.describeActivities(ids, text)}>
             {described ? <div className="narrative">{described.text}{described.by !== "person" && <> <DraftMark source={described.by} /></>}</div> : null}
         </Editable>
     );
@@ -784,15 +791,15 @@ function ApproveButton({ row, approving, onApprove, onEdit }: { row: Pick<Review
     return <span title={v.message}><button type="button" className="primary approve" disabled title={v.message}>Approve</button></span>;
 }
 
-/** A row's buttons: Matter, then the kept-entry question while it is open, else Personal, Dismiss, Edit… and Approve. */
+/** A row's buttons: Matter, Personal and Dismiss, then the kept-entry question while it is open, else Edit… and Approve. */
 function RowActions({ w, row, match, what, dismissTip, approving, onMoved, onApprove, onEdit }: { w: Workspace; row: ReviewRow; match: TimeEntry | null; what: string; dismissTip: string; approving: boolean; onMoved: (ids: string[]) => void; onApprove: () => void; onEdit: () => void }): ReactNode {
     const ids = row.stretch.activityIDs;
     return (
         <span className="row-actions">
             <MatterMenu w={w} ids={ids} current={row.matter} what={what} onMoved={onMoved} />
+            <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(ids, PERSONAL)}>Personal</button>
+            <button type="button" className="quiet" title={dismissTip} onClick={() => void window.lawdie.dismissActivity(ids)}>Dismiss</button>
             {match ? <MergeButtons ids={ids} match={match} /> : <>
-                <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(ids, PERSONAL)}>Personal</button>
-                <button type="button" className="quiet" title={dismissTip} onClick={() => void window.lawdie.dismissActivity(ids)}>Dismiss</button>
                 <button type="button" className="quiet edit" title={EDIT_TIP} onClick={onEdit}>Edit…</button>
                 <ApproveButton row={row} approving={approving} onApprove={onApprove} onEdit={onEdit} />
             </>}
@@ -919,15 +926,21 @@ function Shots({ names, max = 6 }: { names: string[] | undefined; max?: number }
  * With no text yet (a matter row without a description or draft), a full line says what to
  * add, in the draft line's place, so it reads as the field it is and not a stray pencil.
  */
-function Editable({ initial, placeholder, title = "Rename: the description this is kept as", onSave, children }: { initial: string; placeholder?: string; title?: string; onSave: (text: string) => void; children: ReactNode }): ReactNode {
+function Editable({ initial, placeholder, title = "Rename: the description this is kept as", label = "Description", maxLength = 500, multiline = false, onSave, children }: { initial: string; placeholder?: string; title?: string; label?: string; maxLength?: number; multiline?: boolean; onSave: (text: string) => void; children: ReactNode }): ReactNode {
     const [editing, setEditing] = useState(false);
     const [text, setText] = useState(initial);
     const begin = (): void => { setText(initial); setEditing(true); };
     const finish = (save: boolean): void => { setEditing(false); if (save && text.trim() !== initial.trim()) onSave(text.trim()); };
-    if (editing) return (
-        <input className="inline-edit" autoFocus value={text} placeholder={placeholder} maxLength={500} aria-label="Description" title="Enter saves, Escape cancels."
-            onChange={(e) => setText(e.target.value)} onBlur={() => finish(true)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } }} />
+    const keys = (e: ReactKeyboardEvent): void => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } };
+    // A description is a paragraph: the box grows to show all of it, the cursor at its end. A matter's name stays one line.
+    const grow = (el: HTMLTextAreaElement | null): void => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } };
+    if (editing) return multiline ? (
+        <textarea className="inline-edit inline-edit-long" autoFocus rows={2} value={text} placeholder={placeholder} maxLength={maxLength} aria-label={label} title="Enter saves, Escape cancels."
+            ref={grow} onFocus={(e) => { const n = e.target.value.length; e.target.setSelectionRange(n, n); }}
+            onChange={(e) => { setText(e.target.value.replace(/\n/g, " ")); grow(e.target); }} onBlur={() => finish(true)} onKeyDown={keys} />
+    ) : (
+        <input className="inline-edit" autoFocus value={text} placeholder={placeholder} maxLength={maxLength} aria-label={label} title="Enter saves, Escape cancels."
+            onChange={(e) => setText(e.target.value)} onBlur={() => finish(true)} onKeyDown={keys} />
     );
     return (
         <div className="editable">
@@ -957,6 +970,29 @@ function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
 }
 
 /**
+ * Puts activity on a matter, or off any, and says what happened in a toast. A name that is already a
+ * matter's joins that matter, spelt its way; "Personal" is the Personal button. The person's choice
+ * (`setMatter`, `matterBy: "person"`) is never suggested over. Shared by the Matter menu and the pencil
+ * on a row with no matter.
+ */
+function useMoveToMatter(w: Workspace, ids: string[], current: string | null, what: string, onMoved?: (ids: string[]) => void): (matter: string | null) => void {
+    const notify = useNotify();
+    return (matter: string | null): void => {
+        const personal = !!matter && isPersonal(matter);
+        const known = matter && !personal ? existingMatter(w, matter) : null;
+        const target = personal ? PERSONAL : known ?? (matter?.trim() || null);
+        void window.lawdie.setMatter(ids, target).then((ok) => {
+            if (!ok) return;
+            if (!target) notify(`${what} is back in review on its own.`);
+            else if (personal) notify(`${what} is now personal. “Not personal” on an item brings it back.`);
+            else if (known) notify(`${what} added to “${known}”${current ? `, from “${current}”` : ""}.`);
+            else notify(`${what} put on a new matter, “${target}”. It is made when you keep the time.`);
+            if (target && !personal) onMoved?.(ids);
+        });
+    };
+}
+
+/**
  * "Matter ▾" on a review row or a document inside a matter: moves that activity to a matter the app
  * knows (open projects and names on pending activity), off any matter, or to a new one named right
  * here. The person's choice (`setMatter`, `matterBy: "person"`) is never suggested over.
@@ -964,20 +1000,8 @@ function MatterLabel({ name }: { name: string | null | undefined }): ReactNode {
 function MatterMenu({ w, ids, current, what, label = "Matter", className, onMoved }: { w: Workspace; ids: string[]; current: string | null; what: string; label?: string; className?: string; onMoved?: (ids: string[]) => void }): ReactNode {
     const [naming, setNaming] = useState(false);
     const [name, setName] = useState("");
-    const notify = useNotify();
+    const move = useMoveToMatter(w, ids, current, what, onMoved);
     const names = knownMatters(w).filter((n) => n.toLowerCase() !== current?.toLowerCase() && n.toLowerCase() !== PERSONAL.toLowerCase());
-    // A new name that is already a matter's joins that matter, spelt its way, and says so.
-    const move = (matter: string | null): void => {
-        const known = matter ? existingMatter(w, matter) : null;
-        const target = known ?? matter?.trim() ?? null;
-        void window.lawdie.setMatter(ids, target).then((ok) => {
-            if (!ok) return;
-            if (!target) notify(`${what} is back in review on its own.`);
-            else if (known) notify(`${what} added to “${known}”${current ? `, from “${current}”` : ""}.`);
-            else notify(`${what} put on a new matter, “${target}”. It is made when you keep the time.`);
-            if (target) onMoved?.(ids);
-        });
-    };
     const finish = (save: boolean): void => { setNaming(false); if (save && name.trim()) move(name); setName(""); };
     if (naming) return (
         <input className="inline-edit matter-new" autoFocus value={name} placeholder="New matter's name" aria-label="New matter" maxLength={MATTER_MAX} title="Name the new matter. Enter saves, Escape cancels."
@@ -986,10 +1010,10 @@ function MatterMenu({ w, ids, current, what, label = "Matter", className, onMove
     );
     return (
         <Menu label={label} className={className} tip={current ? "Move this time to another matter, off any matter, or to a new one." : "Put this time on one of your matters, or name a new one."}>
-            {names.map((n) => <button key={n} type="button" role="menuitem" title={`Move this time to ${n}.`} onClick={() => move(n)}>{n}</button>)}
-            {names.length > 0 && <span className="menu-sep" aria-hidden="true" />}
             <button type="button" role="menuitem" title="Name a matter the app does not know yet; it is made when you keep the time." onClick={() => setNaming(true)}>New matter…</button>
-            {current && <button type="button" role="menuitem" title="Take this time off the matter; it goes back to review on its own." onClick={() => move(null)}>No matter</button>}
+            {names.length > 0 && <span className="menu-sep" aria-hidden="true" />}
+            {names.map((n) => <button key={n} type="button" role="menuitem" title={`Move this time to ${n}.`} onClick={() => move(n)}>{n}</button>)}
+            {current && <><span className="menu-sep" aria-hidden="true" /><button type="button" role="menuitem" title="Take this time off the matter; it goes back to review on its own." onClick={() => move(null)}>No matter</button></>}
         </Menu>
     );
 }
@@ -1058,6 +1082,7 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
     const st = row.stretch;
     const own = descriptionOf(row.sittings);
     const notify = useNotify();
+    const setMatter = useMoveToMatter(w, st.activityIDs, null, own?.text ?? st.name, onMoved);
     return (
         <div data-search-id={row.id}>
             <div className="activity">
@@ -1065,7 +1090,11 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
                 <span className="app-icon">▭</span>
                 <div className="grow">
                     <Narrative ids={st.activityIDs} described={own} />
-                    <MatterLine row={row}><MatterLabel name={null} /></MatterLine>
+                    <MatterLine row={row}>
+                        <Editable initial="" placeholder="Name the matter" label="Matter" maxLength={MATTER_MAX} title="Name the matter for this time; a matter's name you already use puts it on that matter" onSave={(name) => { if (name) setMatter(name); }}>
+                            <MatterLabel name={null} />
+                        </Editable>
+                    </MatterLine>
                     {st.sittings === 1 && <SummaryLines items={row.sittings} />}
                     <Shots names={row.sittings.flatMap((a) => a.screenshots ?? [])} />
                     <div className="muted tiny meta">
@@ -1406,6 +1435,10 @@ function MatterDetail({ w, project: p, stats, waiting, label, rangeTabs, now, on
         <>
             <button type="button" className="link back" title="Go back to the list of matters." onClick={onBack}>‹ All matters</button>
             <Heading eyebrow={p ? `${p.client || "No client"}${p.archived ? " · archived" : ""}` : "Kept without a matter"} title={p?.name ?? "No matter"} />
+            {p && <div className="copy-pair">
+                {p.matterNumber && <><span className="matter-number" title="The matter's number, set below.">No. {p.matterNumber}</span><CopyButton className="link" text={p.matterNumber} what="the matter number" /></>}
+                <CopyButton className="link" text={p.name} what="the matter's name" label="Copy name" />
+            </div>}
             <div className="row between wrap">{rangeTabs}<span className="eyebrow">{label}</span></div>
             <div className="metrics">
                 <Metric label="Tracked" value={cardTime(stats.tracked)} detail={`${stats.entries.length} ${stats.entries.length === 1 ? "entry" : "entries"}`} />

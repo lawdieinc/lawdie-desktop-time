@@ -49,6 +49,19 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.18.4",
+        date: "2026-11-17",
+        title: "Quicker matters and a Copy button",
+        intro: "Two small changes to how time waiting for review gets its matter, after feedback from a user.",
+        items: [
+            { icon: "matter", title: "Type a matter where it says No matter", description: "The pencil beside “No matter” on a row names its matter in place.", more: "A row waiting for review without a matter now has a pencil beside “No matter”. Click it, type the matter's name and press Enter. A name you already use puts the time on that matter; a new name makes the matter when you keep the time. The Matter menu still works as before.", route: "activity" },
+            { icon: "sparkle", title: "New matter… first", description: "The Matter menu now starts with New matter…, above your matters.", more: "On a long list of matters, New matter… used to sit at the very bottom of the Matter menu. It is now the first item, with your matters below it and No matter last.", route: "activity" },
+            { icon: "invoice", title: "Copy an entry in one click", description: "Copy beside a kept entry puts its narrative on the clipboard for your time system.", more: "Every kept entry on the Time page and in Activity's Kept list has a Copy button: one click and the narrative as that screen shows it (on the Time page with a client's rules applied, as the rules write it, one line per part of a split entry) is ready to paste into Tabs3 or any other time system. A matter's heading has Copy for its number and its name, and you can also select part of either and copy it.", route: "today" },
+            { icon: "rules", title: "Room to edit a description", description: "The pencil on a row opens the whole description, not one line.", more: "Editing a row's description used to squeeze it into a single line you had to scroll through. The pencil now opens a box that grows to show all of it. Enter saves and Escape cancels, as before.", route: "activity" },
+            { icon: "clock", title: "Dismiss is always there", description: "A row that could join a kept entry still offers Personal and Dismiss.", more: "When new time could be added to an entry you already kept, the row asks Keep separate or Add to entry. It now keeps Personal and Dismiss beside them, so time that is neither can go straight away.", route: "activity" },
+        ],
+    },
+    {
         id: "0.18.2",
         date: "2026-11-16",
         title: "A quicker Activity screen",

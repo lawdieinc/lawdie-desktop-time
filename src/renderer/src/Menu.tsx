@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /** The tutorial's current step id, or null (App.tsx provides it): a menu whose `tourStep` it is stays open, so the step shows what is in it. */
@@ -12,6 +12,16 @@ export function Menu({ label, tip, children, active = false, className = "quiet"
     const held = tourStep !== undefined && current === tourStep;
     const open = chosen || held;
     const root = useRef<HTMLSpanElement>(null);
+    const list = useRef<HTMLSpanElement>(null);
+    // The list hangs from the button's right edge; a button near the left of the screen (Select) would push it
+    // under the sidebar, so there it hangs from the left edge instead.
+    const [fromLeft, setFromLeft] = useState(false);
+    useLayoutEffect(() => {
+        if (!open || !list.current || !root.current) { setFromLeft(false); return; }
+        const bound = root.current.closest(".content")?.getBoundingClientRect().left ?? 0;
+        const button = root.current.getBoundingClientRect();
+        setFromLeft(button.right - list.current.offsetWidth < bound + 8);
+    }, [open]);
     useEffect(() => {
         if (!open) return;
         const close = (e: Event): void => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
@@ -26,7 +36,7 @@ export function Menu({ label, tip, children, active = false, className = "quiet"
                 {label}
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            {open && <span className={"menu-list" + (held ? " tour-held" : "")} role="menu" onClick={() => setOpen(false)}>{children}</span>}
+            {open && <span ref={list} className={"menu-list" + (held ? " tour-held" : "") + (fromLeft ? " from-left" : "")} role="menu" onClick={() => setOpen(false)}>{children}</span>}
         </span>
     );
 }

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 /* The small building blocks every screen is made of. Here, rather than in App.tsx, so the
    welcome and the tutorial (Onboarding.tsx) use the same ones. `tour` names a control the
@@ -14,4 +14,14 @@ export function Setting({ title, detail, children }: { title: string; detail: st
 }
 export function Toggle({ on, onChange, label, tip }: { on: boolean; onChange: (v: boolean) => void; label: string; tip: { on: string; off: string } }): ReactNode {
     return <button type="button" role="switch" aria-checked={on} aria-label={label} title={on ? tip.on : tip.off} className={"toggle" + (on ? " on" : "")} onClick={() => onChange(!on)}><span /></button>;
+}
+
+/** One click puts `text` on the clipboard, to paste into the firm's time system; the label says "Copied" for a moment. */
+export function CopyButton({ text, what, label = "Copy", className = "quiet" }: { text: string; what: string; label?: ReactNode; className?: string }): ReactNode {
+    const [done, setDone] = useState(false);
+    useEffect(() => { if (!done) return; const t = setTimeout(() => setDone(false), 1500); return () => clearTimeout(t); }, [done]);
+    return (
+        <button type="button" className={className + " copy" + (done ? " copied" : "")} title={`Copy ${what}, to paste into your time system.`} aria-label={`Copy ${what}`}
+            onClick={(e) => { e.stopPropagation(); void window.lawdie.copyText(text).then(() => setDone(true)); }}>{done ? "Copied" : label}</button>
+    );
 }
