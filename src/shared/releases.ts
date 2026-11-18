@@ -49,6 +49,17 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.18.5",
+        date: "2026-11-18",
+        title: "Edit, then approve when ready",
+        intro: "Two changes to the sheet that opens from Edit…, after feedback from a user: type the hours you bill, and save your changes without approving the time.",
+        items: [
+            { icon: "matter", title: "Save without approving", description: "Edit… now saves your changes to the row; Approve is a separate button.", more: "The sheet that opens from Edit… used to have one button, Keep time, so editing a row also approved it. It now has Save, which puts the matter, description, hours and (for one sitting) the times back on the row and leaves it in To review, and Approve, which keeps it. Billable, leaving out idle, codes and a rate belong to the kept entry, so they apply when you approve; Save says so if you changed one.", route: "activity" },
+            { icon: "sparkle", title: "Tidier rows", description: "Edit, Dismiss, Copy and Delete are icons now; hover one to see what it does.", more: "Each row had grown a line of worded buttons. Edit and Dismiss on rows to review, and Copy, Edit and Delete on kept entries, are now small icons (a pencil, a cross, two pages and a bin), each naming itself when you point at it. Matter, Personal and Approve keep their words.", route: "activity" },
+            { icon: "clock", title: "Hours on every Keep sheet", description: "Type the hours to bill when you keep time; no time math.", more: "The Keep sheet now always has an Hours box beside Start and End. It opens with the captured time rounded up to your billing increment; type the hours you want to bill and those are what is kept, while the captured times stay as they were. Empty the box to go back to the rounded figure. Before this the box showed only for clients with billing rules.", route: "activity" },
+        ],
+    },
+    {
         id: "0.18.4",
         date: "2026-11-17",
         title: "Quicker matters and a Copy button",

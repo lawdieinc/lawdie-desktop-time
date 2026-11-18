@@ -508,6 +508,12 @@ button.copy.copied { color: var(--accent); }
 .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; }
 .row-actions > span { display: inline-flex; }
 .row-actions button.quiet { padding: 8px 11px; }
+/* A button that is only an icon: square, the icon centred, the same height as its worded neighbours. */
+button.icon-btn { display: inline-flex; align-items: center; justify-content: center; padding: 8px; min-width: 36px; line-height: 0; }
+.row-actions button.icon-btn { padding: 8px 10px; }
+button.icon-btn .ico { display: block; }
+button.icon-btn.delete:hover:not(:disabled) { color: var(--danger); }
+button.copy.copied .ico { color: var(--accent); }
 .row-actions button.primary { padding: 9px 15px; font-size: 13px; }
 @media (max-width: 1180px) { .row-actions { flex-wrap: wrap; max-width: 250px; } }
 

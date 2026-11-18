@@ -659,3 +659,18 @@ New matter… is the Matter menu's first item; a menu near the left edge opens r
 Select menu had hidden under the sidebar); a row with the kept-entry question keeps Personal and Dismiss; kept entries
 have Copy (on the Time page the applied lines' narratives, one per line, else the entry's description; `copyText` through the main process's clipboard) and a matter's heading on the
 Time and Matters pages has Copy for its number and name, both selectable; a row's description pencil opens a textarea that grows to the whole text (`Editable multiline`). Version 0.18.4.
+2026-11-18: the Keep sheet always has Hours (before, only under a client's rulebook), after the same user: "I'd rather override
+the 0.1 and put in what I want to bill rather than do time math". Typed hours are `hoursSet` and are kept as typed (the
+captured times stay); emptied, the box goes back to the captured time rounded. Tested in `keep.test.ts`, kept through the
+harness on a scratch workspace (1.5 hr on a 4-minute sitting). Harness note: a `type:` step splits at its first `=`, so its
+selector must not contain one (`input[type=number]` typed into the Start box instead). Version 0.18.5.
+Same day: Edit… no longer means keep ("why does edit have keep time that approves it"). The sheet (heading "Edit time") has
+Cancel, Save and Approve (was Keep time). Save (`saveRow` in KeepSheet) writes back onto the pending row through the
+existing calls: `describeActivities`, `setRowHours`, `editActivityTime` (one sitting, not imported or calendar), and
+`setMatter` last (an existing name joins it, "Personal" is Personal); billable, idle left out, codes, a rate and trimming
+several sittings exist only on an entry, so the toast names them as applying at Approve. The tutorial's sample saves
+nothing. Verified through the harness: typed 2.0 and Save left the row pending with `billHours` 2 and no entry.
+Same day: icons for the repeated buttons ("the buttons with text are getting crowded"): `Icon` in ui.tsx (edit, dismiss,
+copy, check, trash; 16 px line icons), `icon-btn` buttons keep their words as title and aria-label. Review rows: Dismiss
+and Edit… are icons; Matter ▾, Personal (kept as a word by the user's decision) and Approve keep their words. Kept entries
+(Time page, Kept list): Copy (a tick once copied), Edit and Delete. A matter heading's Copy and Copy name stay words.

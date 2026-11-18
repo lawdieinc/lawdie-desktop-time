@@ -53,6 +53,19 @@ describe("the Keep sheet's state", () => {
         expect(p.project?.id).toBe("p-acme");
     });
 
+    it("keeps the hours a person types, with no client rules, whatever the captured time", () => {
+        // 2026-11-18: "I'd rather override the 0.1 and put in what I want to bill rather than do time math."
+        const w = drafted();
+        const r = rowOf(w, ["a1", "a2"]);
+        const start = keepStart(w, r.stretch, r.sittings, r.matter, "");
+        const typed = keepPreview(w, r.stretch, r.sittings, { ...start, hoursSet: 1.3 }, start.single);
+        expect(typed.hours).toBe(1.3);
+        expect(typed.input.hours).toBe(1.3);
+        const e = keepStretch(w, r.stretch.activityIDs, typed.input, NOW);
+        expect(e.hours).toBe(1.3);
+        expect(seconds(e)).toBe(1800); // the captured time stays what it was; only the billed hours are the person's
+    });
+
     it("a person's own description records no draft; one equal to the draft does", () => {
         const w = drafted();
         const r = rowOf(w, ["a1", "a2"]);

@@ -22,7 +22,7 @@ import { money as dollars, shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
 import kiwiMark from "../../../resources/brand/kiwi.png";
-import { CopyButton, Empty, Heading, Panel, Setting, Toggle } from "./ui";
+import { CopyButton, Empty, Heading, Icon, Panel, Setting, Toggle } from "./ui";
 import { Tour, Welcome } from "./Onboarding";
 import { WhatsNew } from "./WhatsNew";
 import { ExpiringCallout, ExpiringSidebar, pendingDays, retentionLabel } from "./Retention";
@@ -404,9 +404,9 @@ function EntryRow({ entry, w, lines, book = null, onRules = () => undefined }: {
             {entry.status === "flagged" && <button type="button" className="fix" title={flaggedTip(entry)} onClick={() => setEditing(true)}>{entry.projectID ? "Fix and confirm" : "Assign and edit"}</button>}
             <HoursEdit hours={entryHours(entry)} title={`${timeBlock(entry)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(entry.id, { hours: h }); }} />
             {/* Under a client's rules the narrative as billed, each line of a split entry on its own line; else the entry as kept. */}
-            <CopyButton text={lines?.length ? lines.map((l) => l.narrative).join("\n") : entry.description} what="this entry's narrative" />
-            <button type="button" className="quiet" disabled={draft !== null} title={inline ? "Edit this narrative here, in the row." : "Change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}>Edit</button>
-            <button type="button" className="icon" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}>×</button>
+            <CopyButton icon className="quiet icon-btn" text={lines?.length ? lines.map((l) => l.narrative).join("\n") : entry.description} what="this entry's narrative" />
+            <button type="button" className="quiet icon-btn edit" disabled={draft !== null} aria-label="Edit" title={inline ? "Edit this narrative here, in the row." : "Edit: change this entry's narrative, matter, hours, codes or rate."} onClick={() => (inline ? setDraft(entry.description) : setEditing(true))}><Icon name="edit" /></button>
+            <button type="button" className="quiet icon-btn delete" aria-label="Delete entry" title="Delete this entry; its activity goes back to review." onClick={() => { if (confirm(`Delete “${entry.description}”?`)) void window.lawdie.deleteEntry(entry.id); }}><Icon name="trash" /></button>
             {editing && <EditSheet w={w} entry={entry} onClose={() => setEditing(false)} />}
         </div>
     );
@@ -644,8 +644,8 @@ function ActivityScreen({ w, state, tutorial = null, focus = null, onFocused = (
                                     </div>
                                     <HoursEdit hours={entryHours(e)} title={`${timeBlock(e)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(e.id, { hours: h }); }} />
                                     <span className="muted small status kept">Kept</span>
-                                    <CopyButton text={e.description} what="this entry's narrative" />
-                                    <button type="button" className="quiet" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}>Delete</button>
+                                    <CopyButton icon className="quiet icon-btn" text={e.description} what="this entry's narrative" />
+                                    <button type="button" className="quiet icon-btn delete" aria-label="Delete entry" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}><Icon name="trash" /></button>
                                 </div>
                                 {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
                                 {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entryID={e.id} byID={byID} increment={incrementOf(w.preferences)} />}
@@ -668,7 +668,7 @@ function ActivityScreen({ w, state, tutorial = null, focus = null, onFocused = (
                     </div>
                 ))}<ShowMore shown={Math.min(shown, raw.length)} total={raw.length} what="sittings" {...more} /></>}
             </Panel>
-            {reviewing && <KeepSheet key={reviewing.stretch.id} w={w} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={sampleOpen && tutorial ? tutorial.sittings : reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} keep={sampleOpen ? keepSample : undefined} onClose={() => setReviewing(null)} />}
+            {reviewing && <KeepSheet key={reviewing.stretch.id} w={w} stretch={reviewing.stretch} matter={reviewing.matter} initialDescription={reviewing.description} projects={w.projects.filter((p) => !p.archived).map((p) => p.name)} sittings={sampleOpen && tutorial ? tutorial.sittings : reviewing.stretch.activityIDs.map((id) => byID.get(id)).filter((a): a is Activity => !!a)} keep={sampleOpen ? keepSample : undefined} sample={sampleOpen} onClose={() => setReviewing(null)} />}
             {addingTime && <AddTimeSheet w={w} now={Date.now()} notify={notify} onClose={() => { setAddingTime(false); setFilter("pending"); }} />}
         </>
     );
@@ -798,9 +798,9 @@ function RowActions({ w, row, match, what, dismissTip, approving, onMoved, onApp
         <span className="row-actions">
             <MatterMenu w={w} ids={ids} current={row.matter} what={what} onMoved={onMoved} />
             <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => void window.lawdie.setMatter(ids, PERSONAL)}>Personal</button>
-            <button type="button" className="quiet" title={dismissTip} onClick={() => void window.lawdie.dismissActivity(ids)}>Dismiss</button>
+            <button type="button" className="quiet icon-btn dismiss" title={`Dismiss: ${dismissTip}`} aria-label="Dismiss" onClick={() => void window.lawdie.dismissActivity(ids)}><Icon name="dismiss" /></button>
             {match ? <MergeButtons ids={ids} match={match} /> : <>
-                <button type="button" className="quiet edit" title={EDIT_TIP} onClick={onEdit}>Edit…</button>
+                <button type="button" className="quiet icon-btn edit" title={`Edit… ${EDIT_TIP}`} aria-label="Edit…" onClick={onEdit}><Icon name="edit" /></button>
                 <ApproveButton row={row} approving={approving} onApprove={onApprove} onEdit={onEdit} />
             </>}
         </span>
@@ -832,8 +832,8 @@ function SampleRow({ tutorial: { stretch: st, sittings }, open, onToggle, notify
                 <span className="row-actions" data-tour="review-actions">
                     <button type="button" className="quiet menu-button" title="Move this time to another matter, off any matter, or to a new one." onClick={() => explain("Matter moves this time to another matter, off any matter, or to a new one you name in place")}>Matter <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
                     <button type="button" className="quiet" title="Not work: kept out of billing and never synced" onClick={() => explain(`${PERSONAL} keeps the time out of billing and sync for good`)}>Personal</button>
-                    <button type="button" className="quiet" title="Take this stretch out of review without keeping time." onClick={() => explain("Dismiss takes the stretch out of review without keeping time")}>Dismiss</button>
-                    <button type="button" className="quiet edit" title={`${EDIT_TIP} The sample saves nothing.`} onClick={onKeep}>Edit…</button>
+                    <button type="button" className="quiet icon-btn dismiss" title="Dismiss: take this stretch out of review without keeping time." aria-label="Dismiss" onClick={() => explain("Dismiss takes the stretch out of review without keeping time")}><Icon name="dismiss" /></button>
+                    <button type="button" className="quiet icon-btn edit" title={`Edit… ${EDIT_TIP} The sample saves nothing.`} aria-label="Edit…" onClick={onKeep}><Icon name="edit" /></button>
                     <span title={never}><button type="button" className="primary approve" disabled title={never}>Approve</button></span>
                 </span>
             </div>
@@ -1201,7 +1201,8 @@ function Sittings({ items, all, onDismiss, notify }: { items: (Interval & { id?:
 
 /** "HH:MM" in local time, and back onto the stretch's day (an end before the start rolls to the next day). */
 
-function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects, sittings, keep = (ids, input) => window.lawdie.keepActivity(ids, input), onClose }: { w: Workspace; stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; keep?: (ids: string[], input: KeepInput) => Promise<boolean>; onClose: () => void }): ReactNode {
+function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects, sittings, keep = (ids, input) => window.lawdie.keepActivity(ids, input), sample = false, onClose }: { w: Workspace; stretch: Stretch; matter: string | null; initialDescription: string; projects: string[]; sittings: Activity[]; keep?: (ids: string[], input: KeepInput) => Promise<boolean>; sample?: boolean; onClose: () => void }): ReactNode {
+    const notify = useNotify();
     // What the sheet opens with and what it derives are src/shared/keep.ts, which Approve keeps from too.
     const [opening] = useState(() => keepStart(w, stretch, sittings, suggested, initialDescription));
     const [matter, setMatter] = useState(opening.matter);
@@ -1212,6 +1213,8 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     const [startText, setStartText] = useState(opening.startText);
     const [endText, setEndText] = useState(opening.endText);
     const [hoursSet, setHoursSet] = useState<number | null>(opening.hoursSet);
+    // What is in the Hours box while it is being typed in, so it can be emptied on the way to a new figure.
+    const [hoursTyping, setHoursTyping] = useState<string | null>(null);
     const [codes, setCodes] = useState<{ taskCode?: string; activityCode?: string }>(opening.codes);
     const [rate, setRate] = useState<number | null>(opening.rate);
     const [lines, setLines] = useState<PlanLine[] | null>(null);
@@ -1219,7 +1222,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     const [problem, setProblem] = useState<string | null>(null);
     const [leaveOutIdle, setLeaveOutIdle] = useState(opening.leaveOutIdle);
     // A cleared time box is "" (the browser's time input): `missingTime` says so, rather than show 0s.
-    const { rc, missingTime, imported, span, idle, left, preview, previewSeconds, hours, plan, draft, sameDay, check, asDrafted, input } = keepPreview(w, stretch, sittings, { matter, description, billable, startText, endText, leaveOutIdle, hoursSet, codes, rate }, single);
+    const { rc, missingTime, imported, span, idle, left, preview, previewSeconds, hours, plan, draft, sameDay, check, asDrafted, input, start, end, changed } = keepPreview(w, stretch, sittings, { matter, description, billable, startText, endText, leaveOutIdle, hoursSet, codes, rate }, single);
     const onFix = (fix: Fix): void => {
         if (fix.split) { setLines(plan); return; }
         if (fix.foldInto) setFoldTarget(fix.foldInto);
@@ -1227,6 +1230,37 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
         setDescription(next.description); setHoursSet(next.hours); setCodes({ taskCode: next.taskCode, activityCode: next.activityCode }); setBillable(next.billable); setRate(next.hourlyRate);
     };
     const drafted = (text: string, from: string | undefined): { drafted?: DraftSource } => (from && text.trim() === from ? { drafted: "capture" } : {});
+    /**
+     * Save (2026-11-18: "edit should just save the changes", not keep): what was changed goes back onto the row, which
+     * stays in To review. A row carries its matter, description, typed hours and, for one sitting, its times; what only
+     * an entry can hold (billable, idle left out, codes, a rate, trimming several sittings) applies only at Approve, and
+     * the toast says so.
+     */
+    const saveRow = async (): Promise<void> => {
+        if (sample) { notify("On a real row, Save puts your changes on the row and leaves it in To review. The sample saves nothing."); onClose(); return; }
+        const ids = stretch.activityIDs;
+        const named = matter.trim();
+        const matterChanged = named !== opening.matter.trim();
+        const timesHere = changed && !missingTime && sittings.length === 1 && !imported && !sittings[0].ownerID.startsWith("calendar:");
+        const later = [
+            ...(changed && !timesHere && !missingTime ? ["the times"] : []),
+            ...(billable !== opening.billable ? ["billable"] : []),
+            ...(leaveOutIdle !== opening.leaveOutIdle ? ["leaving out idle"] : []),
+            ...((codes.taskCode ?? "") !== (opening.codes.taskCode ?? "") || (codes.activityCode ?? "") !== (opening.codes.activityCode ?? "") ? ["the codes"] : []),
+            ...(rate !== opening.rate ? ["the rate"] : []),
+        ];
+        let ok = true;
+        if (description.trim() && description.trim() !== opening.description.trim()) ok = (await window.lawdie.describeActivities(ids, description.trim())) && ok;
+        if (hoursSet !== opening.hoursSet) ok = (await window.lawdie.setRowHours(ids, hoursSet)) && ok;
+        if (timesHere) ok = (await window.lawdie.editActivityTime(sittings[0].id, new Date(start).toISOString(), new Date(end).toISOString())) && ok;
+        if (matterChanged) {
+            const target = !named ? null : isPersonal(named) ? PERSONAL : existingMatter(w, named) ?? named;
+            ok = (await window.lawdie.setMatter(ids, target)) && ok;
+        }
+        if (!ok) { setProblem("Some of that could not be saved. Check the times, then try again."); return; }
+        notify(later.length ? `Saved to the row. ${later.join(", ").replace(/, ([^,]*)$/, " and $1").replace(/^./, (c) => c.toUpperCase())} ${later.length === 1 ? "applies" : "apply"} only when you approve.` : "Saved to the row. It stays in To review until you approve it.");
+        onClose();
+    };
     const save = async (): Promise<void> => {
         if (missingTime && !lines) return;
         if (lines) {
@@ -1245,7 +1279,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
     return (
         <div className="scrim" onClick={onClose}>
             <form className={"sheet" + (lines || rc.book ? " wide" : "")} data-tour="keep-sheet" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save(); }}>
-                <Heading eyebrow={imported ? "From captured activity" : "From desktop activity"} title={lines ? `Keep ${lines.length} entries` : "Keep time"} subtitle={lines ? `${matter}: one entry per task, each with its captured time.` : suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
+                <Heading eyebrow={imported ? "From captured activity" : "From desktop activity"} title={lines ? `Keep ${lines.length} entries` : "Edit time"} subtitle={lines ? `${matter}: one entry per task, each with its captured time.` : suggested ? `${stretch.sittings} ${stretch.sittings === 1 ? "sitting" : "sittings"} on ${suggested}, in ${stretch.app}.` : stretch.sittings > 1 ? `${stretch.sittings} sittings on one document, kept as one entry.` : "Review this activity and choose where it belongs."} />
                 {lines ? (
                     <>
                         <SplitLines lines={lines} setLines={setLines} c={{ ...rc, sameDay }} sameDay={sameDay} />
@@ -1263,7 +1297,8 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
                         <div className="row gap">
                             <label className="field"><span className="eyebrow">Start · {dayLabel(stretch.startedAt)}</span><input type="time" value={startText} title="When the work started." onChange={(e) => setStartText(e.target.value)} /></label>
                             <label className="field"><span className="eyebrow">End</span><input type="time" value={endText} title="When the work ended." onChange={(e) => setEndText(e.target.value)} /></label>
-                            {rc.book && <label className="field"><span className="eyebrow">Hours</span><input type="number" step="0.05" min="0" value={hours} title="Billed hours; captured time rounded up to the tenth." onChange={(e) => setHoursSet(Number(e.target.value))} /></label>}
+                            {/* Always offered (2026-11-18: "I'd rather put in what I want to bill than do time math"): typed hours are kept as typed; emptied, the captured time rounded up again. */}
+                            <label className="field"><span className="eyebrow">Hours{hoursSet !== null ? " · yours" : ""}</span><input type="number" step={incrementOf(w.preferences)} min="0" value={hoursTyping ?? String(hoursSet ?? hours)} onBlur={() => setHoursTyping(null)} title={hoursSet !== null ? "The hours you typed are what is billed. Empty the box to go back to the captured time, rounded up." : `Billed hours: the captured time rounded up to the ${rc.book ? "client's increment" : BILLING_MODES[billingModeOf(w.preferences)].unit}. Type the hours you want to bill instead.`} onChange={(e) => { const v = e.target.value; setHoursTyping(v); setHoursSet(v === "" || !Number.isFinite(Number(v)) || Number(v) < 0 ? null : Number(v)); }} /></label>
                             {rc.book && <label className="field"><span className="eyebrow">Task</span><input value={codes.taskCode ?? ""} placeholder="P500" title="UTBMS task code for this entry." onChange={(e) => setCodes({ ...codes, taskCode: e.target.value.toUpperCase() })} /></label>}
                             {rc.book && <label className="field"><span className="eyebrow">Activity</span><input value={codes.activityCode ?? ""} placeholder="A103" title="UTBMS activity code for this entry." onChange={(e) => setCodes({ ...codes, activityCode: e.target.value.toUpperCase() })} /></label>}
                             <label className="row gap check" title="Bill this time to the client."><input type="checkbox" checked={billable} title="Bill this time to the client." onChange={(e) => setBillable(e.target.checked)} /> Billable</label>
@@ -1276,7 +1311,7 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
                         {missingTime && <p className="danger small">Enter a {!startText ? "start" : "end"} time.</p>}
                         <div className="row between">
                             <span className="mono accent big">{missingTime ? "—" : hr(hours)}</span>
-                            <span className="row gap"><button type="button" className="quiet" title="Close without keeping any time." onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={missingTime} title={missingTime ? "Enter both times first." : "Save this as one time entry."}>Keep time</button></span>
+                            <span className="row gap"><button type="button" className="quiet" title="Close without saving anything." onClick={onClose}>Cancel</button><button type="button" className="quiet save-row" title="Put these changes on the row and leave it in To review." onClick={() => void saveRow()}>Save</button><button type="submit" className="primary" disabled={missingTime} title={missingTime ? "Enter both times first." : "Keep this as one time entry: it leaves To review."}>Approve</button></span>
                         </div>
                     </>
                 )}
