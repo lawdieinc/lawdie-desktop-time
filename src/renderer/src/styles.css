@@ -530,3 +530,22 @@ button.copy.copied .ico { color: var(--accent); }
 .time-form input { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 13px; }
 .time-form.add-sitting { display: flex; flex: 1; } .add-sitting { font-size: 12px; }
 .time-form input[type="time"] { width: 118px; flex: 0 0 auto; }
+
+/* Settings → Capture → Apps that stay private (PrivateApps.tsx). */
+.private-apps { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.private-app { display: flex; align-items: center; gap: 12px; padding: 9px 12px; }
+.private-app + .private-app { border-top: 1px solid var(--line); }
+.private-app-name { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.private-app-name .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.private-apps > p { padding: 12px; margin: 0; }
+.app-icon { width: 26px; height: 26px; flex: none; border-radius: 6px; }
+.app-icon.blank { display: grid; place-items: center; background: var(--raised); color: var(--muted); font-size: 12px; font-weight: 600; }
+.sheet.pick-apps { width: 560px; max-height: calc(100vh - 60px); gap: 16px; }
+.pick-app-list { display: flex; flex-direction: column; overflow: auto; min-height: 200px; max-height: 420px; margin: 0 -8px; padding: 0 8px; }
+.pick-app-list .eyebrow { margin: 10px 0 4px; }
+.pick-app-list .eyebrow:first-child { margin-top: 0; }
+.pick-app { display: flex; align-items: center; gap: 12px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.pick-app:hover { background: var(--raised); }
+.pick-app.already { cursor: default; opacity: 0.6; }
+.pick-app-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-app input[type="checkbox"] { width: auto; flex: none; margin: 0; accent-color: var(--accent); }

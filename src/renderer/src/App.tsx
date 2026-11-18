@@ -30,6 +30,7 @@ import { LATEST_RELEASE, needsWhatsNew } from "@shared/releases";
 import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
 import type { SearchTarget } from "@shared/search";
 import { SearchBar, reveal } from "./Search";
+import { PrivateApps } from "./PrivateApps";
 import { AddSitting, AddTimeSheet, HoursEdit, SittingTimes, TimeEdit, timesEditable } from "./Manual";
 import { BILLING_MODES, billedHours as billed, billingModeOf, entryHours, hoursText, hoursWithin, hr, incrementOf, sumHours, type BillingMode } from "@shared/billingMode";
 
@@ -1568,7 +1569,6 @@ const SETTINGS_TABS: { key: SettingsTab; label: string; tip: string }[] = [
 ];
 function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { state: AppState; now: number; onRules: (book: string | null, rule?: string | null) => void; onTour: () => void; onWelcome: () => void; onWhatsNew: () => void }): ReactNode {
     const w = state.workspace, p = w.preferences;
-    const [excluded, setExcluded] = useState("");
     const [tab, setTab] = useState<SettingsTab>("capture");
     const tourStep = useContext(TourStepContext);
     useEffect(() => { if (tourStep === "billing-settings") setTab("billing"); }, [tourStep]);
@@ -1683,12 +1683,8 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
             </Panel>}
             {tab === "capture" && <Panel>
                 <strong>Apps that stay private</strong>
-                <p className="muted small">Excluded apps are skipped before any window title is read. {isMac ? "Enter a bundle identifier, such as com.apple.Safari." : "Enter the program's file name, such as chrome.exe."}</p>
-                <div className="chips">{p.excludedOwnerIDs.map((id) => <span key={id} className="chip mono">{id}<button type="button" aria-label={`Stop excluding ${id}`} title={`Stop excluding ${id}.`} onClick={() => set("excludedOwnerIDs", p.excludedOwnerIDs.filter((x) => x !== id))}>×</button></span>)}</div>
-                <form className="row gap" onSubmit={(e) => { e.preventDefault(); const v = excluded.trim(); if (v && !p.excludedOwnerIDs.includes(v)) set("excludedOwnerIDs", [...p.excludedOwnerIDs, v]); setExcluded(""); }}>
-                    <input value={excluded} title={isMac ? "Type an app's bundle identifier to keep it private." : "Type a program's file name to keep it private."} onChange={(e) => setExcluded(e.target.value)} placeholder={isMac ? "com.example.private-app" : "private-app.exe"} />
-                    <button type="submit" className="quiet" title="Skip this app when capture runs.">Exclude</button>
-                </form>
+                <p className="muted small">Nothing is recorded while one of these is in front: not its name, its window titles or its time.</p>
+                <PrivateApps w={w} isMac={isMac} onChange={(ids) => set("excludedOwnerIDs", ids)} />
             </Panel>}
             {tab === "data" && <Panel>
                 <strong>Learn the app</strong>

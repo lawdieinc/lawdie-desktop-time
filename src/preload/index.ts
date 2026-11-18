@@ -7,6 +7,7 @@ import type { ClientRuleInput, RulebookInput } from "@shared/clientRulebooks";
 import type { RejectionInput } from "@shared/rejection";
 import type { Destination, Product } from "@shared/kiwi";
 import type { ManualInput } from "@shared/manual";
+import type { AppChoice } from "@shared/appExclusions";
 
 /* The whole surface the window may touch. Nothing else from Node or Electron is exposed. */
 export const api = {
@@ -96,6 +97,10 @@ export const api = {
     /** The firm's logo from its website; a problem as text, or null. */
     fetchLogo: (site: string): Promise<string | null> => ipcRenderer.invoke("fetchLogo", site),
     chooseLogo: (): Promise<string | null> => ipcRenderer.invoke("chooseLogo"),
+    /** Settings → Capture → Apps that stay private. */
+    installedApps: (): Promise<AppChoice[]> => ipcRenderer.invoke("installedApps"),
+    appIcon: (path: string): Promise<string | null> => ipcRenderer.invoke("appIcon", path),
+    chooseApp: (): Promise<AppChoice | null> => ipcRenderer.invoke("chooseApp"),
     removeLogo: (): Promise<null> => ipcRenderer.invoke("removeLogo"),
     /** The time sheet with the client's rules as Word tracked changes and comments. Resolves to a problem, or null. */
     makeDocx: (mode: string = "generic", scope?: BillScope): Promise<string | null> => ipcRenderer.invoke("makeDocx", mode, scope),

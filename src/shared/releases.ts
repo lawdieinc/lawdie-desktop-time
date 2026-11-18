@@ -49,6 +49,15 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.18.6",
+        date: "2026-11-18",
+        title: "Pick the apps that stay private",
+        intro: "Keeping an app private used to mean typing its technical identifier. Now you pick it from a list.",
+        items: [
+            { icon: "shield", title: "Choose private apps from a list", description: "Settings → Capture → Add apps… lists the apps on this computer to tick.", more: "Apps that stay private are never recorded: not their name, their window titles or their time. Add apps… in Settings → Capture lists every app on this computer with its icon, the ones you use most at the top, and a search box. Tick the ones to keep private, or choose an app's file if it is not listed. The list shows each private app by its name and icon, with Remove beside it.", route: "settings" },
+        ],
+    },
+    {
         id: "0.18.5",
         date: "2026-11-18",
         title: "Edit, then approve when ready",

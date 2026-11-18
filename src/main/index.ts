@@ -18,6 +18,7 @@ import { footerTemplate, invoiceHtml, timeSheetHtml } from "@shared/invoiceHtml"
 import { applyRules, type AppliedBill } from "@shared/applyRules";
 import { timeSheetDocx } from "./docx";
 import { readXlsx } from "./xlsx";
+import { appIcon, chooseApp, installedApps } from "./apps";
 import { archiveProject, closeActivity, setNarrative, deleteEntry, dismissActivities, describeActivities, editEntry, invoiceIssued, issueInvoice, keepLines, keepSeparate, keepStretch, mergeIntoEntry, mergeProjects, nextInvoiceNumber, pendingDays, pendingExpiring, referencedScreenshots, renameMatterNamed, setBilling, setBillingFile, setMatter, updateProject, type BillingSetup, type EntryChange, type InvoiceTerms, type KeepInput, type KeepLine, type Preferences, type ProjectChange, type Workspace } from "@shared/model";
 import { addManualTime, editActivityTime, setRowHours, type ManualInput } from "@shared/manual";
 import { LOGO_MIN_PX, logoCandidates, siteURL } from "@shared/logo";
@@ -534,6 +535,10 @@ app.whenReady().then(() => {
         }
         return "No logo was found on that site. Choose a file instead.";
     });
+    // Settings → Capture → Apps that stay private: the apps to pick from, their icons, and a chosen app file.
+    ipcMain.handle("installedApps", () => installedApps());
+    ipcMain.handle("appIcon", (_e, path: unknown) => (typeof path === "string" && path.length <= 1024 ? appIcon(path) : null));
+    ipcMain.handle("chooseApp", () => chooseApp(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null));
     ipcMain.handle("chooseLogo", async () => {
         const res = await dialog.showOpenDialog({ title: "Choose the firm's logo", properties: ["openFile"], filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg"] }] });
         if (res.canceled || !res.filePaths[0]) return null;

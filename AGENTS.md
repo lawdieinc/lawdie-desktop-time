@@ -13,18 +13,18 @@ the wire contract land in all three repos together.
   overlap clipping, matter links), `export.ts` (kept entries as CSV: project, date, hours,
   description; the Time screen's Export CSV, for the range shown), `format.ts`, `state.ts`; billing (see
   Billing): `rules.ts`, `clientRules.ts`, `applyRules.ts`, `invoice.ts`, `invoiceHtml.ts`, `narrative.ts`,
-  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`; `search.ts` (the search bar's finding), `billingMode.ts` (tenths or quarter hours), `manual.ts` (time added or corrected by hand). Everything here is under
+  `drafter.ts`, `typed.ts`, `importMatch.ts`, `demo.ts`; `search.ts` (the search bar's finding), `appExclusions.ts` (the private apps as apps: names, the apps to pick from), `billingMode.ts` (tenths or quarter hours), `manual.ts` (time added or corrected by hand). Everything here is under
   `model.test.ts`, `feed.test.ts` and the billing tests beside their files.
 - `src/main/` — the Electron main process: `workspace.ts` (atomic file, lock that names the boot it was taken in, daily copies in `backups/` (7),
   leftovers of a cut-short save removed at launch),
   `store.ts` (the only place the workspace changes; copy → validate → save → publish),
   `capture.ts` (get-windows + powerMonitor → `observe()`), `sync.ts` (token via
   `safeStorage`, the minute tick), `feed.ts` (the import pass, every three minutes),
-  `index.ts` (window, tray, IPC), `rulesFeed.ts` (client rulebooks from the billing system), `docx.ts` and
+  `index.ts` (window, tray, IPC), `apps.ts` (the apps installed, their icons, Choose an app file…), `rulesFeed.ts` (client rulebooks from the billing system), `docx.ts` and
   `xlsx.ts` (the time sheet as Word; a time-system export read).
 - `src/preload/` — the whole surface the window may touch (`window.lawdie`).
 - `src/renderer/` — React. `App.tsx` (the screens), with billing beside it: `Billing.tsx`, `ClientRules.tsx`,
-  `Rules.tsx`, `Narrative.tsx`, `Imported.tsx`, `Menu.tsx`; `Search.tsx` (the top bar's search), `Manual.tsx` (hours and times changed in place, Add time, Add sitting); brand in `styles.css` (see `docs/brand.md`).
+  `Rules.tsx`, `Narrative.tsx`, `Imported.tsx`, `Menu.tsx`; `Search.tsx` (the top bar's search), `PrivateApps.tsx` (Settings → Capture's private apps and the Add apps… sheet), `Manual.tsx` (hours and times changed in place, Add time, Add sitting); brand in `styles.css` (see `docs/brand.md`).
 - `resources/` fonts and brand assets; `build/` icons; `electron-builder.yml` installers.
 - `legacy/swift/` — the first, macOS-only version. Reference only; not built.
 
@@ -674,3 +674,11 @@ Same day: icons for the repeated buttons ("the buttons with text are getting cro
 copy, check, trash; 16 px line icons), `icon-btn` buttons keep their words as title and aria-label. Review rows: Dismiss
 and Edit… are icons; Matter ▾, Personal (kept as a word by the user's decision) and Approve keep their words. Kept entries
 (Time page, Kept list): Copy (a tick once copied), Edit and Delete. A matter heading's Copy and Copy name stay words.
+2026-11-18, later: private apps are picked, not typed ("you should be able to select applications, not type them in that weird
+format"). Settings → Capture lists each excluded app by icon and name (`excludedApps()`, ids for the other platform hidden, an id
+nothing names shown under its guessed name) with Remove; Add apps… opens a sheet (`PrivateApps.tsx`): the apps used (most time
+first) and every installed app, searchable, ticked several at a time, plus Choose an app file…. `src/main/apps.ts` lists them once
+a run (macOS: the Applications folders' Info.plist through `plutil`; Windows: Start menu shortcuts; Linux: .desktop files); a Mac
+icon is Quick Look's thumbnail (`getFileIcon` gives a bundle the generic one). Browsers, this app, the lock screen and manual or
+calendar time are never offered. The setting is unchanged (`excludedOwnerIDs`; a path is stored as its file name, `exclusionID`),
+so capture is untouched. Tested in `appExclusions.test.ts`; seen through the harness on a scratch workspace.
