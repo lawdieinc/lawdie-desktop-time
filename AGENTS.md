@@ -682,3 +682,14 @@ a run (macOS: the Applications folders' Info.plist through `plutil`; Windows: St
 icon is Quick Look's thumbnail (`getFileIcon` gives a bundle the generic one). Browsers, this app, the lock screen and manual or
 calendar time are never offered. The setting is unchanged (`excludedOwnerIDs`; a path is stored as its file name, `exclusionID`),
 so capture is untouched. Tested in `appExclusions.test.ts`; seen through the harness on a scratch workspace.
+2026-11-18, later: packaged builds are hardened against reverse engineering and tampering. electron-builder's
+`electronFuses` flips the Electron fuses (runAsNode off; NODE_OPTIONS and `--inspect` off; onlyLoadAppFromAsar and
+embeddedAsarIntegrityValidation on), so the binary cannot be driven as a generic Node runtime and the app refuses a
+tampered or swapped `app.asar` (macOS and Windows; the integrity fuse is inert on Linux/AppImage). electron-builder
+re-signs after flipping (macPackager: addElectronFuses → signAfterPack), so the self-signed-cert updater still installs.
+Not obfuscation: Honeybadger frames (`src/main/errors.ts`) and the renderer are unchanged, by the user's decision after a
+trial of a JS obfuscator showed it only hid strings at a level that destroyed the frames and bloated the renderer ~19x.
+`grantFileProtocolExtraPrivileges` stays on (the production renderer loads over `file://`). Verified end to end: a
+fused+signed build updated to the next fused+signed build from a local feed with native Squirrel accepting the signature;
+the Linux AppImage and a real Windows `electron.exe` carry the fuses too. `LAWDIE_UPDATE_FEED` (env, inert in production,
+like `LAWDIE_USER_DATA`) points the updater at a local feed and prints the outcome for that test. Version 0.18.7.

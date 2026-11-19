@@ -43,6 +43,17 @@ export class Updater {
         autoUpdater.autoDownload = true;
         autoUpdater.autoInstallOnAppQuit = false;
         autoUpdater.logger = null;
+        // Local end-to-end update test only, never set in production (like LAWDIE_USER_DATA /
+        // LAWDIE_TEST_ERROR): point the feed at a local server and print the outcome to stdout,
+        // so a fused + signed build can be checked against the next one before a release ships.
+        const testFeed = process.env.LAWDIE_UPDATE_FEED;
+        if (testFeed) {
+            autoUpdater.setFeedURL({ provider: "generic", url: testFeed });
+            autoUpdater.logger = console;
+            autoUpdater.on("update-downloaded", (info) => console.log(`[updater-test] downloaded ${info.version}`));
+            autoUpdater.on("error", (err) => console.log(`[updater-test] error ${err instanceof Error ? err.message : err}`));
+            setTimeout(() => void this.check(), 1000);
+        }
         autoUpdater.on("update-downloaded", (info) => {
             const first = this.store.updateReady !== info.version;
             this.store.setUpdateReady(info.version);

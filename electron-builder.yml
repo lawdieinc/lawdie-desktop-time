@@ -18,6 +18,26 @@ publish:
   provider: github
   owner: lawdieinc
   repo: lawdie-desktop-time
+# Reverse-engineering / tamper hardening (2026-11-18). electron-builder flips these Electron
+# fuses on the packaged binary and RE-SIGNS afterwards (app-builder-lib macPackager:
+# addElectronFuses → signAfterPack), so the self-signed-certificate signature the macOS updater
+# matches against (scripts/mac-signing-cert.sh) stays valid and auto-update keeps working. This
+# is not obfuscation: stack frames stay readable for Honeybadger (src/main/errors.ts) and the
+# renderer keeps its size. Verified end to end on 2026-11-18: a fused+signed build updated to the
+# next fused+signed build from a local feed, Squirrel accepting the signature.
+#   - runAsNode off: the binary can no longer be driven as a generic Node runtime via
+#     ELECTRON_RUN_AS_NODE. Native helpers are run with execFile, never fork, so this is safe.
+#   - nodeOptions / node CLI inspect off: no NODE_OPTIONS or --inspect code injection at launch.
+#     Chromium's --remote-debugging-port (renderer perf work) is a different mechanism, untouched.
+#   - onlyLoadAppFromAsar + embeddedAsarIntegrityValidation: the app refuses to run a tampered or
+#     swapped app.asar (macOS and Windows; the integrity fuse is inert on Linux/AppImage).
+# grantFileProtocolExtraPrivileges is left ON: the production renderer loads over file://.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
 asarUnpack:
   # get-windows ships native helper binaries that must live on disk.
   - node_modules/get-windows/**
