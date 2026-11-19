@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { desktopCapturer, systemPreferences } from "electron";
-import { emptyWorkspace, observe, type Workspace } from "@shared/model";
+import { emptyWorkspace, observe, screenshotDue, type Workspace } from "@shared/model";
 import { Capture } from "./capture";
 import { report } from "./errors";
 import { Screenshots } from "./screenshots";
@@ -161,5 +161,22 @@ describe("Capture screenshot attachment", () => {
         const attached = workspace.currentActivity?.screenshots ?? [];
         expect(attached).toHaveLength(outcome === "success" ? 1 : 0);
         expect(readdirSync(dir)).toEqual(attached);
+        if (outcome === "missing") {
+            expectNoFile();
+            expect(report).not.toHaveBeenCalled();
+            expect(screenshotDue(workspace, now)).not.toBeNull();
+
+            // A skipped window remains due: the next normal sample can capture it.
+            getSources.mockResolvedValue([source() as unknown as Electron.DesktopCapturerSource]);
+            vi.setSystemTime(now + 5_000);
+            await capture.sample();
+            expect(workspace.currentActivity?.endedAt).toBe(new Date(now + 5_000).toISOString());
+            const recovered = workspace.currentActivity?.screenshots ?? [];
+            expect(recovered).toHaveLength(1);
+            expect(readdirSync(dir)).toEqual(recovered);
+            expect(readFileSync(join(dir, recovered[0]!))).toEqual(jpeg);
+            expect(screenshotDue(workspace, now + 5_000)).toBeNull();
+            expect(report).not.toHaveBeenCalled();
+        }
     });
 });
