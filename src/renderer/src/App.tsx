@@ -28,7 +28,7 @@ import { WhatsNew } from "./WhatsNew";
 import { ExpiringCallout, ExpiringSidebar, pendingDays, retentionLabel } from "./Retention";
 import { LATEST_RELEASE, needsWhatsNew } from "@shared/releases";
 import { TOUR_STEPS, isTutorialID, needsWelcome, stepAfter, tutorialStretch } from "@shared/onboarding";
-import type { SearchTarget } from "@shared/search";
+import { fold, type SearchTarget } from "@shared/search";
 import { SearchBar, reveal } from "./Search";
 import { PrivateApps } from "./PrivateApps";
 import { AddSitting, AddTimeSheet, HoursEdit, SittingTimes, TimeEdit, timesEditable } from "./Manual";
@@ -1035,23 +1035,37 @@ function useMoveToMatter(w: Workspace, ids: string[], current: string | null, wh
  * here. The person's choice (`setMatter`, `matterBy: "person"`) is never suggested over.
  */
 function MatterMenu({ w, ids, current, what, label = "Matter", className, onMoved }: { w: Workspace; ids: string[]; current: string | null; what: string; label?: string; className?: string; onMoved?: (ids: string[]) => void }): ReactNode {
-    const [naming, setNaming] = useState(false);
-    const [name, setName] = useState("");
     const move = useMoveToMatter(w, ids, current, what, onMoved);
     const names = knownMatters(w).filter((n) => n.toLowerCase() !== current?.toLowerCase() && n.toLowerCase() !== PERSONAL.toLowerCase());
-    const finish = (save: boolean): void => { setNaming(false); if (save && name.trim()) move(name); setName(""); };
-    if (naming) return (
-        <input className="inline-edit matter-new" autoFocus value={name} placeholder="New matter's name" aria-label="New matter" maxLength={MATTER_MAX} title="Name the new matter. Enter saves, Escape cancels."
-            onChange={(e) => setName(e.target.value)} onBlur={() => finish(true)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } }} />
-    );
     return (
-        <Menu label={label} className={className} tip={current ? "Move this time to another matter, off any matter, or to a new one." : "Put this time on one of your matters, or name a new one."}>
-            <button type="button" role="menuitem" title="Name a matter the app does not know yet; it is made when you keep the time." onClick={() => setNaming(true)}>New matter…</button>
-            {names.length > 0 && <span className="menu-sep" aria-hidden="true" />}
-            {names.map((n) => <button key={n} type="button" role="menuitem" title={`Move this time to ${n}.`} onClick={() => move(n)}>{n}</button>)}
+        <Menu label={label} className={className} tip={current ? "Move this time to another matter, or off any matter." : "Put this time on one of your matters."}>
+            <MatterSearch names={names} onPick={move} />
             {current && <><span className="menu-sep" aria-hidden="true" /><button type="button" role="menuitem" title="Take this time off the matter; it goes back to review on its own." onClick={() => move(null)}>No matter</button></>}
         </Menu>
+    );
+}
+
+/**
+ * The Matter menu's list: a search box over every matter to switch to (2026-11-22: "just show all the options to switch
+ * to … replaced with a basic search"; New matter… left it, a new name is given with the row's pencil). Every word typed
+ * must appear, case and accents ignored; Enter picks the first match.
+ */
+function MatterSearch({ names, onPick }: { names: string[]; onPick: (name: string) => void }): ReactNode {
+    const [query, setQuery] = useState("");
+    const words = fold(query).split(" ").filter(Boolean);
+    const shown = names.filter((n) => words.every((x) => fold(n).includes(x)));
+    const list = useRef<HTMLSpanElement>(null);
+    return (
+        <>
+            {names.length > 0 && <input className="menu-search" type="search" autoFocus value={query} placeholder="Search matters" aria-label="Search matters" title="Type to find a matter. Enter picks the first one."
+                onClick={(e) => e.stopPropagation()} onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); list.current?.querySelector("button")?.click(); } }} />}
+            <span className="menu-scroll" ref={list}>
+                {shown.map((n) => <button key={n} type="button" role="menuitem" title={`Move this time to ${n}.`} onClick={() => onPick(n)}>{n}</button>)}
+                {!names.length ? <span className="menu-empty">No other matters yet. Name one with the pencil on the row.</span>
+                    : !shown.length && <span className="menu-empty">No matter matches “{query.trim()}”.</span>}
+            </span>
+        </>
     );
 }
 

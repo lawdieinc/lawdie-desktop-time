@@ -143,8 +143,9 @@ examples. The Matters screen (`MattersView` in `App.tsx`) lists them with time, 
 value and what waits for review, and edits name, client and rate (`updateProject`, a new
 rate applies from then on), merges (`mergeProjects`) and archives; every Activity row
 names its matter or says "No matter", and its "Matter ▾" menu (`MatterMenu`, 2026-11-06) moves the row,
-or one document inside a matter ("Move…"), to a known matter, off any matter, or to a new one named in
-place (`setMatter`, so it is the person's and never suggested over); the matter moved into unfolds and
+or one document inside a matter ("Move…"), to a known matter or off any matter (`setMatter`, so it is the person's and
+never suggested over); since 2026-11-22 the menu is a search over the matters (`MatterSearch`: every word, case and
+accents ignored, Enter picks the first) with no New matter…, which the row's pencil covers; the matter moved into unfolds and
 a toast (`notify`, `NoticeContext`) says what happened. A name that is already another matter's, from
 the row's pencil, the Matters page or "New matter…", merges into it rather than clashing
 (`existingMatter()`, `renameMatterNamed()` returns the matter merged into; kept entries follow through
@@ -705,3 +706,5 @@ codes kept. Such a row is not asked "Add to your kept entry?" (that stays for ti
 this into …", and Approve's toast (or the Keep sheet's) says what it merged. Renaming a row into another matter shows no toast,
 by the user's decision ("just when you hit approve"); the pencil's old "merged into" toast went with it. A client's rules finding still opens
 the Keep sheet first. Tested in `keep.test.ts`; renamed and approved through the harness on a scratch workspace. Version 0.18.8.
+2026-11-22, same ticket: the Matter menu is a search box over every matter to switch to, and New matter… left it ("it should
+just show all the options to switch to … replaced with a basic search"). Seen through the harness with eight matters.
