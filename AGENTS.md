@@ -75,7 +75,12 @@ this app needs (electron, get-windows, esbuild). If Electron's binary is missing
 `src/main/office.ts` asks Word/Excel/PowerPoint/Outlook what is open through OS
 automation (osascript / PowerShell COM), opt-in, throttled, timeboxed; the three-line
 NAME/PATH/TEXT protocol is parsed by `parseProbeOutput()`, which is what the tests
-cover. Real Office is exercised by hand.
+cover. Real Office is exercised by hand. Since 2026-11-22 TEXT is what is on screen, not the document's opening: Excel's
+visible cells (at most `SHEET_ROWS`×`SHEET_COLUMNS`, formatted on the Mac, `Value2` on Windows), the Word text around
+the cursor (200 before, 800 after), the PowerPoint slide on screen ("n/count" then each shape's text), Outlook as before;
+`officeExcerpt()` makes it one line ("Sheet “Damages” · A2 Harmon · C2 42,000", "Slide 2 of 12 · …"). In AppleScript
+`lines`, `cells` and `text` are reserved, and PowerPoint hangs on `slide of view of document window`; the scripts use
+`slide range of selection of active window`. Mac scripts tried against real Office 16 on 2026-11-22; Windows by reading only.
 
 ## Screenshots
 
@@ -107,7 +112,7 @@ accessibility system: on macOS `native/screen-text/main.swift`, built universal 
 the asar) and needing the Accessibility permission; on Windows a UI Automation script in
 PowerShell. No screenshots. Opt-in (`captureScreenText`), never password fields, menus or
 buttons, once per window title a minute, at most `SCREEN_TEXT_MAX` characters kept per
-segment (the first read; scrolling is not a switch). `parseScreenText()` is what the tests
+segment (the latest read since 2026-11-22, as an Office excerpt; scrolling is still not a switch). `parseScreenText()` is what the tests
 cover; the readers are exercised by hand. It is sent to Kiwi only as `screen_text` in a
 matter request, never on sync.
 
@@ -708,3 +713,12 @@ by the user's decision ("just when you hit approve"); the pencil's old "merged i
 the Keep sheet first. Tested in `keep.test.ts`; renamed and approved through the harness on a scratch workspace. Version 0.18.8.
 2026-11-22, same ticket: the Matter menu is a search box over every matter to switch to, and New matter… left it ("it should
 just show all the options to switch to … replaced with a basic search"). Seen through the harness with eight matters.
+2026-11-22, same ticket: sittings say what they were ("it should be like switched to excel - summary"). Office reads what is
+on screen (above), on-screen text keeps its latest read, and a summary sees up to three screenshots spread across the sitting
+(`summaryShots`, `SUMMARY_SHOTS_PER_SITTING`; the body sends `images` and, for an older Kiwi, `image`). Each sitting reads
+"Switched to Excel — ✦ summary", else the text read, else a hint naming the switches in Settings → Capture that would say
+(`sittingLine`, `captureHint` in matters.ts; `SittingLine` in App.tsx), with its screenshots under it; a screenshot opens
+large in the app (`ShotViewer`: ← →, Escape, Open in viewer). "switched to <next app>" left the item's facts (the next
+sitting's line says it); other endings (browser, lock, calendar) stay. Kiwi's summary prompt (`desktopSummaries.ts`, Kiwi
+`lawdie-main`) asks for specific lines, 20 words, and takes `images` (at most three a sitting,
+20 a request). Seen through the harness.

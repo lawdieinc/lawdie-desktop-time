@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
     closeActivity, deleteEntry, dismissActivities, emptyWorkspace, keepActivity, keepStretch, markSynced, migrateV1, observe, parseWorkspace, prune,
     recover, saveEntry, seconds, secondsWithin, startTimer, stopTimer, stretchSpan, stretchesOf, syncBatches, syncRequest, validate, WorkspaceError, type Activity, type TimeEntry, type Workspace,
+    MANUAL_OWNER_ID,
 } from "./model";
-import { applyDrafts, applyInsights, applyMatters, describeItem, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, toReview } from "./matters";
+import { applyDrafts, applyInsights, applyMatters, captureHint, describeItem, draftRequest, inboxOf, insightRequest, knownMatters, matterRequest, sittingLine, toReview } from "./matters";
 import { existingMatter, keepSeparate, keptMatch, mergeIntoEntry, renameMatterNamed, describeActivities, descriptionOf, IDLE_FLAG_SECONDS, endedText, idleSeconds, PERSONAL, SCHEMA_VERSION, SCREEN_TEXT_MAX, archiveProject, screenRecordingAttempt, cleanDocument, cleanScreenText, redact, mergeProjects, parseScreenText, setMatter, updateProject } from "./model";
 import { duration, keepBounds } from "./format";
 import { activeCall, callApp, parseMacRecording, parseWindowsRecording } from "./calls";
@@ -247,7 +248,7 @@ describe("capture", () => {
         expect(JSON.stringify(w)).not.toContain("PACER");
     });
 
-    it("reads on-screen text only when switched on, keeps the first read for the segment, and never splits on it", () => {
+    it("reads on-screen text only when switched on, keeps the latest read for the segment, and never splits on it", () => {
         const w = capturing();
         const ACROBAT = { app: "Acrobat", ownerID: "com.adobe.Acrobat.Pro", title: null };
         observe(w, { ...ACROBAT, screenText: "Exhibit A – design marks" }, at(0), 0);
@@ -255,10 +256,12 @@ describe("capture", () => {
         w.preferences.captureScreenText = true;
         observe(w, { ...PREVIEW, screenText: null }, at(5), 0);
         observe(w, { ...PREVIEW, screenText: "PRINCESS PILLOW LLC\nTrademark licence\n\nTrademark licence" }, at(10), 0);
-        observe(w, { ...PREVIEW, screenText: "page 2 after scrolling" }, at(15), 0);
         expect(w.currentActivity?.screenText).toBe("PRINCESS PILLOW LLC\nTrademark licence");
+        observe(w, { ...PREVIEW, screenText: "page 2 after scrolling" }, at(15), 0);
+        observe(w, { ...PREVIEW, screenText: null }, at(17), 0);
+        expect(w.currentActivity?.screenText).toBe("page 2 after scrolling");
         observe(w, WORD, at(20), 0);
-        expect(w.activities.at(-1)).toMatchObject({ app: "Preview", screenText: "PRINCESS PILLOW LLC\nTrademark licence" });
+        expect(w.activities.at(-1)).toMatchObject({ app: "Preview", screenText: "page 2 after scrolling" });
     });
 
     it("takes personal details out of what was read, on this computer, and keeps what names the work", () => {
@@ -1057,10 +1060,26 @@ describe("why a kept entry says what it says, from capture", () => {
 });
 
 describe("an item inside a matter's row", () => {
+    it("reads as \"Switched to Excel — what it was\": the summary, else what capture read, else the switches that would say (2026-11-22)", () => {
+        const base = { id: "s1", app: "Microsoft Excel", ownerID: "com.microsoft.Excel", title: null, startedAt: "2026-11-20T10:00:00.000Z", endedAt: "2026-11-20T10:20:00.000Z", endedBy: "switched" as const, disposition: "pending" as const };
+        const cells: Activity = { ...base, document: { name: "Damages.xlsx", path: null, excerpt: "Sheet “Damages” · A2 Harmon · C2 42000" } };
+        expect(sittingLine([cells])).toEqual({ lead: "Switched to Microsoft Excel", what: ["Sheet “Damages” · A2 Harmon · C2 42000"], fromText: true });
+        const summed: Activity = { ...cells, summary: { text: "Reconciled Harmon damages figures", source: "kiwi" } };
+        expect(sittingLine([summed])).toEqual({ lead: "Switched to Microsoft Excel", what: ["Reconciled Harmon damages figures"], fromText: false });
+        expect(sittingLine([{ ...base, app: "Added by you", ownerID: MANUAL_OWNER_ID }]).lead).toBe("Added by you");
+        const bare: Activity = { ...base };
+        const off = { captureDocuments: false, captureScreenText: false, captureScreenshots: false, suggestMatters: false };
+        expect(captureHint(off, [bare])).toEqual(["Read Office document details", "Take screenshots", "AI suggestions"]);
+        expect(captureHint(off, [{ ...bare, app: "Acrobat", ownerID: "com.adobe.Acrobat.Pro" }])).toEqual(["Read on-screen text", "Take screenshots", "AI suggestions"]);
+        expect(captureHint({ ...off, captureDocuments: true, captureScreenshots: true, suggestMatters: true }, [bare])).toEqual([]);
+        expect(captureHint(off, [cells])).toEqual([]);
+        expect(captureHint(off, [{ ...bare, ownerID: "C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE" }])[0]).toBe("Read Office document details");
+    });
+
     it("says what it was, when, where the time went and idle, with some of its text apart", () => {
         const doc = activity({ document: { name: "Lease v3.docx", path: "/Users/me/Clients/Acme/Lease v3.docx", excerpt: "  LEASE AGREEMENT between Acme Corp,   as tenant " }, endedTo: "Outlook", idle: [{ startedAt: iso(60), endedAt: iso(600) }] });
         const item = describeItem([doc]);
-        expect(item.facts).toMatch(/^in Acme · [\d:]+ [AP]M–[\d:]+ [AP]M · switched to Outlook · 9 min idle$/);
+        expect(item.facts).toMatch(/^in Acme · [\d:]+ [AP]M–[\d:]+ [AP]M · 9 min idle$/);
         expect(item.text).toBe("“LEASE AGREEMENT between Acme Corp, as tenant”");
         expect(describeItem([activity({ document: { name: "x", path: null, excerpt: "a".repeat(300) } })]).text).toBe(`“${"a".repeat(159)}…”`);
         expect(describeItem([activity({ app: "Outlook", ownerID: "com.microsoft.outlook", document: { name: "Re: closing", path: null, excerpt: "From: Dana Whitfield · Re: closing" } })])).toMatchObject({ facts: expect.stringMatching(/^email · /), text: "“From: Dana Whitfield · Re: closing”" });

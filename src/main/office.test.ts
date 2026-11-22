@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OfficeProbe, PROBE_CACHE_MS, officeApp, parseProbeOutput } from "./office";
+import { OfficeProbe, PROBE_CACHE_MS, officeApp, officeExcerpt, parseProbeOutput } from "./office";
 
 describe("officeApp", () => {
     it("recognises the four Office apps by macOS bundle id and Windows executable", () => {
@@ -83,5 +83,29 @@ describe("OfficeProbe", () => {
         const probe = new OfficeProbe(null);
         expect(probe.supported).toBe(false);
         expect(await probe.probe("com.microsoft.Word")).toBeNull();
+    });
+});
+
+describe("what is on screen, as one line (2026-11-22)", () => {
+    it("Excel: the sheet, then each filled cell on screen with its address, from where the window is scrolled", () => {
+        // As the Mac script prints it: sheet, the visible range's address, then rows of tab-separated cells (empty ones too).
+        const raw = "Damages\n$C$10:$F$40\nClaimant\tAmount\t\t\nHarmon\t42,000\t\t\n\t\t\t\n\tTotal\t$57,950.50\t";
+        expect(officeExcerpt("excel", raw)).toBe("Sheet “Damages” · C10 Claimant · D10 Amount · C11 Harmon · D11 42,000 · D13 Total · E13 $57,950.50");
+        // Windows prints the address without dollars; columns past Z are two letters.
+        expect(officeExcerpt("excel", "Q1\nY1:AB2\n\t\tx\ty")).toBe("Sheet “Q1” · AA1 x · AB1 y");
+        expect(officeExcerpt("excel", "Only a sheet")).toBe("Sheet “Only a sheet”");
+        const doc = parseProbeOutput("NAME=Damages.xlsx\nPATH=/Users/a/Damages.xlsx\nTEXT=Damages\nA1:B2\nClaimant\tAmount\nHarmon\t42000", "excel");
+        expect(doc?.excerpt).toBe("Sheet “Damages” · A1 Claimant · B1 Amount · A2 Harmon · B2 42000");
+    });
+
+    it("PowerPoint: the slide on screen and its text; Word: the text around the cursor, paragraphs as spaces", () => {
+        expect(officeExcerpt("powerpoint", "2/12\nDamages summary\nLost wages $42,000\rMedical $12,850.50")).toBe("Slide 2 of 12 · Damages summary · Lost wages $42,000 · Medical $12,850.50");
+        expect(officeExcerpt("powerpoint", "")).toBe("");
+        expect(parseProbeOutput("NAME=Motion.docx\nPATH=/Users/a/Motion.docx\nTEXT=MOTION TO COMPEL\rParagraph 4. Plaintiff requests", "word")?.excerpt).toBe("MOTION TO COMPEL Paragraph 4. Plaintiff requests");
+    });
+
+    it("bounds a long sheet to the excerpt limit", () => {
+        const rows = Array.from({ length: 60 }, (_, i) => Array.from({ length: 26 }, (_, j) => `v${i}-${j}`).join("\t")).join("\n");
+        expect(parseProbeOutput(`NAME=Big.xlsx\nPATH=/a/Big.xlsx\nTEXT=Big\nA1:Z60\n${rows}`, "excel")!.excerpt!.length).toBeLessThanOrEqual(600);
     });
 });

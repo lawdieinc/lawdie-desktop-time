@@ -1,10 +1,10 @@
+import { createPortal } from "react-dom";
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createSharer, type AppState } from "@shared/state";
 import type { SittingSummary } from "@shared/model";
 import { importedRemaining } from "@shared/feed";
 import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, sameDayEntry, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, type Activity, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
-import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
-import { itemSummaries } from "@shared/summaries";
+import { captureHint, describeItem, inboxOf, knownMatters, matterStretch, sittingLine, toReview, type MatterGroup } from "@shared/matters";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
 import { ago, clock, dayLabel, duration, spanLabel, timeBlock } from "@shared/format";
 import { viewNow } from "@shared/demo";
@@ -942,18 +942,55 @@ function IdleTag({ seconds }: { seconds: number }): ReactNode {
 
 /** Screenshots of a row's time, oldest first: at most `max`, spread evenly; one opens full size in the system's viewer. */
 function Shots({ names, max = 6 }: { names: string[] | undefined; max?: number }): ReactNode {
+    const [viewing, setViewing] = useState<number | null>(null);
     if (!names?.length) return null;
     const sorted = [...names].sort((a, b) => screenshotTime(a) - screenshotTime(b));
     const shown = sorted.length <= max ? sorted : Array.from({ length: max }, (_, i) => sorted[Math.round((i * (sorted.length - 1)) / (max - 1))]);
+    const at = (n: string): string => clock(new Date(screenshotTime(n)).toISOString());
     return (
         <div className="shots">
             {shown.map((n) => (
-                <button key={n} type="button" className="shot" title={`Screenshot at ${clock(new Date(screenshotTime(n)).toISOString())}. Open full size`} onClick={() => void window.lawdie.openScreenshot(n)}>
-                    <img src={`lawdie-shot://shot/${n}`} alt={`Screenshot at ${clock(new Date(screenshotTime(n)).toISOString())}`} loading="lazy" draggable={false} />
+                <button key={n} type="button" className="shot" title={`Screenshot at ${at(n)}. Click to see it large`} onClick={() => setViewing(sorted.indexOf(n))}>
+                    <img src={`lawdie-shot://shot/${n}`} alt={`Screenshot at ${at(n)}`} loading="lazy" draggable={false} />
                 </button>
             ))}
-            {sorted.length > shown.length && <span className="tiny muted">{sorted.length} screenshots</span>}
+            {sorted.length > shown.length && <button type="button" className="link tiny" title="See every screenshot of this, large" onClick={() => setViewing(0)}>{sorted.length} screenshots</button>}
+            {viewing !== null && <ShotViewer names={sorted} start={viewing} onClose={() => setViewing(null)} />}
         </div>
+    );
+}
+
+/** A screenshot large, inside the app (2026-11-22: "no way to view the underlying screenshot"): ← and → step through the others of the same time, Escape or a click outside closes. */
+function ShotViewer({ names, start, onClose }: { names: string[]; start: number; onClose: () => void }): ReactNode {
+    const [n, setN] = useState(start);
+    const go = useCallback((step: number): void => setN((x) => Math.min(names.length - 1, Math.max(0, x + step))), [names.length]);
+    useEffect(() => {
+        const key = (e: globalThis.KeyboardEvent): void => {
+            if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+            else if (e.key === "ArrowLeft") go(-1);
+            else if (e.key === "ArrowRight") go(1);
+        };
+        document.addEventListener("keydown", key, true);
+        return () => document.removeEventListener("keydown", key, true);
+    }, [go, onClose]);
+    const name = names[n];
+    const when = clock(new Date(screenshotTime(name)).toISOString());
+    return createPortal(
+        <div className="scrim shot-viewer" onClick={onClose}>
+            <figure onClick={(e) => e.stopPropagation()}>
+                <img src={`lawdie-shot://shot/${name}`} alt={`Screenshot at ${when}`} draggable={false} />
+                <figcaption className="row between">
+                    <button type="button" className="quiet" disabled={n === 0} title="The screenshot before (←)" onClick={() => go(-1)}>‹ Before</button>
+                    <span className="small muted">Screenshot {n + 1} of {names.length} · {when}</span>
+                    <span className="row gap">
+                        <button type="button" className="quiet" title="Open this screenshot in your computer's image viewer" onClick={() => void window.lawdie.openScreenshot(name)}>Open in viewer</button>
+                        <button type="button" className="quiet" disabled={n === names.length - 1} title="The screenshot after (→)" onClick={() => go(1)}>After ›</button>
+                        <button type="button" className="primary" title="Close (Escape)" onClick={onClose}>Close</button>
+                    </span>
+                </figcaption>
+            </figure>
+        </div>,
+        document.body,
     );
 }
 
@@ -1107,15 +1144,17 @@ function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, a
                     {g.documents.map((d) => (
                         <div className="sitting" key={`${d.app}\n${d.name}`}>
                             <span className="sitting-dot" aria-hidden="true" />
-                            <div className="grow item-body">
-                                <div><span className="small">{d.name}</span> <span className="tiny muted">{d.app}{d.activityIDs.length > 1 ? ` · ${d.activityIDs.length} sittings` : ""}</span></div>
-                                <SummaryLines items={w.activities.filter((a) => d.activityIDs.includes(a.id))} />
-                                <SittingTimes acts={row.sittings.filter((a) => d.activityIDs.includes(a.id))} notify={notify} />
-                                {((item) => <>
-                                    <div className="tiny muted">{item.facts}</div>
-                                    {item.text && <div className="tiny muted item-text">{item.text}</div>}
-                                </>)(describeItem(w.activities.filter((a) => d.activityIDs.includes(a.id)), w.activities, { noSpan: row.sittings.some((a) => d.activityIDs.includes(a.id) && timesEditable(a)) }))}
-                            </div>
+                            {((acts) => (
+                                <div className="grow item-body">
+                                    <SittingLine items={acts} w={w} />
+                                    {((item, line) => <>
+                                        <div className="tiny muted">{[d.name !== d.app ? d.name : "", d.activityIDs.length > 1 ? `${d.activityIDs.length} sittings` : "", item.facts].filter(Boolean).join(" · ")}</div>
+                                        <SittingTimes acts={row.sittings.filter((a) => d.activityIDs.includes(a.id))} notify={notify} />
+                                        {item.text && !line.fromText && <div className="tiny muted item-text">{item.text}</div>}
+                                    </>)(describeItem(acts, w.activities, { noSpan: row.sittings.some((a) => d.activityIDs.includes(a.id) && timesEditable(a)) }), sittingLine(acts))}
+                                    <Shots names={acts.flatMap((a) => a.screenshots ?? [])} max={4} />
+                                </div>
+                            ))(w.activities.filter((a) => d.activityIDs.includes(a.id)))}
                             <span className="mono small">{duration(d.seconds)}</span>
                             <MatterMenu w={w} ids={d.activityIDs} current={g.matter} what={d.name} label="Move…" className="link sitting-dismiss" onMoved={onMoved} />
                             <button type="button" className="link sitting-dismiss" title={`Dismiss ${d.activityIDs.length === 1 ? "this sitting" : `these ${d.activityIDs.length} sittings`}; the rest of the matter stays to review`} onClick={() => void window.lawdie.dismissActivity(d.activityIDs)}>Dismiss</button>
@@ -1146,10 +1185,10 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
                             <MatterLabel name={null} />
                         </Editable>
                     </MatterLine>
-                    {st.sittings === 1 && <SummaryLines items={row.sittings} />}
+                    {st.sittings === 1 && <SittingLine items={row.sittings} w={w} />}
                     <Shots names={row.sittings.flatMap((a) => a.screenshots ?? [])} />
                     <div className="muted tiny meta">
-                        <span>{st.app}{st.name !== st.app ? ` · ${st.name}` : ""} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : `${clock(st.startedAt)} · ${endedText(st, w.activities)}`}{meetingWith(row.sittings[0])}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(row.sittings)} /></span>
+                        <span>{st.app}{st.name !== st.app ? ` · ${st.name}` : ""} · {dayLabel(st.startedAt)} {st.sittings > 1 ? spanLabel(st.startedAt, st.endedAt, st.sittings) : ((ended) => `${clock(st.startedAt)}${ended && !ended.startsWith("switched to ") ? ` · ${ended}` : ""}`)(endedText(st, w.activities))}{meetingWith(row.sittings[0])}{st.document?.path ? ` · ${st.document.path}` : ""}<IdleTag seconds={idleSeconds(row.sittings)} /></span>
                         {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={open} onClick={onToggle} />}
                     </div>
                     {st.sittings === 1 && <SittingTimes acts={row.sittings} notify={notify} />}
@@ -1159,7 +1198,7 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
                 <RowActions w={w} row={row} match={match} what={own?.text ?? st.name} dismissTip="Take this stretch out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
             </div>
             {open && st.sittings > 1 && (
-                <Sittings all={w.activities} items={row.sittings} onDismiss={(id) => void window.lawdie.dismissActivity(id)} notify={notify} />
+                <Sittings all={w.activities} prefs={w.preferences} items={row.sittings} onDismiss={(id) => void window.lawdie.dismissActivity(id)} notify={notify} />
             )}
         </div>
     );
@@ -1204,13 +1243,26 @@ function PersonalRow({ groups, open, onToggle }: { groups: MatterGroup[]; open: 
 const summaryTitle = (x: SittingSummary): string => `What this sitting was: Kiwi's AI read ${x.screenshot ? "what was captured and a screenshot of it" : "what was captured"}.`;
 
 /** Kiwi's one-line summaries of the sittings under an item or row (src/shared/summaries.ts), each distinct one once. */
-function SummaryLines({ items }: { items: readonly (Activity | undefined)[] }): ReactNode {
-    const list = items.filter((a): a is Activity => !!a);
-    const lines = itemSummaries(list);
-    if (!lines.length) return null;
-    const shot = list.some((a) => a.summary?.screenshot);
-    return <>{lines.map((t) => <div key={t} className="tiny sitting-summary" title={summaryTitle({ text: t, source: "kiwi", ...(shot ? { screenshot: true as const } : {}) })}>{t}</div>)}</>;
+/**
+ * A sitting's line (2026-11-22): "Switched to Excel — what it was", the summary (✦, Kiwi's) or else the text capture read
+ * of it; with nothing to say, which switches in Settings → Capture would have said it. `w` or `prefs` gives the switches.
+ */
+function SittingLine({ items, w, prefs = w?.preferences }: { items: readonly Activity[]; w?: Workspace; prefs?: Workspace["preferences"] }): ReactNode {
+    const line = sittingLine(items);
+    if (!line.lead) return null;
+    const hint = prefs ? captureHint(prefs, items) : [];
+    const shot = items.some((a) => a.summary?.screenshot);
+    const tip = line.fromText ? "What capture read on the screen of this sitting." : summaryTitle({ text: line.what[0] ?? "", source: "kiwi", ...(shot ? { screenshot: true as const } : {}) });
+    return (
+        <>
+            {line.what.length ? line.what.map((t, n) => (
+                <div key={t} className="small sitting-line" title={tip}>{n === 0 && <strong>{line.lead}</strong>}<span className={line.fromText ? "sitting-text" : "sitting-what"}>{n === 0 ? " — " : "— "}{!line.fromText && <span className="ai-mark" aria-hidden="true">✦ </span>}{t}</span></div>
+            )) : <div className="small sitting-line"><strong>{line.lead}</strong></div>}
+            {hint.length > 0 && <div className="tiny muted capture-hint" title="Settings → Capture">Turn on {hint.join(", ").replace(/, ([^,]*)$/, " and $1")} in Settings → Capture to see what this was.</div>}
+        </>
+    );
 }
+
 
 /** "6 sittings ▾": the count is the control that opens them. */
 function SittingsToggle({ label, open, onClick, what = "the sittings" }: { label: string; open: boolean; onClick: () => void; what?: string }): ReactNode {
@@ -1225,7 +1277,7 @@ function SittingsToggle({ label, open, onClick, what = "the sittings" }: { label
 /** The sittings inside a stretch or a kept entry as a timeline: each sitting on the rail,
  *  the time away between two of them named, and, while a stretch is still under review,
  *  a Dismiss on each that drops it from the stretch. */
-function Sittings({ items, all, onDismiss, notify }: { items: (Interval & { id?: string; endedBy?: string; endedTo?: string })[]; all?: readonly Activity[]; onDismiss?: (id: string) => void; notify?: (text: string) => void }): ReactNode {
+function Sittings({ items, all, prefs, onDismiss, notify }: { items: (Interval & { id?: string; endedBy?: string; endedTo?: string })[]; all?: readonly Activity[]; prefs?: Workspace["preferences"]; onDismiss?: (id: string) => void; notify?: (text: string) => void }): ReactNode {
     return (
         <div className="sittings">
             {items.map((i, n) => {
@@ -1237,9 +1289,8 @@ function Sittings({ items, all, onDismiss, notify }: { items: (Interval & { id?:
                         <div className="sitting">
                             <span className="sitting-dot" aria-hidden="true" />
                             {((a) => (a && notify ? <TimeEdit a={a} notify={notify} /> : <span className="small">{clock(i.startedAt)}–{clock(i.endedAt)}</span>))(i.id ? all?.find((x) => x.id === i.id) : undefined)}
-                            {i.endedBy && <span className="tiny muted">{endedText(i, all)}</span>}
-                            {((summary) => summary && <span className="tiny sitting-summary" title={summaryTitle(summary)}>{summary.text}</span>)(i.id ? all?.find((a) => a.id === i.id)?.summary : undefined)}
-                            <span className="grow" />
+                            {/* Each sitting reads "Switched to Excel — what it was", with its screenshots; one not found says where the time went. */}
+                            {((a, ended) => (a ? <span className="grow item-body"><SittingLine items={[a]} prefs={prefs} />{ended && !ended.startsWith("switched to ") && <span className="tiny muted">{ended}</span>}<Shots names={a.screenshots} max={3} /></span> : <>{ended && <span className="tiny muted">{ended}</span>}<span className="grow" /></>))(i.id ? all?.find((x) => x.id === i.id) : undefined, i.endedBy ? endedText(i, all) : "")}
                             <span className="mono small">{duration((Date.parse(i.endedAt) - Date.parse(i.startedAt)) / 1000)}</span>
                             {onDismiss && i.id && <button type="button" className="link sitting-dismiss" title="Drop this sitting from the stretch." onClick={() => onDismiss(i.id as string)}>Dismiss</button>}
                         </div>
@@ -1674,14 +1725,14 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 <Setting title="Include window titles" detail={isMac ? "Optional context such as document names. Titles may contain sensitive information. macOS asks for Screen Recording permission the first time." : "Optional context such as document names. Titles may contain sensitive information."}>
                     <Toggle on={p.captureTitles} onChange={(v) => set("captureTitles", v)} label="Include window titles" tip={{ on: "Stop reading window titles.", off: "Read window titles for more context." }} />
                 </Setting>
-                <Setting title="Take screenshots" detail={`A picture of the window you are working in, once you have been in it 20 seconds and then every 5 minutes, so you can see what the time was when you review it. Screenshots show whatever is on that window, client documents included. They stay on this ${label} and are never synced to Kiwi or Lawdie CRM. With AI suggestions on, Kiwi's AI reads one of each sitting, made smaller, to say in a line what the sitting was; it keeps nothing, and screenshots cannot have personal details removed the way text does. Those of time you dismiss are deleted; those of time you keep stay with the entry until you delete it. Never of browsers, private apps or this app.${isMac ? " macOS asks for Screen Recording permission." : ""}`}>
+                <Setting title="Take screenshots" detail={`A picture of the window you are working in, once you have been in it 20 seconds and then every 5 minutes, so you can see what the time was when you review it. Screenshots show whatever is on that window, client documents included. They stay on this ${label} and are never synced to Kiwi or Lawdie CRM. With AI suggestions on, Kiwi's AI reads up to three of each sitting, made smaller, to say in a line what the sitting was; it keeps nothing, and screenshots cannot have personal details removed the way text does. Those of time you dismiss are deleted; those of time you keep stay with the entry until you delete it. Never of browsers, private apps or this app.${isMac ? " macOS asks for Screen Recording permission." : ""}`}>
                     <Toggle on={p.captureScreenshots === true} onChange={(v) => set("captureScreenshots", v)} label="Take screenshots" tip={{ on: "Stop taking screenshots.", off: "Take a screenshot of the window in front now and then, kept on this computer." }} />
                 </Setting>
-                <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and its first few lines (Outlook: the sender and subject). Kiwi or Lawdie CRM uses these to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
-                    <Toggle on={p.captureDocuments} onChange={(v) => set("captureDocuments", v)} label="Read Office document details" tip={{ on: "Stop reading Office document details.", off: "Read the open Office document's name and first lines." }} />
+                <Setting title="Read Office document details" detail={`For Word, Excel, PowerPoint and Outlook: the open document's name, where it is saved, and what you are looking at in it: the cells on screen in Excel, the text around your cursor in Word, the slide on screen in PowerPoint, the sender, subject and message in Outlook. It says what each sitting was, and Kiwi or Lawdie CRM uses it to match your time to a matter. ${isMac ? "macOS asks once whether Time Capture may control each app." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
+                    <Toggle on={p.captureDocuments} onChange={(v) => set("captureDocuments", v)} label="Read Office document details" tip={{ on: "Stop reading Office document details.", off: "Read the open Office document's name and what is on screen in it." }} />
                 </Setting>
                 {p.captureDocuments && office && !office.supported && <p className="muted tiny">Not available on this platform.</p>}
-                <Setting title="Read on-screen text" detail={`For apps other than Office and browsers, such as Acrobat, Teams or your practice software: some of the text the window in front shows, read through ${isMac ? "macOS Accessibility" : "Windows UI Automation"}, the channel screen readers use. No screenshots. Password fields are never read, at most ${SCREEN_TEXT_MAX} characters are kept per stretch on this ${label}, and they reach Kiwi only to name the matter when matter suggestions are on. ${isMac ? "macOS asks once for Accessibility permission." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
+                <Setting title="Read on-screen text" detail={`For apps other than Office and browsers, such as Acrobat, Teams or your practice software: some of the text the window in front shows, read through ${isMac ? "macOS Accessibility" : "Windows UI Automation"}, the channel screen readers use. No screenshots. Password fields are never read, at most ${SCREEN_TEXT_MAX} characters are kept per sitting on this ${label}, read again about once a minute so the latest stands, and they reach Kiwi only for AI suggestions. ${isMac ? "macOS asks once for Accessibility permission." : state.platform === "win32" ? "Nothing to grant on Windows." : "Not available on Linux."}`}>
                     <Toggle on={p.captureScreenText} onChange={(v) => set("captureScreenText", v)} label="Read on-screen text" tip={{ on: "Stop reading text from the window in front.", off: "Read some text from the window in front." }} />
                 </Setting>
                 {p.captureScreenText && screen && !screen.supported && <p className="muted tiny">Not available on this platform.</p>}
@@ -1692,7 +1743,7 @@ function Settings({ state, now, onRules, onTour, onWelcome, onWhatsNew }: { stat
                 {p.captureDocuments && office && Object.entries(office.errors).map(([app, message]) => (
                     <p key={app} className="danger tiny">{{ word: "Word", excel: "Excel", powerpoint: "PowerPoint", outlook: "Outlook" }[app] ?? app} did not answer: {message}</p>
                 ))}
-                <Setting title="AI suggestions" detail="Kiwi's AI names the matter of your finished, unreviewed activity (so the inbox shows a matter's day across every app as one row), says in a line what each sitting was, drafts a billing description for each row, and writes an insight on each matter's page. It sees titles, Office document details and on-screen text with personal details already removed, one screenshot of each sitting when screenshots are on, and your kept entries' descriptions and times. The activity in progress is never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
+                <Setting title="AI suggestions" detail="Kiwi's AI names the matter of your finished, unreviewed activity (so the inbox shows a matter's day across every app as one row), says in a line what each sitting was, drafts a billing description for each row, and writes an insight on each matter's page. It sees titles, Office document details and on-screen text with personal details already removed, up to three screenshots of each sitting when screenshots are on, and your kept entries' descriptions and times. The activity in progress is never sent. Needs this computer connected to Kiwi below. Off until you switch it on.">
                     <Toggle on={p.suggestMatters} onChange={(v) => set("suggestMatters", v)} label="AI suggestions" tip={{ on: "Stop asking Kiwi's AI for matters and descriptions.", off: "Let Kiwi's AI name matters and draft descriptions." }} />
                 </Setting>
                 <Setting title="Bring in browser and Kiwi time" detail="Import captured titles and page addresses from Kiwi for review here. AI suggestions also use imported titles. Pausing stops new imports; time already brought in stays assigned to this workspace.">

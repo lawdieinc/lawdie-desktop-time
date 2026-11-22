@@ -107,16 +107,15 @@ export class Matters {
         }
     }
 
-    /** A line for each finished sitting, a batch at a time, with its screenshot made small when it has one. */
+    /** A line for each finished sitting, a batch at a time, with its screenshots made small when it has some. */
     private async summarise(client: KiwiClient): Promise<void> {
         const rounds = this.summaryBacklogCleared ? SUMMARY_ROUNDS : SUMMARY_BACKLOG_ROUNDS;
         for (let round = 0; round < rounds; round++) {
             const request = summaryRequest(this.store.workspace, this.unansweredSittings);
             if (!request) { this.summaryBacklogCleared = true; break; }
             for (const s of request.body.sittings) {
-                const shot = request.shots[s.id];
-                const image = shot ? this.shots.forSummary(shot) : null;
-                if (image) s.image = image; else delete request.shots[s.id];
+                const images = (request.shots[s.id] ?? []).map((shot) => this.shots.forSummary(shot)).filter((x): x is string => !!x);
+                if (images.length) { s.images = images; s.image = images[0]; } else delete request.shots[s.id];
             }
             const answer = await client.summaries(request.body);
             if (!this.store.workspace.preferences.suggestMatters) break;

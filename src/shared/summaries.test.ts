@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { draftRequest, matterRequest } from "./matters";
 import { capturedWhy, emptyWorkspace, PERSONAL, syncRequest, validate, type Activity, type SyncTarget, type Workspace } from "./model";
-import { applySummaries, itemSummaries, SUMMARY_BATCH, SUMMARY_IMAGES, summaryRequest, summaryShot } from "./summaries";
+import { applySummaries, itemSummaries, SUMMARY_BATCH, SUMMARY_IMAGES, summaryRequest, summaryShot, summaryShots } from "./summaries";
 
 const EPOCH = 1_780_000_000_000;
 const at = (s: number) => EPOCH + s * 1000;
@@ -43,7 +43,7 @@ describe("which sittings are summarised", () => {
         const a = activity({ title: null });
         a.screenshots = [shot(a.id, 30)];
         const w = workspace([a]);
-        expect(summaryRequest(w)?.shots).toEqual({ [a.id]: shot(a.id, 30) });
+        expect(summaryRequest(w)?.shots).toEqual({ [a.id]: [shot(a.id, 30)] });
         w.preferences.captureScreenshots = false;
         expect(summaryRequest(w)).toBeNull();
     });
@@ -133,5 +133,21 @@ describe("where a summary goes", () => {
         const w = workspace([a]);
         w.sync = { autoSync: true, targets: [target] };
         expect(JSON.stringify(syncRequest(w, "1", null, target))).not.toContain("Smith lease");
+    });
+});
+
+describe("several screenshots of a sitting (2026-11-22)", () => {
+    it("sends up to three spread across it, in time order, and counts each toward the request's limit", () => {
+        const long = activity({ endedAt: iso(3600) });
+        long.screenshots = [0, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300].map((s) => shot(long.id, s));
+        const w = workspace([long]);
+        expect(summaryShots(w, long)).toEqual([shot(long.id, 600), shot(long.id, 1800), shot(long.id, 3000)]);
+        const two = activity(); two.screenshots = [shot(two.id, 400), shot(two.id, 100)];
+        expect(summaryShots(workspace([two]), two)).toEqual([shot(two.id, 100), shot(two.id, 400)]);
+        // Twelve sittings of three each: the request stops at SUMMARY_IMAGES pictures, the last one trimmed.
+        const many = Array.from({ length: 12 }, (_, k) => { const a = activity({ startedAt: iso(k * 4000), endedAt: iso(k * 4000 + 3600) }); a.screenshots = [600, 1800, 3000].map((s) => shot(a.id, k * 4000 + s)); return a; });
+        const r = summaryRequest(workspace(many))!;
+        expect(Object.values(r.shots).flat()).toHaveLength(SUMMARY_IMAGES);
+        expect(Object.values(r.shots).map((x) => x.length).sort()).toEqual([2, 3, 3, 3, 3, 3, 3]);
     });
 });

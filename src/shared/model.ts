@@ -1421,8 +1421,9 @@ export function observe(w: Workspace, foreground: Observation, now: number, idle
         w.currentActivity.endedAt = iso(now);
         if (safeTitle && w.currentActivity.title === "") w.currentActivity.title = safeTitle;
         if (document) w.currentActivity.document = document;
-        // The first text read stands for the segment: scrolling is not other work.
-        if (screenText && !w.currentActivity.screenText) w.currentActivity.screenText = screenText;
+        // The latest text read stands for the segment, as an Office excerpt does (2026-11-22: a sitting should say what was
+        // worked on, and a long one moves on from its first screen). Scrolling is still not other work: it never splits.
+        if (screenText) w.currentActivity.screenText = screenText;
     }
     if (!foreground.call && idleSeconds >= IDLE_FLAG_SECONDS) flagIdle(w.currentActivity, now - idleSeconds * 1000, now);
 }

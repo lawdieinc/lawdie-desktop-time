@@ -4,8 +4,9 @@
    which needs the Accessibility permission once; on Windows a PowerShell script asks UI
    Automation for the foreground window, which needs nothing. Both skip password fields,
    menus, toolbars and buttons, prefer the part of a long text that is on screen, and stop
-   at a length and time budget. Read once per window title (a new document or page is a
-   new title) rather than every sample. Office and browsers never come here (capture.ts);
+   at a length and time budget. Read at most once a minute per window title rather than every sample, and the
+   latest read stands for the sitting (observe()). Browsers never come here, nor Office while its document details are
+   on (capture.ts: then Office is asked directly);
    cleanScreenText() bounds what is kept. parseScreenText() (src/shared/model.ts) is what
    the tests cover; the readers are exercised by hand against real apps. */
 

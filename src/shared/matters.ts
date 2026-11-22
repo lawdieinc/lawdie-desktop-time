@@ -12,7 +12,7 @@
 
 import { duration, spanLabel } from "./format";
 import { callApp } from "./calls";
-import { DRAFT_MAX, INSIGHT_MAX, MATTER_MAX, NOISE_SECONDS, PERSONAL, endedText, idleSeconds, intervals, isMail, isPersonal, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Stretch, type Workspace } from "./model";
+import { DRAFT_MAX, INSIGHT_MAX, MANUAL_OWNER_ID, MATTER_MAX, NOISE_SECONDS, PERSONAL, endedText, idleSeconds, intervals, isMail, isPersonal, project, seconds as entrySeconds, stretchesOf, type Activity, type Draft, type Preferences, type Stretch, type Workspace } from "./model";
 
 /** Activities per request (Kiwi's limit); the rest wait for the next round. */
 export const MATTER_BATCH = 150;
@@ -135,6 +135,54 @@ export type MatterGroup = {
 /** Up to this many characters of a document's or window's text under an item. */
 const ITEM_TEXT_MAX = 160;
 
+/** The lines an item of several sittings shows: each distinct summary, in order, at most `max`. */
+export function itemSummaries(items: readonly Pick<Activity, "startedAt" | "summary">[], max = 3): string[] {
+    const out: string[] = [];
+    for (const a of [...items].sort((x, y) => ms(x.startedAt) - ms(y.startedAt))) {
+        const t = a.summary?.text;
+        if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t);
+    }
+    return out.slice(0, max);
+}
+
+/** Up to this many characters of a sitting's text when it stands in for a summary on the sitting's line. */
+const LINE_TEXT_MAX = 140;
+
+/**
+ * A sitting's line (2026-11-22: "it should be like switched to excel - summary"): "Switched to Excel" (`lead`) and what the work
+ * was: the AI summaries of its sittings, else the text capture read of it (Excel's cells, the Word paragraph, the slide,
+ * the on-screen text) cut to a line, else nothing. `fromText` says the line is the captured text, not a summary.
+ */
+export function sittingLine(items: readonly Activity[]): { lead: string; what: string[]; fromText: boolean } {
+    const sorted = [...items].sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
+    const first = sorted[0];
+    // Time not switched to on this computer (added by hand, from the calendar, brought in from Kiwi) is named as itself.
+    const lead = !first ? "" : first.ownerID === MANUAL_OWNER_ID || first.origin || first.ownerID.startsWith("calendar:") ? first.app : `Switched to ${first.app}`;
+    const summaries = itemSummaries(sorted);
+    if (summaries.length) return { lead, what: summaries, fromText: false };
+    const seen = sorted.map((a) => (a.document?.excerpt || a.screenText || "").replace(/\s+/g, " ").trim()).find(Boolean);
+    return { lead, what: seen ? [seen.length > LINE_TEXT_MAX ? `${seen.slice(0, LINE_TEXT_MAX - 1).trimEnd()}…` : seen] : [], fromText: !!seen };
+}
+
+const OFFICE_IDS = /^com\.microsoft\.(word|excel|powerpoint|outlook)$|(^|[\\/])(winword|excel|powerpnt|outlook|olk)\.exe$/i;
+
+/**
+ * When a sitting has nothing to say what it was, the switches in Settings → Capture that would have said it, by their
+ * labels there; empty when it has something, or when nothing more could be read (imported or calendar time, a call,
+ * time added by hand, or every switch already on).
+ */
+export function captureHint(p: Pick<Preferences, "captureDocuments" | "captureScreenText" | "captureScreenshots" | "suggestMatters">, items: readonly Activity[]): string[] {
+    const first = items[0];
+    if (!first || sittingLine(items).what.length || first.origin || first.meeting || first.ownerID === MANUAL_OWNER_ID || first.ownerID.startsWith("calendar:") || callApp(first.ownerID)) return [];
+    const office = OFFICE_IDS.test(first.ownerID);
+    return [
+        ...(office && !p.captureDocuments ? ["Read Office document details"] : []),
+        ...(!office && !p.captureScreenText ? ["Read on-screen text"] : []),
+        ...(p.captureScreenshots !== true ? ["Take screenshots"] : []),
+        ...(!p.suggestMatters ? ["AI suggestions"] : []),
+    ];
+}
+
 /**
  * What one item inside a matter's row shows of the work (2026-11-06, "a brief description of
  * what happened inside the app"): what it was (a document's folder, an email, a call, a web
@@ -164,9 +212,10 @@ export function describeItem(items: readonly Activity[], all: readonly Activity[
     const text = seen ? (seen.length > ITEM_TEXT_MAX ? `“${seen.slice(0, ITEM_TEXT_MAX - 1).trimEnd()}…”` : `“${seen}”`) : null;
     const spans = sorted.flatMap((a) => intervals(a)).sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
     if (!opts.noSpan) parts.push(spanLabel(spans[0].startedAt, spans[spans.length - 1].endedAt, spans.length));
-    const last = sorted[sorted.length - 1];
-    const next = endedText(last, all);
-    if (next) parts.push(next);
+    // Where the time went next, unless it was to another app here: that is the next sitting's own line ("Switched to
+    // Outlook — …", sittingLine). A browser, the lock screen, a pause or the calendar is still said.
+    const next = endedText(sorted[sorted.length - 1], all);
+    if (next && !next.startsWith("switched to ")) parts.push(next);
     const idle = idleSeconds(sorted);
     if (idle >= 60) parts.push(`${Math.round(idle / 60)} min idle`);
     if (sorted.some((x) => x.timeEdited)) parts.push("time changed by you");
