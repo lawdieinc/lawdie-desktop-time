@@ -1188,6 +1188,27 @@ export function keptMatch(w: Workspace, activityIDs: readonly string[]): TimeEnt
 }
 
 /**
+ * The kept entry that new time on a matter joins when it is kept (2026-11-21: "merge automatically", after renaming a row
+ * to a matter that already had time kept that day kept a second entry, or asked, depending on which time came first):
+ * an entry from this computer on the same matter, started the same local day as the time, confirmed (not suggested,
+ * flagged or on an invoice) and not one the person said this time is separate from. The latest, when there are several.
+ */
+export function sameDayEntry(w: Workspace, activityIDs: readonly string[], matter: string | null): TimeEntry | null {
+    const name = matter?.trim().toLowerCase();
+    if (!name || isPersonal(matter)) return null;
+    const rows = activityIDs.map((id) => w.activities.find((a) => a.id === id)).filter((a): a is Activity => !!a && a.disposition === "pending");
+    if (!rows.length) return null;
+    const day = dayOf(Math.min(...rows.map((a) => ms(a.startedAt))));
+    const declined = new Set(rows.flatMap((a) => a.separateFrom ?? []));
+    const invoiced = new Set((w.invoices ?? []).flatMap((i) => i.entryIDs));
+    const candidates = w.entries.filter((e) => e.source === "desktop" && (!e.status || e.status === "draft") && !declined.has(e.id) && !invoiced.has(e.id)
+        && project(w, e.projectID)?.name.trim().toLowerCase() === name && dayOf(ms(e.startedAt)) === day);
+    return candidates.sort((x, y) => ms(y.endedAt) - ms(x.endedAt))[0] ?? null;
+}
+
+const dayOf = (t: number): string => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+
+/**
  * Merge new time into a kept entry: the entry is deleted (Kiwi and the CRM are told), its
  * sittings go back to review with the new ones as one row, carrying its matter and
  * description, to be kept again.

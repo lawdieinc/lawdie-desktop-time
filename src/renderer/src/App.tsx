@@ -2,7 +2,7 @@ import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffec
 import { createSharer, type AppState } from "@shared/state";
 import type { SittingSummary } from "@shared/model";
 import { importedRemaining } from "@shared/feed";
-import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, type Activity, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
+import { IDLE_FLAG_SECONDS, MATTER_MAX, NOISE_SECONDS, existingMatter, isPersonal, descriptionOf, keptMatch, sameDayEntry, endedText, idleSeconds, PERSONAL, SCREEN_TEXT_MAX, TEXT_SIZES, screenshotTime, STRETCH_GAP_MS, intervals, seconds as entrySeconds, secondsWithin, type Activity, type DraftSource, type Interval, type PrivateStretch, type ClientRulebook, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "@shared/model";
 import { describeItem, inboxOf, knownMatters, matterStretch, toReview, type MatterGroup } from "@shared/matters";
 import { itemSummaries } from "@shared/summaries";
 import { DESTINATION_LABELS, PRODUCTS, destinationLabel, pairHint, productsFor, type Destination, type Product } from "@shared/kiwi";
@@ -426,6 +426,13 @@ function matterGroups(w: Workspace, list: readonly TimeEntry[]): { key: string; 
     return [...groups.values()].sort((a, b) => Number(!a.project) - Number(!b.project));
 }
 
+/** Kept entries by the day they started, in the list's order (the Kept tab, like the Time page). */
+function keptByDay(list: readonly TimeEntry[]): [string, TimeEntry[]][] {
+    const days = new Map<string, TimeEntry[]>();
+    for (const e of list) { const k = dayKey(Date.parse(e.startedAt)); if (!days.has(k)) days.set(k, []); days.get(k)!.push(e); }
+    return [...days.entries()];
+}
+
 /** "4.4 h billed under Northlake rules": the group's billed hours in the bill on screen (no-charge lines left out). */
 function billedTip(bill: AppliedBill, entries: readonly TimeEntry[]): string {
     const ids = new Set(entries.map((e) => e.id));
@@ -516,8 +523,9 @@ function ActivityScreen({ w, state, tutorial = null, focus = null, onFocused = (
     /** Each review row that looks like more of a kept entry (by its first activity), and each such entry's waiting rows. */
     const { matches, waiting } = useMemo(() => {
         const matches = new Map<string, TimeEntry>(), waiting = new Map<string, string[][]>();
-        for (const ids of pendingRows.map((r) => ("group" in r ? r.group.activityIDs : r.stretch.activityIDs))) {
-            const m = keptMatch(w, ids);
+        for (const [ids, matter] of pendingRows.map((r): [string[], string | null] => ("group" in r ? [r.group.activityIDs, r.group.matter] : [r.stretch.activityIDs, null]))) {
+            // A row on a matter with time kept that day merges at Approve, so it is not asked about (sameDayEntry).
+            const m = sameDayEntry(w, ids, matter) ? null : keptMatch(w, ids);
             if (!m) continue;
             matches.set(ids[0], m);
             waiting.set(m.id, [...(waiting.get(m.id) ?? []), ids]);
@@ -552,7 +560,8 @@ function ActivityScreen({ w, state, tutorial = null, focus = null, onFocused = (
             const left = new Set(report.skipped.map((x) => x.activityIDs.join("\n")));
             setTicked((t) => new Set([...t].filter((id) => !list.some((r) => r.id === id) || left.has(rowByID.get(id)?.stretch.activityIDs.join("\n") ?? ""))));
             const one = list.length === 1 && report.kept.length === 1 ? report.kept[0] : null;
-            if (one) notify(`Kept “${one.label}” on ${list[0].matter}: ${hoursText(one.hours)} hr.`);
+            if (one?.into) notify(`Merged into “${one.into}”, already kept on ${list[0].matter} that day: ${hoursText(one.total ?? one.hours)} hr now.`, 10000);
+            else if (one) notify(`Kept “${one.label}” on ${list[0].matter}: ${hoursText(one.hours)} hr.`);
             else notify(approveSummary(report), 12000);
         } finally { setApproving(false); }
     };
@@ -628,31 +637,46 @@ function ActivityScreen({ w, state, tutorial = null, focus = null, onFocused = (
                 ) : filter === "kept" ? (
                     kept.length === 0 ? (
                         <Empty title="Nothing kept yet." detail="Keep a stretch from To review and it appears here as the entry it became." />
-                    ) : <>{kept.slice(0, shown).map((e) => {
-                        const spans = intervals(e);
-                        const first = byID.get(e.activityID as string);
-                        return (
-                            <div key={e.id}>
-                                <div className="activity">
-                                    <span className="app-icon">▭</span>
-                                    <div className="grow">
-                                        <div className="small strong">{e.description} <AiTag source={e.drafted} /></div>
-                                        <Shots names={e.screenshots} />
-                                        <div className="muted tiny meta">
-                                            <span><MatterLabel name={w.projects.find((x) => x.id === e.projectID)?.name} /> · {first ? `${first.app} · ` : ""}{dayLabel(e.startedAt)} {clock(e.startedAt)}–{clock(e.endedAt)}{e.billable ? " · billable" : " · not billable"}</span>
-                                            {spans.length > 1 && <SittingsToggle label={`${spans.length} sittings`} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
-                                        </div>
-                                    </div>
-                                    <HoursEdit hours={entryHours(e)} title={`${timeBlock(e)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(e.id, { hours: h }); }} />
-                                    <span className="muted small status kept">Kept</span>
-                                    <CopyButton icon className="quiet icon-btn" text={e.description} what="this entry's narrative" />
-                                    <button type="button" className="quiet icon-btn delete" aria-label="Delete entry" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}><Icon name="trash" /></button>
-                                </div>
-                                {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
-                                {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entryID={e.id} byID={byID} increment={incrementOf(w.preferences)} />}
+                    ) : <>{keptByDay(kept.slice(0, shown)).map(([k, list]) => (
+                        <div key={k}>
+                            <div className="row between day-head">
+                                <span className="eyebrow">{dayLabel(list[0].startedAt)}</span>
+                                <span className="muted tiny mono">{hr(sumHours(list))} · billable {hr(sumHours(list.filter((e) => e.billable)))}</span>
                             </div>
-                        );
-                    })}<ShowMore shown={Math.min(shown, kept.length)} total={kept.length} what="entries" {...more} /></>
+                            {matterGroups(w, list).map((g) => (
+                                <section className="entry-group" key={g.key}>
+                                    <GroupHead title={g.project?.name ?? "No matter yet"}
+                                        tip={g.project ? (g.project.client ? `Billed to ${g.project.client.replace(/\.?$/, ".")}` : "No client is set for this matter.") : "Time Lawdie could not put on a matter. It is not billed until it has one."}
+                                        total={hr(sumHours(g.entries))} totalTip={g.project ? "The hours kept on this matter this day." : "Not billed until it has a matter."} project={g.project} />
+                                    {g.entries.map((e) => {
+                                    const spans = intervals(e);
+                                    const first = byID.get(e.activityID as string);
+                                    return (
+                                        <div key={e.id}>
+                                            <div className="activity">
+                                                <span className="app-icon">▭</span>
+                                                <div className="grow">
+                                                    <div className="small strong">{e.description} <AiTag source={e.drafted} /></div>
+                                                    <Shots names={e.screenshots} />
+                                                    <div className="muted tiny meta">
+                                                        <span>{first ? `${first.app} · ` : ""}{clock(e.startedAt)}–{clock(e.endedAt)}{e.billable ? " · billable" : " · not billable"}</span>
+                                                        {spans.length > 1 && <SittingsToggle label={`${spans.length} sittings`} open={!!open[e.id]} onClick={() => toggle(e.id)} />}
+                                                    </div>
+                                                </div>
+                                                <HoursEdit hours={entryHours(e)} title={`${timeBlock(e)}.`} onSave={(h) => { if (h !== null) void window.lawdie.editEntry(e.id, { hours: h }); }} />
+                                                <span className="muted small status kept">Kept</span>
+                                                <CopyButton icon className="quiet icon-btn" text={e.description} what="this entry's narrative" />
+                                                <button type="button" className="quiet icon-btn delete" aria-label="Delete entry" title="Delete this entry. Its sittings go back to review." onClick={() => { if (confirm(`Delete “${e.description}”? Its sittings go back to review.`)) void window.lawdie.deleteEntry(e.id); }}><Icon name="trash" /></button>
+                                            </div>
+                                            {open[e.id] && spans.length > 1 && <Sittings items={spans} />}
+                                            {waiting.get(e.id) && <NewSince rows={waiting.get(e.id)!} entry={e} byID={byID} increment={incrementOf(w.preferences)} />}
+                                        </div>
+                                    );
+                                    })}
+                                </section>
+                            ))}
+                        </div>
+                    ))}<ShowMore shown={Math.min(shown, kept.length)} total={kept.length} what="entries" {...more} /></>
                 ) : raw.length === 0 ? (
                     <Empty title="No activities here yet." detail="Each sitting, one stay in one app, is listed here once reviewed." />
                 ) : <>{raw.slice(0, shown).map((a) => (
@@ -696,14 +720,14 @@ function ShowMore({ shown, total, what, onMore, onAll }: { shown: number; total:
 }
 
 /** What a review row would be kept as (src/shared/keep.ts): whether Approve can keep it as shown, its billed hours, its matter's project, and under a client's rules the client and the codes. */
-type RowFacts = { verdict: ApproveVerdict; hours: number; project: Project | undefined; client: string | null; codes: string };
+type RowFacts = { verdict: ApproveVerdict; hours: number; project: Project | undefined; client: string | null; codes: string; /** The entry kept the same day on this matter that Approve merges this into. */ joins: TimeEntry | null };
 /** A row of To review: a matter's day or a stretch on no matter, with its activities and what it would be kept as. */
 type ReviewRow = RowFacts & { id: string; stretch: Stretch; matter: string | null; sittings: Activity[] };
 
 function rowFacts(w: Workspace, stretch: Stretch, sittings: Activity[], matter: string | null, now: number, remaining?: Map<string, Interval[]>): RowFacts {
     const start = keepStart(w, stretch, sittings, matter, stretch.name);
     const p = keepPreview(w, stretch, sittings, start, start.single);
-    return { verdict: approveCheck(w, stretch, sittings, matter, now, remaining), hours: p.hours, project: p.project, client: p.rc.book?.client ?? null, codes: p.rc.book ? [p.input.taskCode, p.input.activityCode].filter(Boolean).join(" / ") : "" };
+    return { verdict: approveCheck(w, stretch, sittings, matter, now, remaining), hours: p.hours, project: p.project, client: p.rc.book?.client ?? null, codes: p.rc.book ? [p.input.taskCode, p.input.activityCode].filter(Boolean).join(" / ") : "", joins: sameDayEntry(w, stretch.activityIDs, matter) };
 }
 
 /** A row can be ticked when Approve is not disabled on it. One that needs the Keep sheet can be: the report names it and leaves it. */
@@ -855,8 +879,9 @@ function SampleRow({ tutorial: { stretch: st, sittings }, open, onToggle, notify
 }
 
 /** Under a review row that looks like more of a kept entry: the question, naming the entry. The row's buttons become Separate / Add to entry. Once merged: that it must be kept again. */
-function MergeLine({ match, merged }: { match: TimeEntry | null; merged: boolean }): ReactNode {
+function MergeLine({ match, merged, joins }: { match: TimeEntry | null; merged: boolean; joins: TimeEntry | null }): ReactNode {
     if (merged) return <div className="merge-note tiny">↺ Added to a kept entry · keep it again to put it back on your timesheet</div>;
+    if (joins) return <div className="merge-note tiny" title="Time on one matter on one day is kept as one entry.">↔ Approve merges this into <strong>“{joins.description}”</strong>, kept on this matter the same day ({clock(joins.startedAt)}–{clock(joins.endedAt)}, {hr(entryHours(joins))})</div>;
     if (!match) return null;
     return <div className="merge-note tiny">↔ Add this to your kept entry <strong>“{match.description}”</strong> ({clock(match.startedAt)}–{clock(match.endedAt)}, {hr(entryHours(match))})?</div>;
 }
@@ -865,7 +890,8 @@ function MergeLine({ match, merged }: { match: TimeEntry | null; merged: boolean
  * Under a kept entry: the new activity since, that looks like more of it, each with Add (the
  * entry comes back to review with it, to be kept again as one) and Separate.
  */
-function NewSince({ rows, entryID, byID, increment }: { rows: string[][]; entryID: string; byID: Map<string, Activity>; increment: number }): ReactNode {
+function NewSince({ rows, entry, byID, increment }: { rows: string[][]; entry: TimeEntry; byID: Map<string, Activity>; increment: number }): ReactNode {
+    const addToEntry = useAddToEntry();
     return (
         <div className="new-since">
             <div className="eyebrow">New since</div>
@@ -880,8 +906,8 @@ function NewSince({ rows, entryID, byID, increment }: { rows: string[][]; entryI
                         <span className="sitting-dot new" aria-hidden="true" />
                         <span className="grow"><span className="small">{name}</span> <span className="tiny muted">· {apps} · {dayLabel(first.startedAt)} {spanLabel(first.startedAt, last.endedAt, acts.length)}</span></span>
                         <span className="mono small">{hr(billed(acts.reduce((n, a) => n + entrySeconds(a), 0), increment))}</span>
-                        <button type="button" className="link sitting-dismiss" title="The new time is other work: it stays in review on its own" onClick={() => void window.lawdie.keepSeparate(ids, entryID)}>Separate</button>
-                        <button type="button" className="link sitting-dismiss add" title="This entry comes back to review with the new time, to be kept again as one" onClick={() => void window.lawdie.mergeIntoEntry(ids, entryID)}>Add to entry</button>
+                        <button type="button" className="link sitting-dismiss" title="The new time is other work: it stays in review on its own" onClick={() => void window.lawdie.keepSeparate(ids, entry.id)}>Separate</button>
+                        <button type="button" className="link sitting-dismiss add" title="This entry comes back to review with the new time, to be kept again as one" onClick={() => void addToEntry(ids, entry)}>Add to entry</button>
                     </div>
                 );
             })}
@@ -889,12 +915,22 @@ function NewSince({ rows, entryID, byID, increment }: { rows: string[][]; entryI
     );
 }
 
+/** Add to entry, never silently: the kept entry leaves the Kept list and comes back to review with the new time, and the toast says so. */
+function useAddToEntry(): (ids: string[], entry: TimeEntry) => Promise<void> {
+    const notify = useNotify();
+    return async (ids, entry) => {
+        const ok = await window.lawdie.mergeIntoEntry(ids, entry.id);
+        notify(ok ? `Merged into “${entry.description}”. The entry is back in To review with the new time: approve it to keep them as one.` : "That could not be merged. The entry may have changed; try again.", 10000);
+    };
+}
+
 /** The row's buttons while its kept-entry question is open. */
 function MergeButtons({ ids, match }: { ids: string[]; match: TimeEntry }): ReactNode {
+    const addToEntry = useAddToEntry();
     return (
         <>
             <button type="button" className="quiet" title="This is other work: review it on its own, and never suggest this entry for it again" onClick={() => void window.lawdie.keepSeparate(ids, match.id)}>Keep separate</button>
-            <button type="button" className="primary" title="The kept entry comes back to review with this time, to be kept again as one" onClick={() => void window.lawdie.mergeIntoEntry(ids, match.id)}>Add to entry</button>
+            <button type="button" className="primary" title="The kept entry comes back to review with this time, to be kept again as one" onClick={() => void addToEntry(ids, match)}>Add to entry</button>
         </>
     );
 }
@@ -1036,8 +1072,8 @@ function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, a
                         <Editable initial={g.matter} title="Rename this matter, everywhere it appears; another matter's name merges the two" onSave={(name) => {
                             if (!name) return;
                             if (isPersonal(name)) { void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok) notify(`The time on “${g.matter}” waiting for review is now personal. “Not personal” on an item brings it back.`); }); return; }
-                            const into = name.toLowerCase() === g.matter.toLowerCase() ? null : existingMatter(w, name);
-                            void window.lawdie.renameMatter(g.matter, name).then((ok) => { if (ok && into) notify(`“${g.matter}” merged into “${into}”: its time is on that matter now.`); });
+                            // Renaming into another matter says nothing; Approve says what it merged (2026-11-21).
+                            void window.lawdie.renameMatter(g.matter, name);
                         }}>
                             <span className="matter-label">{g.matter}</span>
                         </Editable>
@@ -1047,7 +1083,7 @@ function MatterRow({ w, row, onMoved, group: g, match, merged, ticked, onTick, a
                         <span>{g.apps.join(", ")} · {dayLabel(g.startedAt)} {spanLabel(g.startedAt, g.endedAt, g.sittings)} · {g.sittings} {g.sittings === 1 ? "sitting" : "sittings"}<IdleTag seconds={idleSeconds(row.sittings)} /></span>
                         <SittingsToggle label={`${g.documents.length} ${g.documents.length === 1 ? "item" : "items"}`} open={open} what="the documents in this matter" onClick={onToggle} />
                     </div>
-                    <MergeLine match={match} merged={merged} />
+                    <MergeLine match={match} merged={merged} joins={row.joins} />
                 </div>
                 <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} sittings={row.sittings} />
                 <RowActions w={w} row={row} match={match} what={`${g.matter}'s time`} dismissTip="Take this matter's activity out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
@@ -1103,7 +1139,7 @@ function StretchRow({ w, row, onMoved, match, merged, ticked, onTick, approving,
                         {st.sittings > 1 && <SittingsToggle label={`${st.sittings} sittings`} open={open} onClick={onToggle} />}
                     </div>
                     {st.sittings === 1 && <SittingTimes acts={row.sittings} notify={notify} />}
-                    <MergeLine match={match} merged={merged} />
+                    <MergeLine match={match} merged={merged} joins={row.joins} />
                 </div>
                 <RowTime hours={row.hours} client={row.client} mode={billingModeOf(w.preferences)} sittings={row.sittings} />
                 <RowActions w={w} row={row} match={match} what={own?.text ?? st.name} dismissTip="Take this stretch out of review without keeping time." approving={approving} onMoved={onMoved} onApprove={onApprove} onEdit={onEdit} />
@@ -1267,13 +1303,22 @@ function KeepSheet({ w, stretch, matter: suggested, initialDescription, projects
         if (lines) {
             if (lines.some((l) => !l.draft.description.trim())) { setProblem("Add a narrative to every line."); return; }
             const ok = await window.lawdie.keepLines(lines.map((l, n) => ({ activityIDs: l.activityIDs, input: { description: l.draft.description, projectID: null, matter: matter.trim() || null, sittings: l.sittings, leaveOutIdle, billable: l.draft.billable, hours: l.draft.hours, taskCode: l.draft.taskCode, activityCode: l.draft.activityCode, hourlyRate: l.draft.hourlyRate, ...drafted(l.draft.description, plan[n]?.draft.description) }, foldInto: l.foldInto ?? null })));
-            if (ok) onClose(); else setProblem("Those entries could not be saved. They may overlap time you already kept.");
+            if (ok) {
+                const folded = lines.filter((l) => l.foldInto).map((l) => w.entries.find((e) => e.id === l.foldInto)?.description).filter((d): d is string => !!d);
+                const rest = lines.length - folded.length;
+                if (folded.length) notify(`Merged into your kept entry ${folded.map((d) => `“${d}”`).join(" and ")}.${rest ? ` ${rest === 1 ? "The other line was" : `The other ${rest} lines were`} kept as ${rest === 1 ? "its own entry" : "their own entries"}.` : ""}`, 10000);
+                onClose();
+            } else setProblem("Those entries could not be saved. They may overlap time you already kept.");
             return;
         }
         if (!description.trim()) { setProblem("Add a description."); return; }
         if (!preview) { setProblem(span ? "All of this time was idle. Dismiss it instead." : "No captured time falls between those times."); return; }
         // Folded into the day's email entry: the sittings join that entry, which takes the summed hours.
+        // Time on a matter that already has an entry kept that day merges into it (keepOrMerge in the main process); the toast says so.
+        const joins = foldTarget || sample ? null : sameDayEntry(w, stretch.activityIDs, input.matter ?? null);
         const ok = foldTarget ? await window.lawdie.keepLines([{ activityIDs: stretch.activityIDs, input, foldInto: foldTarget }]) : await keep(stretch.activityIDs, input);
+        if (ok && joins) notify(`Merged into “${joins.description}”, already kept on ${input.matter ?? "this matter"} that day.`, 10000);
+        if (ok && foldTarget) notify(`Merged into your kept entry “${w.entries.find((e) => e.id === foldTarget)?.description ?? "for the day"}”. Its hours now include this time.`, 10000);
         if (ok) onClose();
         else setProblem("That could not be saved. It may overlap time you already kept.");
     };

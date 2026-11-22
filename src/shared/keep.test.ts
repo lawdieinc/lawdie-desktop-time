@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PERSONAL, emptyWorkspace, keepStretch, seconds, validate, type Activity, type Project, type TimeEntry, type Workspace } from "./model";
+import { PERSONAL, emptyWorkspace, keepStretch, keptMatch, renameMatterNamed, sameDayEntry, seconds, validate, type Activity, type Project, type TimeEntry, type Workspace } from "./model";
 import { accountOf, ensureFeed } from "./feed";
 import { inboxOf, matterStretch } from "./matters";
 import { tutorialStretch } from "./onboarding";
 import type { Rule, RuleSet } from "./rules";
-import { APPROVE_MAX_ROWS, approveCheck, approveRows, approveSummary, billedHours, inboxRowOf, keepPreview, keepStart, type ApproveReport, type ApproveVerdict } from "./keep";
+import { APPROVE_MAX_ROWS, approveCheck, approveRows, approveSummary, billedHours, inboxRowOf, joinNarratives, keepOrMerge, keepPreview, keepStart, type ApproveReport, type ApproveVerdict } from "./keep";
 
 // Approve keeps a review row as the Keep sheet would with nothing changed (src/shared/keep.ts).
 
@@ -145,7 +145,8 @@ describe("Approve on one row", () => {
         const asked = drafted();
         keepStretch(asked, ["a1"], { description: "Review lease", projectID: null, matter: "Acme lease", billable: true }, NOW);
         asked.activities[1].draft = { text: DRAFT, source: "kiwi" };
-        expect(refusal(verdict(asked, ["a2"]))).toMatchObject({ reason: "merge-question", opensSheet: false });
+        // Time kept on the matter that day is not asked about: Approve merges into it (keepOrMerge, below).
+        expect(verdict(asked, ["a2"]).ok).toBe(true);
 
         const sample = tutorialStretch(NOW);
         expect(refusal(approveCheck(drafted(), sample.stretch, sample.sittings, sample.sittings[0].matter ?? null, NOW))).toMatchObject({ reason: "tutorial", opensSheet: false });
@@ -249,10 +250,10 @@ describe("approving several rows", () => {
         expect(r.kept.map((k) => k.activityIDs)).toEqual([["m1"]]);
         expect(r.skipped[0]).toMatchObject({ activityIDs: ["m2"], reason: "rules", message: "Halvorsen's rules flag this entry: Emails of 0.1 h or less are billed as one entry for the day." });
         expect(w.entries).toHaveLength(1);
-        // Without the merge already answered, the later row is asked whether it is more of the entry just kept.
+        // Without the merge already answered, the client's email rule still sends the later row to the Keep sheet.
         const asked = approveRows(emails(), [["m1"], ["m2"]], NOW);
         expect(asked.kept).toHaveLength(1);
-        expect(asked.skipped[0]).toMatchObject({ activityIDs: ["m2"], reason: "merge-question" });
+        expect(asked.skipped[0]).toMatchObject({ activityIDs: ["m2"], reason: "rules" });
     });
 
     it("keeps what the Keep sheet keeps", () => {
@@ -309,5 +310,67 @@ describe("the approval's summary", () => {
             skipped: [skip("Bolt term sheet", "overlap"), skip("Review", "rules", "Halvorsen's rules flag this entry: \"Review\" does not say what was done."), skip("Football pool", "personal"), skip("Fourth", "no-matter"), skip("Fifth", "changed")],
         })).toBe("Kept 2 entries, 1.4 hr. Not kept: “Bolt term sheet” overlaps time you already kept, or the timer is running; “Review” needs the Keep sheet: Halvorsen's rules flag this entry: \"Review\" does not say what was done; “Football pool” is personal time; and 2 more.");
         expect(approveSummary({ kept: [], skipped: [skip("Lease", "refused", "More than one matter has this name. Choose its linked matter.")] })).toBe("Nothing was kept. Not kept: “Lease” could not be kept: More than one matter has this name. Choose its linked matter.");
+    });
+});
+
+describe("time on a matter already kept that day", () => {
+    // 2026-11-21: renaming a row to a matter with time kept that day, then Approve, kept a second entry or asked,
+    // depending on which time came first. Now it always merges into that entry, and says so.
+    const day = (keptAt: [number, number], rowAt: [number, number]): Workspace => {
+        const w = emptyWorkspace();
+        w.activities.push(act("k", ...keptAt, { matter: "Acme lease", matterBy: "person" }));
+        keepStretch(w, ["k"], { description: "Revised the lease", projectID: null, matter: "Acme lease", billable: true, hours: 0.5 }, NOW);
+        w.activities.push(act("r", ...rowAt, { title: "Call notes.docx", matter: "Beta deal", matterBy: "ai", description: "Call with the landlord" }));
+        return validate(w);
+    };
+
+    for (const [when, keptAt, rowAt] of [["later", [0, 30], [120, 150]], ["earlier", [120, 150], [0, 30]]] as const) {
+        it(`merges a renamed row whose time is ${when} the same day, adding the hours and the narrative`, () => {
+            const w = day(keptAt as [number, number], rowAt as [number, number]);
+            expect(renameMatterNamed(w, "Beta deal", "Acme lease")).toBe("Acme lease");
+            expect(sameDayEntry(w, ["r"], "Acme lease")?.description).toBe("Revised the lease");
+            const r = approveRows(w, [["r"]], NOW);
+            expect(r.skipped).toEqual([]);
+            expect(r.kept[0]).toMatchObject({ into: "Revised the lease", hours: 0.5, total: 1 });
+            expect(w.entries).toHaveLength(1);
+            expect(w.entries[0]).toMatchObject({ description: "Revised the lease; Call with the landlord", hours: 1 });
+            expect(w.entries[0].activityIDs?.sort()).toEqual(["k", "r"]);
+            expect(seconds(w.entries[0])).toBe(60 * 60);
+            expect(approveSummary(r)).toBe("Kept 1 entry, 0.5 hr (merged into an entry already kept that day on the same matter).");
+        });
+    }
+
+    it("keeps time on another day, another matter, an invoiced entry or one the person kept apart as its own entry", () => {
+        const nextDay = day([0, 30], [26 * 60, 26 * 60 + 30]);
+        renameMatterNamed(nextDay, "Beta deal", "Acme lease");
+        expect(sameDayEntry(nextDay, ["r"], "Acme lease")).toBeNull();
+
+        const other = day([0, 30], [120, 150]);
+        expect(sameDayEntry(other, ["r"], "Beta deal")).toBeNull();
+
+        const invoiced = day([0, 30], [120, 150]);
+        invoiced.invoices = [{ number: "INV-1", entryIDs: [invoiced.entries[0].id] } as never];
+        expect(sameDayEntry(invoiced, ["r"], "Acme lease")).toBeNull();
+
+        const apart = day([0, 30], [120, 150]);
+        apart.activities[1].separateFrom = [apart.entries[0].id];
+        expect(sameDayEntry(apart, ["r"], "Acme lease")).toBeNull();
+    });
+
+    it("the Keep sheet merges the same way, and the entry's billing stands", () => {
+        const w = day([0, 30], [120, 150]);
+        w.entries[0].hourlyRate = 400;
+        const { entry, into } = keepOrMerge(w, ["r"], { description: "Call with the landlord", projectID: null, matter: "acme lease", billable: false, hourlyRate: 999, hours: 0.3 }, NOW);
+        expect(into).toBe("Revised the lease");
+        expect(entry).toMatchObject({ billable: true, hourlyRate: 400, hours: 0.8 });
+        expect(w.entries).toHaveLength(1);
+        // The row is not asked "Add to your kept entry?" any more: keptMatch's question is for time across midnight.
+        expect(keptMatch(w, ["r"])).toBeNull();
+    });
+
+    it("joins narratives without repeating one", () => {
+        expect(joinNarratives("Revised the lease.", "Call with the landlord")).toBe("Revised the lease; Call with the landlord");
+        expect(joinNarratives("Revised the lease", "revised the lease")).toBe("Revised the lease");
+        expect(joinNarratives("Call", "Call with the landlord")).toBe("Call with the landlord");
     });
 });

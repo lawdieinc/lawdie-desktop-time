@@ -4,14 +4,14 @@
  * exactly what the sheet would keep with nothing changed. So the two cannot drift apart. Pure: no
  * Electron, no React. Approve runs in the main process on the live workspace; the window sends only ids.
  */
-import { clipSittings, descriptionOf, intervals, isPersonal, keepStretch, keptMatch, overlaps, reviewedActivities, stretchSpan, subtractIntervals, type Activity, type DraftSource, type Interval, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "./model";
+import { DRAFT_MAX, clipSittings, descriptionOf, foldInto, intervals, isPersonal, keepStretch, keptMatch, sameDayEntry, overlaps, reviewedActivities, stretchSpan, subtractIntervals, type Activity, type DraftSource, type Interval, type KeepInput, type Project, type Stretch, type TimeEntry, type Workspace } from "./model";
 import { contextOf } from "./invoice";
 import { checkEntry, rulebookFor, splitPlan, type CheckContext, type EntryDraft, type Finding, type PlanLine } from "./rules";
 import { keepBounds, timeValue } from "./format";
 import { inboxOf, matterStretch } from "./matters";
 import { importedCovered } from "./feed";
 import { isTutorialID } from "./onboarding";
-import { billedHours, hoursText, incrementFor } from "./billingMode";
+import { billedHours, entryHours, hoursText, incrementFor } from "./billingMode";
 
 // ---------------------------------------------------------------------------
 // What the rules see (moved from the window's Rules.tsx, which re-exports them)
@@ -199,7 +199,8 @@ export function approveCheck(w: Workspace, stretch: Stretch, sittings: readonly 
     if (live.some((a) => a!.disposition !== "pending")) return no("reviewed", APPROVE_MESSAGES.reviewed);
     if (isPersonal(matter) || sittings.some((a) => isPersonal(a.matter))) return no("personal", APPROVE_MESSAGES.personal);
     if (!matter?.trim()) return no("no-matter", APPROVE_MESSAGES.noMatter);
-    if (keptMatch(w, ids)) return no("merge-question", APPROVE_MESSAGES.mergeQuestion);
+    // Same matter, same day: nothing to ask, Approve merges into that entry (keepOrMerge). Otherwise the row's question stands.
+    if (!sameDayEntry(w, ids, matter) && keptMatch(w, ids)) return no("merge-question", APPROVE_MESSAGES.mergeQuestion);
     if (!descriptionOf(sittings)) return no("no-description", APPROVE_MESSAGES.noDescription);
     if (importedCovered(w, ids, now, remaining)) return no("imported-overlap", APPROVE_MESSAGES.importedOverlap, true);
     // As keepStretch has it: one row, one Kiwi matter.
@@ -226,8 +227,34 @@ export function inboxRowOf(w: Workspace, activityIDs: readonly string[]): { stre
     return st ? { stretch: st, matter: null, sittings: sittingsOf(st.activityIDs) } : null;
 }
 
+/** "Revised the lease; Call with client": two narratives as one, without repeating one the other already holds. */
+export function joinNarratives(kept: string, added: string): string {
+    const a = kept.trim(), b = added.trim();
+    if (!b || a.toLowerCase().includes(b.toLowerCase())) return a;
+    if (!a || b.toLowerCase().includes(a.toLowerCase())) return b;
+    return `${a.replace(/[\s.;,]+$/, "")}; ${b}`.slice(0, DRAFT_MAX);
+}
+
+/**
+ * Keep time, or merge it into the entry already kept that day on the same matter (`sameDayEntry`): Approve and the
+ * Keep sheet both keep through here, so the same time always ends the same way. A merge adds the sittings to that
+ * entry, joins the narratives and adds the hours; the entry's billable choice, rate and codes stand. `into` is the
+ * entry's description before, for the toast that says so.
+ */
+export function keepOrMerge(w: Workspace, activityIDs: string[], input: KeepInput, now: number): { entry: TimeEntry; into: string | null } {
+    const name = input.projectID ? w.projects.find((p) => p.id === input.projectID)?.name ?? null : input.matter ?? null;
+    const target = sameDayEntry(w, activityIDs, name);
+    if (!target) return { entry: keepStretch(w, activityIDs, input, now), into: null };
+    const before = target.description;
+    const { billable: _b, hourlyRate: _r, taskCode: _t, activityCode: _a, hours, ...rest } = input;
+    const entry = foldInto(w, target.id, activityIDs, { ...rest, description: joinNarratives(before, input.description), ...(hours !== undefined ? { hours: Math.round((entryHours(target) + hours) * 100) / 100 } : {}) }, now);
+    if (hours === undefined) delete entry.hours;
+    return { entry, into: before };
+}
+
 export type ApproveReport = {
-    kept: { activityIDs: string[]; entryID: string; label: string; hours: number }[];
+    /** `into`: the description of the entry kept the same day on that matter that this time merged into; `total` its hours after. */
+    kept: { activityIDs: string[]; entryID: string; label: string; hours: number; into?: string; total?: number }[];
     skipped: { activityIDs: string[]; label: string; reason: ApproveReason; message: string }[];
 };
 
@@ -274,8 +301,8 @@ export function approveRows(w: Workspace, rows: readonly (readonly string[])[], 
         // A refused keep may have changed the workspace on its way to refusing: put it back whole.
         const before = structuredClone(w) as Workspace;
         try {
-            const entry = keepStretch(w, row.stretch.activityIDs, verdict.input, now);
-            report.kept.push({ activityIDs: ids, entryID: entry.id, label: verdict.label, hours: verdict.hours });
+            const { entry, into } = keepOrMerge(w, row.stretch.activityIDs, verdict.input, now);
+            report.kept.push({ activityIDs: ids, entryID: entry.id, label: verdict.label, hours: verdict.hours, ...(into ? { into, total: entryHours(entry) } : {}) });
         } catch (err) {
             const target = w as unknown as Record<string, unknown>;
             for (const key of Object.keys(target)) delete target[key];
@@ -306,7 +333,8 @@ const unstopped = (text: string): string => text.trim().replace(/[.;]+$/, "");
 /** The report in a toast: how much was kept, then the first three rows that were not and why, then how many more. */
 export function approveSummary(r: ApproveReport): string {
     const hours = r.kept.reduce((n, k) => n + k.hours, 0);
-    const kept = r.kept.length ? `Kept ${r.kept.length} ${r.kept.length === 1 ? "entry" : "entries"}, ${hoursText(hours)} hr.` : "Nothing was kept.";
+    const merged = r.kept.filter((k) => k.into).length;
+    const kept = r.kept.length ? `Kept ${r.kept.length} ${r.kept.length === 1 ? "entry" : "entries"}, ${hoursText(hours)} hr${merged ? ` (${merged === r.kept.length && merged === 1 ? "merged" : `${merged} merged`} into ${merged === 1 ? "an entry" : "entries"} already kept that day on the same matter)` : ""}.` : "Nothing was kept.";
     if (!r.skipped.length) return kept;
     const named = r.skipped.slice(0, 3).map((x) => `“${short(x.label)}” ${SHEET_REASONS.has(x.reason) ? `needs the Keep sheet: ${unstopped(x.message)}` : SHORT_REASONS[x.reason] ?? `could not be kept: ${unstopped(x.message)}`}`);
     const more = r.skipped.length - named.length;

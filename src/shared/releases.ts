@@ -49,6 +49,17 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
     {
+        id: "0.18.8",
+        date: "2026-11-21",
+        title: "One entry per matter, per day",
+        intro: "After feedback from a user: time on a matter that already has an entry kept that day now joins that entry when you approve it, whichever came first, and the app always tells you when time is merged.",
+        items: [
+            { icon: "matter", title: "Same matter, same day, one entry", description: "Approving time on a matter already kept that day merges it into that entry.", more: "Rename a row to a matter you already kept time on that day, or approve more time on it, and Approve now adds it to that entry: the hours are added together and the descriptions joined, while the entry's billable choice and rate stand. Before, the result depended on which time came first: sometimes you were asked, sometimes a second entry was kept without a word. The row says beforehand which entry it will join, and a note says so once it has. Time on another day, an entry already on an invoice, or time you chose to keep separate stays its own entry.", route: "activity" },
+            { icon: "matter", title: "Kept time grouped by matter", description: "Activity → Kept now lists each day's entries under their matter, with the hours.", more: "The Kept list used to be one long column, so several entries on the same matter sat apart. It now groups them the way the Time page does: each day with its hours and billable hours, then each matter with its total and its Copy button, and time with no matter last.", route: "activity" },
+            { icon: "sparkle", title: "A note when time is merged", description: "Add to entry and folding into the day's email entry now say what they did.", more: "Add to entry takes a kept entry back to To review with the new time, so it can be approved as one. It used to do that silently, and the entry just vanished from Kept. A note now says which entry was merged and where it went. Folding time into the day's email entry, under a client's rules, says so too.", route: "activity" },
+        ],
+    },
+    {
         id: "0.18.6",
         date: "2026-11-18",
         title: "Pick the apps that stay private",

@@ -693,3 +693,15 @@ trial of a JS obfuscator showed it only hid strings at a level that destroyed th
 fused+signed build updated to the next fused+signed build from a local feed with native Squirrel accepting the signature;
 the Linux AppImage and a real Windows `electron.exe` carry the fuses too. `LAWDIE_UPDATE_FEED` (env, inert in production,
 like `LAWDIE_USER_DATA`) points the updater at a local feed and prints the outcome for that test. Version 0.18.7.
+2026-11-21, after a user's feedback (LAW-1497): Activity → Kept groups entries by day and then matter, as the Time page does
+(`keptByDay` + `matterGroups`; the row drops the matter and day its headings carry). A merge is never silent: Add to entry
+(`useAddToEntry`, from Kept's "New since" and a review row's kept-entry question) and folding into the day's email entry in
+the Keep sheet each show a toast naming the entry. Then the actual report: a row renamed to a matter with time kept that
+day kept a second entry silently when its time was earlier, and asked when later (`keptMatch` looks back only). Now, by the
+user's choice ("merge automatically"), `sameDayEntry()` (model.ts: same matter, same local day, from this computer, confirmed,
+not invoiced, not kept separate) is the entry, and `keepOrMerge()` (keep.ts; Approve's `approveRows` and the Keep sheet's
+`keepActivity`) folds into it: hours added, narratives joined (`joinNarratives`), the entry's billable choice, rate and
+codes kept. Such a row is not asked "Add to your kept entry?" (that stays for time across midnight); it says "Approve merges
+this into …", and Approve's toast (or the Keep sheet's) says what it merged. Renaming a row into another matter shows no toast,
+by the user's decision ("just when you hit approve"); the pencil's old "merged into" toast went with it. A client's rules finding still opens
+the Keep sheet first. Tested in `keep.test.ts`; renamed and approved through the harness on a scratch workspace. Version 0.18.8.
