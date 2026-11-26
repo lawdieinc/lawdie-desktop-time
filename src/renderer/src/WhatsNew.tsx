@@ -5,7 +5,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { LATEST_RELEASE, RELEASES, releaseDateLabel, type Release, type ReleaseIcon, type ReleaseItem } from "@shared/releases";
-import mark from "../../../resources/brand/lawdie-icon.png";
+import mark from "../../../resources/brand/lawdie-mark.png";
 
 const PATHS: Record<ReleaseIcon, ReactNode> = {
     calendar: <><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></>,

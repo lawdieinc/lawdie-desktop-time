@@ -55,14 +55,14 @@ describe("the newsletter", () => {
 
     it("shows the brand mark, the release's picture and an item's, read from the repo unless a preview says where", () => {
         const plain = newsletterFor(release);
-        expect(plain.images).toEqual([`${IMAGE_BASE}/kiwi.png`]);
+        expect(plain.images).toEqual([`${IMAGE_BASE}/lawdie-mark.png`]);
         const pictured: Release = {
             ...release,
             picture: { file: "9.1.0-review.jpg", alt: 'The "review" screen' },
             items: [release.items[0], { ...release.items[1], picture: { file: "9.1.0-matters.jpg", alt: "The Matters page" } }],
         };
         const n = newsletterFor(pictured);
-        expect(n.images).toEqual([`${IMAGE_BASE}/kiwi.png`, `${IMAGE_BASE}/9.1.0-review.jpg`, `${IMAGE_BASE}/9.1.0-matters.jpg`]);
+        expect(n.images).toEqual([`${IMAGE_BASE}/lawdie-mark.png`, `${IMAGE_BASE}/9.1.0-review.jpg`, `${IMAGE_BASE}/9.1.0-matters.jpg`]);
         expect(n.html).toContain(`src="${IMAGE_BASE}/9.1.0-review.jpg"`);
         expect(n.html).toContain('alt="The &quot;review&quot; screen"');
         expect(n.html).toContain(`src="${IMAGE_BASE}/9.1.0-matters.jpg"`);

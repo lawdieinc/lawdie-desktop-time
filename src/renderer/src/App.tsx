@@ -21,7 +21,7 @@ import { applyRules, linesByEntry, type AppliedBill, type AppliedLine } from "@s
 import { money as dollars, shortName } from "@shared/invoice";
 import wordmark from "../../../resources/brand/lawdie-wordmark.png";
 
-import kiwiMark from "../../../resources/brand/kiwi.png";
+import mark from "../../../resources/brand/lawdie-mark.png";
 import { CopyButton, Empty, Heading, Icon, Panel, Setting, Toggle } from "./ui";
 import { Tour, Welcome } from "./Onboarding";
 import { WhatsNew } from "./WhatsNew";
@@ -145,7 +145,7 @@ export function App(): ReactNode {
         <div className="shell">
             <aside className="sidebar">
                 <div className="brand">
-                    <span className="marks"><img src={kiwiMark} alt="" className="kiwi-mark" draggable={false} /><img src={wordmark} alt="Lawdie" className="wordmark" draggable={false} /></span>
+                    <span className="marks"><img src={mark} alt="" className="brand-mark" draggable={false} /><img src={wordmark} alt="Lawdie" className="wordmark" draggable={false} /></span>
                     <h1 className="display">Time capture</h1>
                 </div>
                 <p className="eyebrow">Workspace</p>

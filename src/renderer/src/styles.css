@@ -35,7 +35,7 @@ h1, h2 { margin: 0; font-weight: 600; }
 .shell { display: flex; height: 100%; }
 .sidebar { width: 218px; background: var(--sidebar); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 48px 0 0; -webkit-app-region: drag; }
 .sidebar button, .sidebar nav { -webkit-app-region: no-drag; }
-.brand { padding: 0 23px 38px; } .marks { display: flex; align-items: center; gap: 9px; margin-bottom: 15px; } .kiwi-mark { width: 32px; height: 32px; object-fit: contain; display: block; } .wordmark { width: 108px; height: auto; display: block; } .brand h1 { font-size: 22px; }
+.brand { padding: 0 23px 38px; } .marks { display: flex; align-items: center; gap: 9px; margin-bottom: 15px; } .brand-mark { width: 32px; height: 32px; object-fit: contain; display: block; } .wordmark { width: 108px; height: auto; display: block; } .brand h1 { font-size: 22px; }
 .sidebar > .eyebrow { padding: 0 24px 15px; }
 .nav { display: flex; align-items: center; gap: 12px; width: calc(100% - 24px); margin: 0 12px 4px; padding: 13px 14px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); text-align: left; }
 .nav:hover { color: var(--text); } .nav.active { color: var(--accent); background: rgba(139, 92, 42, 0.07); font-weight: 600; }

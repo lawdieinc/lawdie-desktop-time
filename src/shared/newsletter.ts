@@ -20,7 +20,7 @@ export const DOWNLOAD_URL = "https://github.com/lawdieinc/lawdie-desktop-time/re
 export const IMAGE_BASE = "https://raw.githubusercontent.com/lawdieinc/lawdie-desktop-time/main/docs/newsletter";
 
 /** The brand mark in the header, a file in `docs/newsletter/`. */
-export const MARK_FILE = "kiwi.png";
+export const MARK_FILE = "lawdie-mark.png";
 
 export type NewsletterOptions = {
     /** Where "Download" goes. */

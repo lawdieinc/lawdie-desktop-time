@@ -375,13 +375,13 @@ with its one line; a release's `picture` is the main screenshot and an item's `p
 (`newsletter.test.ts`): `newsletterFor(release)` gives subject, preheader, HTML and plain text, always with an
 unsubscribe link (`UNSUBSCRIBE_PLACEHOLDER`, which Resend fills per recipient). The layout is the user's pick of three
 directions (2026-11-13; a time-sheet layout was built and sent first, then this one preferred): an espresso top with
-the kiwi, "What's new" and the date, the title very large with its last word in italic over a brown-gold line, and
+the 1L mark, "What's new" and the date, the title very large with its last word in italic over a brown-gold line, and
 the intro; the release's picture across the line where espresso meets cream; the items as numbered sections; one
 full-width download button. Tried and dropped by the user: a row of big figures under the picture, a figure per item,
 and a box saying the update installs itself. Tables and inline styles, brand colours only, no gradients for effect
 (one hard two-colour split behind the picture), no shadows; web fonts where the client loads them, Georgia and
 Arial elsewhere. The pictures are files in `docs/newsletter/` (not `resources/`, which ships in the installers): the
-kiwi mark and each release's screenshots (`<version>-<what>.jpg`, the main one about 1100 px wide, an item's 930),
+1L mark (`lawdie-mark.png`; `kiwi.png` stays for emails already sent) and each release's screenshots (`<version>-<what>.jpg`, the main one about 1100 px wide, an item's 930),
 always of the demo workspace (`--demo resources/demo/manatt.json`), never a real one. A mail client reads them from this public repo (`IMAGE_BASE`, raw
 GitHub on main), so they must be pushed before a send. `scripts/newsletter.mjs`
 (`npm run newsletter --`, the shared code bundled by esbuild in memory): `preview [version]` writes
