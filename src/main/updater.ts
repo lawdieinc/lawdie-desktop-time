@@ -29,6 +29,7 @@ export class Updater {
     private timer: NodeJS.Timeout | null = null;
     private installing = false;
     private macPrepared = false;
+    private checkErrors: Set<unknown> | null = null;
     /** Called once a version has downloaded and waits for Install. */
     onReady: (version: string) => void = () => {};
 
@@ -101,24 +102,45 @@ export class Updater {
     };
 
     private failed(err: unknown): void {
+        // electron-updater emits the error before rejecting the same check with it.
+        if (this.checkErrors?.has(err)) return;
+        this.checkErrors?.add(err);
         nativeUpdater.removeListener("update-downloaded", this.macDownloaded);
         this.installing = false;
         failed(err);
     }
 
     private async check(): Promise<void> {
-        if (this.store.updateReady) return;
+        if (this.store.updateReady || this.checkErrors) return;
+        this.checkErrors = new Set();
         try {
             await autoUpdater.checkForUpdates();
         } catch (err) {
-            failed(err);
+            this.failed(err);
+        } finally {
+            this.checkErrors = null;
         }
     }
 }
 
-/** A check or download that failed. One that never reached GitHub (offline, a firewall, a timeout) is only logged: the
+/** A check or download that failed. A transport failure or gateway timeout is only logged: the
     next check is in four hours, and it is not a bug to report. */
 function failed(err: unknown): void {
-    if (isNetworkError(err)) console.warn("[updater]", err instanceof Error ? err.message.slice(0, 200) : err);
+    if (isNetworkError(err) || isGatewayTimeout(err)) console.warn("[updater]", (err instanceof Error ? err.message : String(err)).slice(0, 200));
     else report("updater", err);
+}
+
+/** Updater-only HTTP 504 handling. GitHubProvider discards status and cause when it wraps a failed latest-version
+    request, leaving only HttpError's stack in the message. Match that prefix, never status-like text in feed XML. */
+function isGatewayTimeout(error: unknown): boolean {
+    const seen = new Set<unknown>();
+    let current = error;
+    for (let depth = 0; depth <= 3 && current && typeof current === "object" && !seen.has(current); depth++) {
+        seen.add(current);
+        const record = current as { statusCode?: unknown; status?: unknown; code?: unknown; message?: unknown; cause?: unknown };
+        if ([record.statusCode, record.status, record.code].some((value) => value === 504 || value === "504") || record.code === "HTTP_ERROR_504") return true;
+        if (typeof record.message === "string" && /^(?:Cannot parse releases feed: Error: )?Unable to find latest version on GitHub \(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/releases\/latest\), please ensure a production release exists: HttpError: 504\s/.test(record.message)) return true;
+        current = record.cause;
+    }
+    return false;
 }
